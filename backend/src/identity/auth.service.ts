@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -6,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { Tenant } from './entities/tenant.entity.js';
@@ -21,44 +22,48 @@ export interface JwtPayload {
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(Tenant)
-    private readonly tenantRepo: Repository<Tenant>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ accessToken: string }> {
     const slug = this.generateSlug(dto.name);
-
-    const existingTenant = await this.tenantRepo.findOne({ where: { slug } });
-    if (existingTenant) {
-      throw new ConflictException(
-        `Tenant with slug "${slug}" already exists`,
+    if (!slug) {
+      throw new BadRequestException(
+        'Venue name must contain at least one Latin character for URL generation',
       );
     }
 
-    const existingUser = await this.userRepo.findOne({
-      where: { email: dto.email },
+    return this.dataSource.transaction(async (em) => {
+      const existingTenant = await em.findOne(Tenant, { where: { slug } });
+      if (existingTenant) {
+        throw new ConflictException(
+          `Tenant with slug "${slug}" already exists`,
+        );
+      }
+
+      const existingUser = await em.findOne(User, { where: { email: dto.email } });
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists');
+      }
+
+      const passwordHash = await bcrypt.hash(dto.password, 10);
+
+      const tenant = em.create(Tenant, { name: dto.name, slug });
+      const savedTenant = await em.save(tenant);
+
+      const user = em.create(User, {
+        tenantId: savedTenant.id,
+        email: dto.email,
+        passwordHash,
+        role: Role.OWNER,
+      });
+      const savedUser = await em.save(user);
+
+      return { accessToken: this.signToken(savedUser) };
     });
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-
-    const tenant = this.tenantRepo.create({ name: dto.name, slug });
-    const savedTenant = await this.tenantRepo.save(tenant);
-
-    const user = this.userRepo.create({
-      tenantId: savedTenant.id,
-      email: dto.email,
-      passwordHash,
-      role: Role.OWNER,
-    });
-    const savedUser = await this.userRepo.save(user);
-
-    return { accessToken: this.signToken(savedUser) };
   }
 
   async login(dto: LoginDto): Promise<{ accessToken: string }> {
@@ -84,7 +89,7 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  generateSlug(name: string): string {
+  private generateSlug(name: string): string {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ')

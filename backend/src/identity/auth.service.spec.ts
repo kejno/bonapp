@@ -1,9 +1,9 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { AuthService } from './auth.service.js';
 import { Tenant } from './entities/tenant.entity.js';
 import { Role, User } from './entities/user.entity.js';
@@ -12,12 +12,6 @@ vi.mock('bcrypt', () => ({
   hash: vi.fn(),
   compare: vi.fn(),
 }));
-
-const mockTenantRepo = () => ({
-  findOne: vi.fn(),
-  create: vi.fn(),
-  save: vi.fn(),
-});
 
 const mockUserRepo = () => ({
   findOne: vi.fn(),
@@ -31,22 +25,27 @@ const mockJwtService = () => ({
 
 describe('AuthService', () => {
   let service: AuthService;
-  let tenantRepo: ReturnType<typeof mockTenantRepo>;
   let userRepo: ReturnType<typeof mockUserRepo>;
   let jwtService: ReturnType<typeof mockJwtService>;
+  let em: { findOne: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> };
+  let dataSource: { transaction: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    em = { findOne: vi.fn(), create: vi.fn(), save: vi.fn() };
+    dataSource = {
+      transaction: vi.fn().mockImplementation(async (fn: (em: any) => Promise<any>) => fn(em)),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: getRepositoryToken(Tenant), useFactory: mockTenantRepo },
         { provide: getRepositoryToken(User), useFactory: mockUserRepo },
         { provide: JwtService, useFactory: mockJwtService },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
     service = module.get(AuthService);
-    tenantRepo = module.get(getRepositoryToken(Tenant));
     userRepo = module.get(getRepositoryToken(User));
     jwtService = module.get(JwtService);
   });
@@ -57,19 +56,23 @@ describe('AuthService', () => {
 
   describe('generateSlug', () => {
     it('converts name to kebab-case slug', () => {
-      expect(service.generateSlug('My Cafe')).toBe('my-cafe');
+      expect((service as any).generateSlug('My Cafe')).toBe('my-cafe');
     });
 
     it('strips special characters', () => {
-      expect(service.generateSlug('Кафе! My#Café')).toBe('my-caf');
+      expect((service as any).generateSlug('Кафе! My#Café')).toBe('my-caf');
     });
 
     it('collapses multiple spaces and hyphens', () => {
-      expect(service.generateSlug('My  Great  Cafe')).toBe('my-great-cafe');
+      expect((service as any).generateSlug('My  Great  Cafe')).toBe('my-great-cafe');
     });
 
     it('trims leading and trailing hyphens', () => {
-      expect(service.generateSlug('  cafe  ')).toBe('cafe');
+      expect((service as any).generateSlug('  cafe  ')).toBe('cafe');
+    });
+
+    it('returns empty string for purely Cyrillic input', () => {
+      expect((service as any).generateSlug('Кафе Петра')).toBe('');
     });
   });
 
@@ -84,56 +87,61 @@ describe('AuthService', () => {
       role: Role.OWNER,
     };
 
-    it('creates tenant and owner user, returns access token', async () => {
-      tenantRepo.findOne.mockResolvedValue(null);
-      userRepo.findOne.mockResolvedValue(null);
+    it('creates tenant and owner user inside a transaction, returns access token', async () => {
+      em.findOne.mockResolvedValueOnce(null); // no existing tenant
+      em.findOne.mockResolvedValueOnce(null); // no existing user
       vi.mocked(bcrypt.hash).mockResolvedValue('hashed' as never);
-      tenantRepo.create.mockReturnValue(savedTenant);
-      tenantRepo.save.mockResolvedValue(savedTenant);
-      userRepo.create.mockReturnValue(savedUser);
-      userRepo.save.mockResolvedValue(savedUser);
+      em.create.mockReturnValueOnce(savedTenant);
+      em.save.mockResolvedValueOnce(savedTenant);
+      em.create.mockReturnValueOnce(savedUser);
+      em.save.mockResolvedValueOnce(savedUser);
       jwtService.sign.mockReturnValue('jwt-token');
 
       const result = await service.register(dto);
 
-      expect(tenantRepo.findOne).toHaveBeenCalledWith({ where: { slug: 'my-cafe' } });
-      expect(userRepo.findOne).toHaveBeenCalledWith({ where: { email: dto.email } });
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(em.findOne).toHaveBeenCalledWith(Tenant, { where: { slug: 'my-cafe' } });
+      expect(em.findOne).toHaveBeenCalledWith(User, { where: { email: dto.email } });
       expect(bcrypt.hash).toHaveBeenCalledWith(dto.password, 10);
-      expect(tenantRepo.save).toHaveBeenCalled();
-      expect(userRepo.save).toHaveBeenCalled();
+      expect(em.save).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ accessToken: 'jwt-token' });
     });
 
     it('throws ConflictException when slug already exists', async () => {
-      tenantRepo.findOne.mockResolvedValue(savedTenant);
+      em.findOne.mockResolvedValueOnce(savedTenant); // tenant found
 
       await expect(service.register(dto)).rejects.toThrow(ConflictException);
-      expect(userRepo.findOne).not.toHaveBeenCalled();
+      expect(em.findOne).toHaveBeenCalledTimes(1);
     });
 
     it('throws ConflictException when email already exists', async () => {
-      tenantRepo.findOne.mockResolvedValue(null);
-      userRepo.findOne.mockResolvedValue(savedUser);
+      em.findOne.mockResolvedValueOnce(null); // no tenant
+      em.findOne.mockResolvedValueOnce(savedUser); // user found
 
       await expect(service.register(dto)).rejects.toThrow(ConflictException);
       expect(bcrypt.hash).not.toHaveBeenCalled();
     });
 
     it('assigns OWNER role to registered user', async () => {
-      tenantRepo.findOne.mockResolvedValue(null);
-      userRepo.findOne.mockResolvedValue(null);
+      em.findOne.mockResolvedValueOnce(null);
+      em.findOne.mockResolvedValueOnce(null);
       vi.mocked(bcrypt.hash).mockResolvedValue('hashed' as never);
-      tenantRepo.create.mockReturnValue(savedTenant);
-      tenantRepo.save.mockResolvedValue(savedTenant);
-      userRepo.create.mockReturnValue(savedUser);
-      userRepo.save.mockResolvedValue(savedUser);
+      em.create.mockReturnValueOnce(savedTenant);
+      em.save.mockResolvedValueOnce(savedTenant);
+      em.create.mockReturnValueOnce(savedUser);
+      em.save.mockResolvedValueOnce(savedUser);
       jwtService.sign.mockReturnValue('jwt-token');
 
       await service.register(dto);
 
-      expect(userRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ role: Role.OWNER }),
-      );
+      expect(em.create).toHaveBeenCalledWith(User, expect.objectContaining({ role: Role.OWNER }));
+    });
+
+    it('throws BadRequestException when venue name produces an empty slug (Cyrillic only)', async () => {
+      const cyrillicDto = { name: 'Кафе Петра', email: 'owner@test.com', password: 'secret123' };
+
+      await expect(service.register(cyrillicDto)).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
   });
 

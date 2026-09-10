@@ -66,4 +66,11 @@ describe('RolesGuard', () => {
     guard.canActivate(ctx);
     expect(spy).toHaveBeenCalledWith(ROLES_KEY, expect.any(Array));
   });
+
+  it('returns false without TypeError when user is undefined and roles are required', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.OWNER]);
+    const ctx = buildContext(undefined, [Role.OWNER]);
+    expect(() => guard.canActivate(ctx)).not.toThrow();
+    expect(guard.canActivate(ctx)).toBe(false);
+  });
 });

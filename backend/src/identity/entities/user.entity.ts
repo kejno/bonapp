@@ -1,4 +1,5 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Tenant } from './tenant.entity.js';
 
 export enum Role {
   OWNER = 'OWNER',
@@ -10,6 +11,8 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @ManyToOne(() => Tenant, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'tenantId' })
   @Column({ type: 'uuid' })
   tenantId!: string;
 
