@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       config_file:
-        description: 'Path to config (relative to .dmtools/, e.g. agents/story_development.json)'
-        required: true
+        description: 'Path to config (relative to .dmtools/, e.g. agents/story_development.json). Not required when check_accounts_only is true.'
+        required: false
       encoded_config:
         description: 'Encoded or JSON Agent Config override'
         required: false
@@ -21,6 +21,11 @@ on:
       project_key:
         description: 'Jira project key (set by SM agent)'
         required: false
+      check_accounts_only:
+        description: 'Skip the real pipeline job and just report which Claude account(s) are configured and which one a fresh CLI call actually uses (usage-limit diagnostic)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -29,6 +34,7 @@ permissions:
 
 jobs:
   ai-teammate-agent:
+    if: ${{ inputs.check_accounts_only != true }}
     runs-on: ubuntu-latest
     # smAgent.js already computes a per-ticket concurrency_key (defaulting to the
     # ticket key) and passes it on every dispatch — see concurrencyKey in
@@ -141,3 +147,66 @@ jobs:
           path: .dmtools/.dmtools-logs/cli/**
           if-no-files-found: ignore
           retention-days: 14
+
+  # Quick usage-limit diagnostic: which Claude account(s) are configured, and
+  # which one a fresh CLI call actually lands on right now. Skips the full
+  # checkout/DMTools/npm-ci setup the real pipeline job needs — this only
+  # needs the Claude Code CLI itself, so it stays fast and cheap to run
+  # whenever you want to check account state without waiting on or
+  # interfering with a real ticket's pipeline run.
+  check-active-account:
+    if: ${{ inputs.check_accounts_only == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Report configured accounts and run a minimal probe call
+        working-directory: .dmtools
+        env:
+          AI_AGENT_PROVIDER: claude-code
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          CLAUDE_CODE_MODEL: claude-sonnet-4-6
+          CLAUDE_CODE_MAX_TURNS: '1'
+        run: |
+          set -u
+          echo "=== Configured accounts ==="
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "Account 1 (CLAUDE_CODE_OAUTH_TOKEN): configured, ends ...${CLAUDE_CODE_OAUTH_TOKEN: -6}"
+          else
+            echo "Account 1 (CLAUDE_CODE_OAUTH_TOKEN): NOT SET"
+          fi
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN_2:-}" ]; then
+            echo "Account 2 (CLAUDE_CODE_OAUTH_TOKEN_2): configured, ends ...${CLAUDE_CODE_OAUTH_TOKEN_2: -6}"
+          else
+            echo "Account 2 (CLAUDE_CODE_OAUTH_TOKEN_2): not set — fallback disabled"
+          fi
+          echo ""
+          echo "=== Probe call (claude.sh's real fallback logic — trivial prompt, max-turns=1) ==="
+          # Reuses run_claude_code as-is: prints "🔑 Claude Code account N/M
+          # (token ending ...)" for whichever account actually answers, and
+          # will itself fall back to account 2 if account 1 is usage-limited.
+          source agents/scripts/providers/_common.sh
+          source agents/scripts/providers/claude.sh
+          PROMPT_ARG="probe-inline-prompt"
+          PROMPT="Reply with exactly one word: pong"
+          PROMPT_BYTES=$(printf "%s" "$PROMPT" | wc -c | tr -d ' ')
+          PASS_ARGS=()
+          probe_exit_code=0
+          run_claude_code || probe_exit_code=$?
+          echo ""
+          if [ "$probe_exit_code" -eq 0 ]; then
+            echo "=== Probe succeeded — see the account line above for which token answered ==="
+          else
+            echo "=== Probe failed (exit ${probe_exit_code}) — see output above for which account(s) hit their usage limit ==="
+          fi
+          exit "$probe_exit_code"
