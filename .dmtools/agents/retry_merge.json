@@ -15,6 +15,6 @@
       "removeLabel": "sm_pr_merge_triggered",
       "checkOpenPR": true
     },
-    "inputJql": "key = SCRUM-15"
+    "inputJql": "key = BNP-15"
   }
 }

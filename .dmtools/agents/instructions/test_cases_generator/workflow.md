@@ -8,14 +8,14 @@ Test Case tickets in Jira covering its acceptance criteria and behavior.
 1. Read the Story ticket's summary, description, and acceptance criteria
    from the input context already provided.
 2. **Verify the `Test Case` issue type actually exists in this project
-   before doing anything else**: `dmtools jira_get_issue_types SCRUM`. If
+   before doing anything else**: `dmtools jira_get_issue_types BNP`. If
    it is missing, STOP — do not fall back to `Task` or any other type, do
    not create tickets, and post a comment on the Story explaining that
    the `Test Case` issue type needs to be created first. A prior run may
    have told you it didn't exist; that information can be stale — always
    check fresh, every run.
 3. Search for existing Test Case tickets that might already cover related
-   behavior: `dmtools jira_search_by_jql "project = SCRUM AND issuetype = 'Test Case'" "summary,status"`.
+   behavior: `dmtools jira_search_by_jql "project = BNP AND issuetype = 'Test Case'" "summary,status"`.
    Follow `agents/instructions/test_cases/test_case_relation_rules.md` to
    decide whether to link an existing one instead of creating a duplicate.
 4. Design new Test Cases following
@@ -24,7 +24,7 @@ Test Case tickets in Jira covering its acceptance criteria and behavior.
 5. For each new Test Case, create it directly in Jira:
    ```
    dmtools jira_create_ticket_with_json --data '{
-     "project": "SCRUM",
+     "project": "BNP",
      "fieldsJson": {
        "summary": "Test: <action> — <expected outcome>",
        "description": "h4. Objective\n...\n\nh4. Steps\n# ...\n\nh4. Expected Result\n...",

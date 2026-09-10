@@ -4,21 +4,10 @@ Story- и Bug-пайплайны из https://github.com/IstiN/dmtools-agents, �
 поверх https://github.com/epam/dm.ai (DMTools CLI), в роли Teammate CLI-агента
 — Claude Code вместо Cursor/Copilot.
 
-**Статус: весь цикл (Story + Bug) end-to-end подтверждён рабочим, cron
-включён** (2026-09-08). Дважды прогнан живьём:
-
-1. `SCRUM-2` "Добавить robots.txt" — чистый Story-цикл без багов: Jira →
-   Claude Code пишет код → PR → AI-review (approve) → merge → генерация
-   тест-кейсов → test automation (Playwright) → review → merge → Done.
-2. `SCRUM-11` "Добавить блок Availability" — тот же цикл, но с намеренно
-   внесённым дефектом после мерджа фичи. QA поймал расхождение с AC
-   (`SCRUM-12` → Failed) → `bulk_bugs_creation` создал `SCRUM-15` →
-   `bug_development` (Claude сам нашёл root cause, исправил, прогнал весь
-   `tests/e2e/` набор) → PR → review → merge → `bug_test_cases_generator`
-   нашёл существующий `SCRUM-12` вместо дубликата → `bug_test_automation`
-   перепрогнал его — Passed → `bug_done_check` → `SCRUM-15` Done →
-   `bug_to_fix_check` разморозил `SCRUM-11` → полный ре-тест всех TC →
-   `story_done_check` → `SCRUM-11` Done.
+**Статус: портировано из проекта resume (kejno/resume), где весь цикл
+(Story + Bug) end-to-end был подтверждён рабочим на живых прогонах.
+В bonapp пайплайн ещё не запускался — конфиг (`config.js`) указывает на
+`kejno/bonapp` и Jira-проект `BNP`, но живой прогон здесь предстоит.**
 
 Полный пайплайн: Epic в Backlog → **intake** (разбивка на Story) → вопросы →
 BA Analysis → Acceptance Criteria → Solution Architecture →
@@ -38,13 +27,12 @@ PR review/rework → merge → генерация тест-кейсов → **te
 `bug_test_automation_rework`, `recover_stuck_test_case`,
 `recover_dirty_review_test_case`, `retry_merge_test`, `bulk_bugs_creation`,
 `bug_merged`, `bug_done_check`, `bug_to_fix_check` из `sm.json` (TestRail/Xray
-правила выкинуты — здесь не нужны). Test-automation инструкции переписаны с
-pytest + своей framework-agnostic архитектуры (upstream) на прямой Playwright
-(`tests/e2e/{TC_KEY}.spec.ts`, тот же стиль что `tests/e2e/resume.spec.ts`).
+правила выкинуты — здесь не нужны). Test-automation инструкции — прямой
+Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 
 ## Как этим пользоваться (для овнера)
 
-1. Завести Epic-тикет в Jira (проект `SCRUM`, статус `Backlog`) с сырым
+1. Завести Epic-тикет в Jira (проект `BNP`, статус `Backlog`) с сырым
    описанием фичи своими словами
 2. SM-агент (крон каждые 20 мин) подхватит его, запустит `intake.json` —
    Claude Code разберёт идею, изучит существующие тикеты (чтоб не
@@ -73,25 +61,26 @@ pytest + своей framework-agnostic архитектуры (upstream) на п
   вместо нерабочего upstream `--allowedTools all`
 - `.dmtools/agents/js/common/outputFiles.js` + `.dmtools/agents/js/common/
   pullRequest.js` — общая инфраструктура чтения output-файлов и создания PR,
-  переживает три разных cwd в системе (см. «Найденные и исправленные баги»)
-- `.dmtools/config.js` — конфиг проекта (owner/repo, ключ Jira-проекта,
-  base branch), автоматически подхватывается `js/configLoader.js`
-- `.github/workflows/sm.yml` — SM-агент, крон каждые 20 мин **(сейчас
-  выключен — см. «Как включить крон» ниже)**, сканит Jira через JQL,
-  диспатчит `ai-teammate.yml`
+  переживает три разных cwd в системе (см. «Известные баги upstream-кода»)
+- `.dmtools/config.js` — конфиг проекта (owner/repo=kejno/bonapp, ключ
+  Jira-проекта BNP, base branch), автоматически подхватывается
+  `js/configLoader.js`
+- `.github/workflows/sm.yml` — SM-агент, крон каждые 20 мин, сканит Jira через
+  JQL, диспатчит `ai-teammate.yml` (перенести/включить в bonapp отдельно)
 - `.github/workflows/ai-teammate.yml` — выполняет один Teammate job
   (`dmtools run <config>`) с `AI_AGENT_PROVIDER=claude-code`
 
-## Настройка (уже выполнено)
+## Настройка
 
 | Что | Значение | Статус |
 |---|---|---|
-| Jira-проект | `SCRUM` ("Team Astro" на `kejno.atlassian.net`) | ✅ |
-| Секрет `JIRA_EMAIL` | email Jira-аккаунта | ✅ |
-| Секрет `JIRA_API_TOKEN` | API-токен Jira | ✅ |
-| Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` (переиспользован из board-sync) | ✅ |
-| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code (переиспользован) | ✅ |
-| Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ✅ |
+| Jira-проект | `BNP` ("BonApp" на `kejno.atlassian.net`) | ✅ создан |
+| Секрет `JIRA_EMAIL` | email Jira-аккаунта | ⬜ настроить в GitHub Actions |
+| Секрет `JIRA_API_TOKEN` | API-токен Jira | ⬜ настроить в GitHub Actions |
+| Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` | ⬜ настроить в GitHub Actions |
+| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code | ⬜ настроить в GitHub Actions |
+| Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ⬜ настроить в GitHub Actions |
+| `.github/workflows/{sm,ai-teammate}.yml` | скопировать из resume | ⬜ |
 
 ## Крон
 
@@ -100,11 +89,11 @@ pytest + своей framework-agnostic архитектуры (upstream) на п
 диспатчит `ai-teammate.yml` под каждый подходящий тикет — с созданной Epic/
 Story идеи владелец дальше не трогает пайплайн руками до готового PR.
 
-## Найденные и исправленные баги (upstream-код, не наша логика)
+## Известные баги upstream-кода (найдены и исправлены при отладке в resume)
 
 Все три — в `.dmtools/agents/js/common/pullRequest.js` и
-`.dmtools/agents/scripts/providers/claude.sh`, найдены и исправлены за один
-цикл отладки (10 прогонов `ai-teammate.yml` на тестовом тикете `SCRUM-2`):
+`.dmtools/agents/scripts/providers/claude.sh`. Код общий с bonapp (скопирован
+как есть), поэтому актуальны и здесь:
 
 1. **`claude --allowedTools all`** — не валидный синтаксис CLI (`--allowedTools`
    ждёт конкретный список тулов, не литерал `all`). Каждый `Write`/`Edit`
@@ -125,27 +114,18 @@ Story идеи владелец дальше не трогает пайплай�
    аргумента `bash -c "..."` — не только на верхнем уровне команды.
    Мешает передавать multi-line контент как inline `--body` аргумент;
    поэтому решение выше через файл, не через строку.
-4. **Jira workflow: transition "Passed"/"Failed" вёл не туда.** После
-   частично неудачного `jira_setup_project_workflow` (см. ниже) переходы с
-   именами `Passed`/`Failed` оказались смаплены на `to.status` =
-   `In Review - Passed`/`In Review - Failed` (сами на себя, по сути
-   no-op-петля), а не на реальные финальные статусы `Passed`/`Failed`.
-   `jira_move_to_status({statusName:'Passed'})` находил переход по имени,
-   выполнял его без ошибки (`move_to_status result: ""`), но конечный
-   статус тикета не менялся — отсюда и `story_done_check` стабильно (не
-   eventual-consistency, а **каждый** прогон) видел TC как
-   "still in review/automation". Диагностировано через
-   `jira_get_transitions({key})` — в дампе видно `name: "Passed"` с
-   `to.name: "In Review - Passed"`. Исправлено вручную в Jira UI
-   (Project settings → Workflows → найти переход `Passed`/`Failed`,
-   перепривязать `to` на реальный статус). Не код-баг, баг конфигурации
-   воркфлоу, но симптом (silent no-op на move_to_status) стоит помнить при
-   будущей похожей диагностике.
-
+4. **Jira workflow: transition "Passed"/"Failed" может вести не туда.**
+   Если в Jira-проекте переходы с именами `Passed`/`Failed` смаплены не на
+   реальные финальные статусы, а сами на себя (no-op-петля) —
+   `jira_move_to_status({statusName:'Passed'})` находит переход по имени,
+   выполняет его без ошибки, но конечный статус тикета не меняется, и
+   `story_done_check` стабильно видит TC как "still in review/automation".
+   Диагностируется через `jira_get_transitions({key})` — смотреть `to.name`
+   у перехода. Не код-баг, баг конфигурации воркфлоу — стоит проверить workflow
+   нового проекта BNP до первого реального прогона (Project settings →
+   Workflows → переходы `Passed`/`Failed`).
 5. **`file_read()` не может прочитать НИЧЕГО вне `.dmtools/`** — не проблема
-   пути, встроенный sandbox самого MCP tool. Подтверждено пробой на
-   гарантированно существующем `package.json` в repo-root: любой абсолютный
-   путь и `../`-путь возвращают `null`. Из этого следовало два отдельных
+   пути, встроенный sandbox самого MCP tool. Из этого следовало два отдельных
    симптома, которые сначала выглядели как разные баги:
    - `outputs/story_test_automation_result.json is empty or missing`, хотя
      Claude Code (свой Write tool, cwd = repo-root) файл реально писал.
@@ -163,7 +143,7 @@ Story идеи владелец дальше не трогает пайплай�
    своего списка (даже `["find","ls",...]`) *заменяет* встроенный дефолт
    dmtools (`gh, gcloud, npm, docker, ansible, git, dmtools, kubectl, az,
    terraform, yarn, aws`), а не добавляется к нему. Если своего списка нет
-   вообще (как в `debug_dump_comments.json`) — действует только дефолт, и
+   вообще (job без своего `CLI_ALLOWED_COMMANDS`) — действует только дефолт, и
    команды типа `cat`/`echo`/`mkdir` там нет.
 7. **`CLAUDE_CODE_MAX_TURNS=30` (глобальный дефолт в `ai-teammate.yml`) не
    хватает** для job'ов, где Claude Code сам ставит зависимости и гоняет
@@ -188,34 +168,22 @@ Story идеи владелец дальше не трогает пайплай�
   `dmtools-ai-docs` (github.md) — сам Java-код вызова `workflow_dispatch`
   внутри `dmtools-core` не смотрел (closed-source Java, не в agents-репо).
   Если SM не смог задиспатчить `ai-teammate.yml` — сначала смотреть лог рана.
-- `inputJql` в каждом `agents/*.json` хранит заглушки-тикеты (напр.
-  `key = PROJ-1`) — `sm.json` переопределяет их на каждое правило при
-  автоматическом диспатче; заглушки видны только при standalone-запуске без
-  override (напр. диагностический `gh workflow run` на конкретный тикет).
-- `intake.json` ещё не прогонялся вживую (добавлен, но не тестировался
-  отдельным прогоном) — первый реальный Epic стоит смотреть внимательно.
+- `inputJql` в каждом `agents/*.json` хранит заглушки-тикеты (`BNP-N`,
+  перенесены как есть из resume/SCRUM-N) — `sm.json` переопределяет их на
+  каждое правило при автоматическом диспатче; заглушки видны только при
+  standalone-запуске без override (напр. диагностический `gh workflow run`
+  на конкретный тикет). Эти конкретные `BNP-N` тикеты ещё не существуют —
+  создать первый Epic перед первым standalone-прогоном.
+- `intake.json` ещё не прогонялся вживую в bonapp.
 - `recover_failed_tc_bug_status.json` (upstream edge-case recovery job для
   зависших TC/Bug статусов) не портирован — не блокирует happy path, можно
   добавить позже если понадобится.
-- `bug_test_automation_rework.json`/`story_test_automation_rework.json`
-  подключены и закоммичены, но ещё не прогонялись вживую в реальном review-
-  reject-цикле (оба живых прогона получили сразу либо APPROVE, либо
-  "не test-код виноват, а фича" — путь смёрджить-как-есть, не rework).
-  Первый реальный REQUEST_CHANGES по тест-коду стоит смотреть внимательно.
-- **Story- и Bug-пайплайны подтверждены рабочими end-to-end** дважды
-  (`SCRUM-2` — чистый цикл; `SCRUM-11`/`SCRUM-12`/`SCRUM-15` — цикл с
-  намеренным багом, автосозданным Bug-тикетом и авто-фиксом). Инструкции
-  адаптированы с pytest/framework-agnostic-архитектуры upstream на Playwright
-  (`tests/e2e/{TC_KEY}.spec.ts`).
-- `CLI_ALLOWED_COMMANDS` для `story_test_automation.json`/
-  `bug_test_automation.json`/`bug_development.json` сейчас
-  `find,ls,cat,mkdir,bash,npm,npx,git,run-agent.sh` (плюс
-  `CLAUDE_CODE_MAX_TURNS: "60"`, см. баг 7 выше) — если тестам нужен ещё
-  какой-то бинарник, придётся расширить список.
-- **Инцидент**: во время этой сессии в незакоммиченных локальных изменениях
-  `.claude/settings.json` обнаружился реальный Anthropic OAuth-токен в
-  открытом виде (`env.ANTHROPIC_AUTH_TOKEN`). Не закоммичен и не запушен —
-  убран в `git stash` локально. Файл отслеживается git и не в `.gitignore`;
-  если такие секреты нужны локально — их место в `.claude/settings.local.json`
-  (обычно gitignored) или в переменных окружения, не в отслеживаемом
-  `settings.json`.
+- **Workflow-файлы `.github/workflows/sm.yml` и `.github/workflows/
+  ai-teammate.yml` ещё не скопированы в bonapp** — были только в resume,
+  нужно перенести и настроить секреты (см. таблицу «Настройка» выше) перед
+  первым живым прогоном.
+- **Ничего из пайплайна ещё не прогонялось на bonapp** — весь раздел «Известные
+  баги upstream-кода» выше основан на опыте resume; стоит быть готовым, что
+  в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4
+  про workflow-transitions — это состояние конкретного Jira-проекта, не
+  переносится автоматически).

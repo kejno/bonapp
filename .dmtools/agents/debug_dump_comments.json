@@ -1,9 +1,0 @@
-{
-  "name": "JSRunner",
-  "params": {
-    "jsPath": "agents/js/debugDumpComments.js",
-    "jobParams": {
-      "ticket": "SCRUM-2"
-    }
-  }
-}

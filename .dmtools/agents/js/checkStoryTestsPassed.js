@@ -96,7 +96,7 @@ function action(params) {
             // run (see sm.json's JQL for this rule) — so this is not a race with test
             // case creation still in flight. It means the automation agent deliberately
             // created no Test Cases for this Story (e.g. a pure build-config change with
-            // no observable behavior to test, like SCRUM-23). Without this branch, such
+            // no observable behavior to test, like BNP-23). Without this branch, such
             // a Story loops in "no_test_cases → wait next cycle" forever and never
             // reaches Done.
             console.log('No linked Test Cases — automation already ran and created none, moving', ticketKey, 'to Done');

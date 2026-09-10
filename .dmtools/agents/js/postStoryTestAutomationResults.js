@@ -417,7 +417,7 @@ function createPullRequest(title, branchName, baseBranch, workingDir, scm) {
 // means the test code already matches what's on the branch — it does NOT mean that
 // branch's PR has actually been merged into main. Finalizing Test Case statuses to
 // Passed/Done on that basis alone leaves the real fix stuck in an open, unreviewed
-// PR forever (observed on PR #28/SCRUM-16: three Test Cases went to Done while the
+// PR forever (observed on PR #28/BNP-16: three Test Cases went to Done while the
 // PR sat open with no approval). Only treat "no code changes" as "done" when the
 // branch's PR (if one exists) is actually merged.
 function isBranchMergedOrHasNoPR(branchName, scm) {
@@ -805,7 +805,7 @@ function action(params) {
         // still exists. When we finalized here with no PR ever created (noCodeChanges
         // + readyToFinalize), mark it so prepareTestPRForReview.js's own guard skips
         // the re-trigger instead of misreading "no PR, no branch" as "needs
-        // re-automation" and bouncing the Story to In Rework (observed on SCRUM-23).
+        // re-automation" and bouncing the Story to In Rework (observed on BNP-23).
         if (readyToFinalize) {
             try {
                 jira_add_label({ key: storyKey, label: LABELS.TEST_PR_FINALIZED });

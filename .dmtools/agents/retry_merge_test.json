@@ -16,6 +16,6 @@
       "testCaseMerge": true,
       "checkOpenPR": true
     },
-    "inputJql": "key = SCRUM-2"
+    "inputJql": "key = BNP-2"
   }
 }

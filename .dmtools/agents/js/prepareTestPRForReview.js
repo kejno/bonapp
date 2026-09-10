@@ -8,8 +8,8 @@
  *
  * A Test Case ticket has no branch of its own — its automated test lives in its
  * parent Story's test/{STORY-KEY} PR alongside the other Test Cases for that Story
- * (e.g. tests/e2e/SCRUM-17.spec.ts, SCRUM-18.spec.ts, SCRUM-19.spec.ts all in
- * test/SCRUM-16). So for a Test Case ticket, resolve the branch/PR via its linked
+ * (e.g. tests/e2e/BNP-17.spec.ts, BNP-18.spec.ts, BNP-19.spec.ts all in
+ * test/BNP-16). So for a Test Case ticket, resolve the branch/PR via its linked
  * Story rather than building test/{TICKET-KEY} from the Test Case's own key.
  */
 
@@ -179,7 +179,7 @@ function markTestPrMerged(ticketKey) {
     // Jira status alone, ignores whether a PR/branch still exists, and re-triggers
     // review on an already-finalized Story. The review agent then finds no PR and
     // no branch (both correctly deleted here) and wrongly concludes the ticket
-    // needs full re-automation, bouncing it to In Rework. Observed on SCRUM-23.
+    // needs full re-automation, bouncing it to In Rework. Observed on BNP-23.
     try {
         jira_add_label({ key: ticketKey, label: LABELS.TEST_PR_FINALIZED });
         console.log('Added label', LABELS.TEST_PR_FINALIZED, 'to', ticketKey);
@@ -231,7 +231,7 @@ function action(params) {
         // rule), so it re-fires on a Story/TC whose test PR was already finalized
         // and whose branch was already deleted. Without this check, finding no PR
         // and no branch here gets misread as "needs re-automation" and the ticket
-        // is wrongly bounced to In Rework (observed on SCRUM-23). Fetch fresh
+        // is wrongly bounced to In Rework (observed on BNP-23). Fetch fresh
         // rather than trusting params.ticket, which may be a stale JQL-search
         // snapshot taken before a previous run added this label.
         try {

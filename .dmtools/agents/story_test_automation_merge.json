@@ -14,6 +14,6 @@
       "removeLabel": "sm_story_test_merge_triggered",
       "storyTestMerge": true
     },
-    "inputJql": "key = SCRUM-11"
+    "inputJql": "key = BNP-11"
   }
 }

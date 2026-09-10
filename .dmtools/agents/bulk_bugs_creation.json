@@ -29,7 +29,7 @@
         }
       }
     },
-    "inputJql": "key = SCRUM-12",
+    "inputJql": "key = BNP-12",
     "cliPrompts": [
       "QA Engineer",
       "./agents/instructions/common/agent_task_preamble.md",

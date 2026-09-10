@@ -11,6 +11,6 @@
     "alwaysPostComments": true,
     "postJSAction": "agents/js/recoverDirtyReviewTestCase.js",
     "customParams": {},
-    "inputJql": "key = SCRUM-2"
+    "inputJql": "key = BNP-2"
   }
 }

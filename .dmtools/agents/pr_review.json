@@ -130,7 +130,7 @@
         }
       }
     },
-    "inputJql": "key = SCRUM-15",
+    "inputJql": "key = BNP-15",
     "cliPrompts": [
       "Senior Code Reviewer & Security Expert",
       "./agents/instructions/common/agent_task_preamble.md",

@@ -19,7 +19,7 @@
       "removeLabel": "sm_story_test_review_triggered",
       "checkOpenPR": true
     },
-    "inputJql": "key = SCRUM-11",
+    "inputJql": "key = BNP-11",
     "cliPrompts": [
       "Senior QA Engineer & Code Reviewer",
       "./agents/instructions/common/agent_task_preamble.md",

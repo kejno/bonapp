@@ -5,8 +5,8 @@
  *
  * A Test Case ticket has no branch of its own — its automated test lives in its
  * parent Story's test/{STORY-KEY} PR alongside the other Test Cases for that Story
- * (e.g. tests/e2e/SCRUM-17.spec.ts, SCRUM-18.spec.ts, SCRUM-19.spec.ts all in
- * test/SCRUM-16). So for a Test Case ticket, resolve the branch/PR via its linked
+ * (e.g. tests/e2e/BNP-17.spec.ts, BNP-18.spec.ts, BNP-19.spec.ts all in
+ * test/BNP-16). So for a Test Case ticket, resolve the branch/PR via its linked
  * Story rather than building test/{TICKET-KEY} from the Test Case's own key.
  */
 

@@ -23,7 +23,7 @@
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliStoryTestAutomationSetup.js",
     "postJSAction": "agents/js/postStoryTestAutomationResults.js",
-    "inputJql": "key = SCRUM-11",
+    "inputJql": "key = BNP-11",
     "cliPrompts": [
       "Senior QA Automation Engineer",
       "./agents/instructions/common/agent_task_preamble.md",

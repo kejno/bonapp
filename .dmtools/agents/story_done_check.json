@@ -13,6 +13,6 @@
     "customParams": {
       "removeLabel": "sm_story_done_check_triggered"
     },
-    "inputJql": "key = SCRUM-11"
+    "inputJql": "key = BNP-11"
   }
 }

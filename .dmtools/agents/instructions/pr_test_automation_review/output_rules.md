@@ -6,7 +6,7 @@ flowchart TD
     O4["Write outputs/pr_review_comments/ — directory with individual inline comment files"]
     O5["If pr_discussions.md present → include resolvedThreadIds in pr_review.json"]
     O6["Tracker-specific formatting is injected via cliPromptsByTracker — do NOT hardcode Jira/ADO markup in response.md"]
-    O7["A test-automation PR usually covers several Test Cases in one branch (one spec file per ticket, e.g. tests/e2e/SCRUM-27.spec.ts) — the postJSAction re-runs this same review once per linked Test Case and applies ITS OWN verdict, not a shared one, so pr_review.json MUST include perTestCase (see below)"]
+    O7["A test-automation PR usually covers several Test Cases in one branch (one spec file per ticket, e.g. tests/e2e/BNP-27.spec.ts) — the postJSAction re-runs this same review once per linked Test Case and applies ITS OWN verdict, not a shared one, so pr_review.json MUST include perTestCase (see below)"]
     O1 --> O2 --> O3 --> O4 --> O5 --> O6 --> O7
 ```
 
@@ -19,9 +19,9 @@ diff:
 
 ```json
 "perTestCase": {
-  "SCRUM-25": "APPROVE",
-  "SCRUM-26": "APPROVE",
-  "SCRUM-27": "BLOCK"
+  "BNP-25": "APPROVE",
+  "BNP-26": "APPROVE",
+  "BNP-27": "BLOCK"
 }
 ```
 

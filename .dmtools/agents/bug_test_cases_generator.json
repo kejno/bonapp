@@ -17,7 +17,7 @@
     },
     "preJSAction": "agents/js/moveToReadyForTesting.js",
     "postJSAction": "agents/js/finishTestCasesGeneration.js",
-    "inputJql": "key = SCRUM-15",
+    "inputJql": "key = BNP-15",
     "cliPrompts": [
       "Senior QA Engineer specializing in test case design",
       "./agents/instructions/common/agent_task_preamble.md",

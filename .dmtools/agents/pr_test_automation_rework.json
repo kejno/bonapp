@@ -26,7 +26,7 @@
       "checkOpenPR": true,
       "testFilesGlob": "tests/e2e/"
     },
-    "inputJql": "project = SCRUM AND issuetype = 'Test Case' AND status = 'In Rework'",
+    "inputJql": "project = BNP AND issuetype = 'Test Case' AND status = 'In Rework'",
     "cliPrompts": [
       "Senior QA Automation Engineer focused on test code fixes",
       "./agents/instructions/common/agent_task_preamble.md",

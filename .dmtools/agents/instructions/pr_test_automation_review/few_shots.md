@@ -7,7 +7,7 @@ Example PR test automation review outputs — keep concise:
   "summary": "Test uses a fixed timeout instead of Playwright's auto-waiting and a brittle CSS selector.",
   "generalComment": "outputs/pr_review_general.md",
   "inlineComments": [
-    {"path":"tests/e2e/TEST-123.spec.ts","line":12,"body":"🚨 BLOCKING: page.locator('.btn-primary') — brittle CSS selector. Use page.getByRole('button', { name: '...' }) like the rest of tests/e2e/resume.spec.ts.","severity":"BLOCKING"},
+    {"path":"tests/e2e/TEST-123.spec.ts","line":12,"body":"🚨 BLOCKING: page.locator('.btn-primary') — brittle CSS selector. Use page.getByRole('button', { name: '...' }) like the rest of the existing specs in tests/e2e/.","severity":"BLOCKING"},
     {"path":"tests/e2e/TEST-123.spec.ts","line":18,"body":"🚨 BLOCKING: page.waitForTimeout(3000) — replace with an assertion Playwright auto-retries, e.g. await expect(locator).toBeVisible().","severity":"BLOCKING"},
     {"path":"tests/e2e/TEST-123.spec.ts","line":5,"body":"💡 SUGGESTION: Group related assertions under test.describe(...) to match the existing file's structure.","severity":"SUGGESTION"}
   ],
@@ -30,21 +30,21 @@ Example PR test automation review outputs — keep concise:
 
 ### outputs/pr_review.json (multi-Test-Case PR — only one file has issues)
 A Story's test-automation PR often bundles several Test Cases (one spec file
-per ticket). Here `SCRUM-25.spec.ts` and `SCRUM-26.spec.ts` are clean;
-`SCRUM-27.spec.ts` is missing an assertion. Only SCRUM-27 gets a BLOCK entry —
-SCRUM-25 and SCRUM-26 must NOT be penalized for an issue confined to a
+per ticket). Here `BNP-25.spec.ts` and `BNP-26.spec.ts` are clean;
+`BNP-27.spec.ts` is missing an assertion. Only BNP-27 gets a BLOCK entry —
+BNP-25 and BNP-26 must NOT be penalized for an issue confined to a
 different file, even though the overall PR `recommendation` is BLOCK because
 at least one Test Case blocks merge:
 ```json
 {
   "recommendation": "BLOCK",
-  "summary": "SCRUM-25 and SCRUM-26 are correct. SCRUM-27 is missing the required text-muted assertion after the dark-theme toggle.",
+  "summary": "BNP-25 and BNP-26 are correct. BNP-27 is missing the required text-muted assertion after the dark-theme toggle.",
   "generalComment": "outputs/pr_review_general.md",
   "inlineComments": [
-    {"path":"tests/e2e/SCRUM-27.spec.ts","line":14,"body":"🚨 BLOCKING: Only toBeVisible() is asserted after switching to dark theme. The expected result requires verifying the text-muted token is still applied, not just that the element isn't hidden.","severity":"BLOCKING"}
+    {"path":"tests/e2e/BNP-27.spec.ts","line":14,"body":"🚨 BLOCKING: Only toBeVisible() is asserted after switching to dark theme. The expected result requires verifying the text-muted token is still applied, not just that the element isn't hidden.","severity":"BLOCKING"}
   ],
   "issueCounts": {"blocking":1,"important":0,"suggestions":0},
-  "perTestCase": {"SCRUM-25": "APPROVE", "SCRUM-26": "APPROVE", "SCRUM-27": "BLOCK"}
+  "perTestCase": {"BNP-25": "APPROVE", "BNP-26": "APPROVE", "BNP-27": "BLOCK"}
 }
 ```
 
@@ -55,6 +55,6 @@ at least one Test Case blocks merge:
 **Summary**: Test contains a brittle CSS selector and a fixed timeout instead of Playwright's built-in auto-waiting assertions.
 
 **Next Steps**:
-1. Replace the CSS selector with a role-based locator (getByRole/getByText), matching tests/e2e/resume.spec.ts
+1. Replace the CSS selector with a role-based locator (getByRole/getByText), matching the existing specs in tests/e2e/
 2. Replace waitForTimeout with an auto-retrying expect(...) assertion
 ```

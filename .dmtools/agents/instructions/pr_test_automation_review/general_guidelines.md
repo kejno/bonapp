@@ -11,7 +11,7 @@ flowchart TD
     OOP --> QUALITY["Check code quality: no hardcoded secrets, proper setup/teardown, no duplicated logic"]
     QUALITY --> MODERN["Check modern framework usage: explicit waits, typed service objects"]
     MODERN --> DATA["Check test data self-sufficiency: generate → download → approve blocked_by_human only when genuinely required"]
-    DATA --> PERTC["List every Test Case ticket linked to this PR's parent Story (one spec file per ticket, e.g. tests/e2e/SCRUM-27.spec.ts) — this review re-runs once per linked Test Case and each one needs its OWN verdict, not the PR's overall one"]
+    DATA --> PERTC["List every Test Case ticket linked to this PR's parent Story (one spec file per ticket, e.g. tests/e2e/BNP-27.spec.ts) — this review re-runs once per linked Test Case and each one needs its OWN verdict, not the PR's overall one"]
     PERTC --> RESULT{Test result in PR description}
     RESULT -->|PASSED| PASSED_REVIEW["Verify the PASSED result is meaningful — not a false positive"]
     RESULT -->|FAILED| FAILED_REVIEW["Verify the test fails for the right reason — not a test code issue"]

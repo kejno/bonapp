@@ -23,7 +23,7 @@
     "customParams": {
       "removeLabel": "sm_bug_development_triggered"
     },
-    "inputJql": "key = SCRUM-15",
+    "inputJql": "key = BNP-15",
     "cliPrompts": [
       "Senior Developer Engineer specializing in root cause analysis and bug fixing",
       "./agents/instructions/common/agent_task_preamble.md",

@@ -11,11 +11,11 @@
 module.exports = {
     repository: {
         owner: 'kejno',
-        repo: 'resume'
+        repo: 'bonapp'
     },
 
     jira: {
-        project: 'SCRUM',
+        project: 'BNP',
         parentTicket: ''
     },
 
