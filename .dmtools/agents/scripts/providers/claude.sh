@@ -73,9 +73,12 @@ run_claude_code() {
     claude_attempt_idx=$((claude_attempt_idx + 1))
     if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
       export CLAUDE_CODE_OAUTH_TOKEN="${claude_current_token}"
-      if [ "$claude_attempt_total" -gt 1 ]; then
-        echo "🔑 Claude Code account attempt ${claude_attempt_idx}/${claude_attempt_total}"
-      fi
+      # Identify which account is in use by the last 6 chars of its token
+      # (never the full token) — lets you correlate a run in the Actions log
+      # with which of your accounts actually took the quota hit, without
+      # exposing the secret itself.
+      local claude_token_fingerprint="...${claude_current_token: -6}"
+      echo "🔑 Claude Code account ${claude_attempt_idx}/${claude_attempt_total} (token ending ${claude_token_fingerprint})"
     fi
 
     _run_claude_code_once
