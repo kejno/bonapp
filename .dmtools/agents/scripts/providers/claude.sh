@@ -90,8 +90,19 @@ run_claude_code() {
       echo "🔑 Claude Code account ${claude_attempt_idx}/${claude_attempt_total} (token ending ${claude_token_fingerprint})"
     fi
 
-    _run_claude_code_once
-    claude_final_exit_code=$?
+    # `|| claude_final_exit_code=$?` (not a bare call followed by `$?` on the
+    # next line) is required here: run-agent.sh runs under `set -euo
+    # pipefail`, which is inherited into every sourced function. A bare
+    # `_run_claude_code_once` returning non-zero would trigger `set -e` and
+    # kill the ENTIRE script immediately — never reaching the next line, so
+    # claude_final_exit_code and the account-2 retry logic below would never
+    # run at all. This was confirmed live in production: a real usage-limit
+    # hit during a postJSAction resume call (bash run-agent.sh --continue
+    # ...) exited after account 1's single failed attempt even with
+    # CLAUDE_CODE_OAUTH_TOKEN_2 configured, because `set -e` fired before the
+    # loop's retry check ever executed.
+    claude_final_exit_code=0
+    _run_claude_code_once || claude_final_exit_code=$?
 
     if [ "$claude_final_exit_code" -eq 0 ]; then
       return 0
