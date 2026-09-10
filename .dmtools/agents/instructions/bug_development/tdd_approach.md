@@ -2,7 +2,7 @@
 flowchart TD
     subgraph TDD["TDD for Bug Fixes — RED-GREEN-REFACTOR"]
         T0["Start with a clear understanding of the bug from RCA"]
-        T1["RED: Use the linked Test Case's Playwright spec (tests/e2e/&lt;TC_KEY&gt;.spec.ts) as the reproduction, or write one<br/>— must describe the exact failure scenario<br/>— run npx playwright test to confirm it FAILS"]
+        T1["RED: Use the linked Test Case's Vitest spec (backend/test/&lt;TC_KEY&gt;.e2e-spec.ts, or a co-located backend/src/**/*.spec.ts) as the reproduction, or write one<br/>— must describe the exact failure scenario<br/>— run npm run test:e2e -w backend (or npm run test -w backend) to confirm it FAILS"]
         T2["GREEN: Write minimum fix to make the reproduction test PASS<br/>— simplest possible change<br/>— do not refactor unrelated code"]
         T3["REFACTOR: Clean up while keeping tests GREEN<br/>— improve naming, remove duplication<br/>— run full suite after every change"]
         T4{"More edge cases to cover?"}

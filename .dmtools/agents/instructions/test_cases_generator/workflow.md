@@ -44,7 +44,7 @@ Test Case tickets in Jira covering its acceptance criteria and behavior.
 
 - Do NOT write any code or touch the repository — this step only creates
   Jira tickets. `story_test_automation` (the next pipeline step) writes
-  the actual Playwright tests.
+  the actual Vitest tests.
 - Aim for the smallest set of Test Cases that meaningfully covers the
   Story's acceptance criteria — prefer 2-4 focused cases over one giant
   one or ten trivial ones, unless the Story's scope genuinely needs more.

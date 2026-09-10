@@ -33,12 +33,12 @@ Required structure (render with the appropriate tracker syntax):
 
 #### Test file
 <code block>
-tests/e2e/KEY-123.spec.ts
+backend/test/KEY-123.e2e-spec.ts
 </code block>
 
 #### Run command
 <code block>
-npx playwright test tests/e2e/KEY-123.spec.ts
+npm run test:e2e -w backend -- KEY-123
 </code block>
 ```
 
@@ -67,7 +67,7 @@ Required structure:
 
 ## How to run
 ```bash
-npx playwright test tests/e2e/KEY-123.spec.ts
+npm run test:e2e -w backend -- KEY-123
 ```
 ````
 

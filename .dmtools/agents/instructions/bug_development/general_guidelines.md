@@ -6,7 +6,7 @@ flowchart TD
     PREV --> RCA_RET["Write/Update RCA explaining why previous fix failed — see output_rules.md for rca.md format"]
     RETURNED -->|No| RCA_FRESH["Write fresh RCA from ticket description and linked_tests.md"]
     RCA_RET --> REPRO
-    RCA_FRESH --> REPRO["Find or write the Playwright e2e test that reproduces the bug (tests/e2e/&lt;TC_KEY&gt;.spec.ts for a linked Test Case, or a new tests/e2e/*.spec.ts). Run it — it MUST FAIL"]
+    RCA_FRESH --> REPRO["Find or write the Vitest test that reproduces the bug (backend/test/&lt;TC_KEY&gt;.e2e-spec.ts for a linked Test Case, or a co-located backend/src/**/*.spec.ts). Run it — it MUST FAIL"]
     REPRO --> EXISTS{Test fails?}
     EXISTS -->|No| ALREADY["Check git history, current code, and linked tests.<br/>⚠️ If linked test exists: verify it passes AND the test was created/updated BEFORE the fix commit — not after.<br/>If bug is genuinely fixed — write outputs/already_fixed.json and stop"]
     ALREADY --> END_FIXED([End — bug already fixed])
@@ -14,7 +14,7 @@ flowchart TD
     BLOCKED -->|Yes| BLOCK["Write outputs/blocked.json and stop — see output_rules.md"]
     BLOCK --> END_BLOCKED([End — blocked awaiting human input])
     BLOCKED -->|No| FIX["Make minimum targeted fix for the root cause ONLY"]
-    FIX --> VERIFY["Run reproduction test (must PASS) and the full tests/e2e/ suite (no regressions) via npx playwright test"]
+    FIX --> VERIFY["Run reproduction test (must PASS) and the full backend test suite (no regressions) via npm run test -w backend and npm run test:e2e -w backend"]
     VERIFY --> PASS{All tests pass?}
     PASS -->|No| ADJUST["Adjust fix and re-run tests"]
     ADJUST --> VERIFY

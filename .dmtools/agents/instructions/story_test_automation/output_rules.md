@@ -13,7 +13,7 @@ Write `outputs/story_test_automation_result.json` with exactly this schema in a 
     {
       "testCaseKey": "TS-124",
       "status": "passed|failed|skipped|irrelevant",
-      "testPath": "tests/e2e/TS-124/...",
+      "testPath": "backend/test/TS-124.e2e-spec.ts",
       "failedDescriptionFile": "outputs/failed_description_TS-124.md",
       "failureSummary": "One-line failure summary when status is failed."
     }
