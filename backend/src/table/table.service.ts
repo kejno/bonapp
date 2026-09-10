@@ -63,8 +63,10 @@ export class TableService {
       throw new BadRequestException('Cannot delete table with active orders');
     }
 
-    await this.orderRepo.delete({ tableId: id });
-    await this.tableRepo.remove(table);
+    await this.tableRepo.manager.transaction(async (em) => {
+      await em.delete(Order, { tableId: id });
+      await em.remove(table);
+    });
   }
 
   async generateQr(tenantId: string, id: string): Promise<Buffer> {

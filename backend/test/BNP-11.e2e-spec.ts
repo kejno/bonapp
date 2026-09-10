@@ -51,6 +51,10 @@ describe('BNP-11: Table/QR — управление столами и генер
   });
 
   afterAll(async () => {
+    await dataSource.query(
+      `DELETE FROM orders WHERE "tableId" IN (SELECT id FROM tables WHERE "tenantId" = $1)`,
+      [tenantId],
+    );
     await dataSource.query(`DELETE FROM tables WHERE "tenantId" = $1`, [tenantId]);
     await dataSource.query(`DELETE FROM users WHERE email LIKE '%bnp11%'`);
     await dataSource.query(`DELETE FROM tenants WHERE slug LIKE '%bnp11%'`);
