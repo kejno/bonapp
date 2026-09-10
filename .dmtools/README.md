@@ -78,10 +78,36 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | Секрет `JIRA_EMAIL` | email Jira-аккаунта | ✅ настроен |
 | Секрет `JIRA_API_TOKEN` | API-токен Jira | ✅ настроен |
 | Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` | ✅ настроен |
-| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code | ✅ настроен |
+| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code (основной аккаунт) | ✅ настроен |
+| Секрет `CLAUDE_CODE_OAUTH_TOKEN_2` | второй Pro/Max аккаунт — fallback при исчерпании usage limit основного (см. «Fallback на второй Claude-аккаунт» ниже) | ⬜ опционально |
 | Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ✅ настроена |
 | `.github/workflows/{sm-agent,ai-teammate}.yml` | скопированы из resume, `runs-on` переключён на `ubuntu-latest` (в resume — `self-hosted`, отдельный runner не поднимали для bonapp) | ✅ |
-| `package.json` / `npm ci` в `ai-teammate.yml` | bonapp ещё docs-only, нет package.json — первый реальный прогон `ai-teammate.yml` упадёт на шаге `npm ci`, пока в репо не появится Node-проект (React/NestJS) | ⬜ |
+| `package.json` / `npm ci` в `ai-teammate.yml` | npm workspaces (`backend/` NestJS + `frontend/` React) — скелет создан, `npm ci` теперь работает | ✅ |
+
+## Fallback на второй Claude-аккаунт
+
+`.dmtools/agents/scripts/providers/claude.sh` умеет переключаться на второй
+Pro/Max аккаунт, если основной упирается в usage limit подписки (5-часовое
+или недельное окно):
+
+1. Прогоняет job с `CLAUDE_CODE_OAUTH_TOKEN`.
+2. Если CLI падает и в его выводе встречается строка `usage limit reached`
+   (единственный сейчас detectable сигнал — нет отдельного exit code или
+   `stream-json` subtype для этого случая, см. anthropics/claude-code#2087,
+   #9046) — весь job перезапускается с нуля на `CLAUDE_CODE_OAUTH_TOKEN_2`
+   (если секрет задан). Сохранённый `.claude-session-id` от первой попытки
+   удаляется перед retry — сессия принадлежит другому аккаунту, resume под
+   чужим токеном либо упадёт, либо смешает состояние.
+3. Если второй аккаунт **тоже** упирается в limit — job падает
+   (`run_claude_code` возвращает ненулевой код), `ai-teammate.yml` репортит
+   failure. Никакого третьего автоматического ретрая нет специально — чтобы
+   не жечь впустую оба аккаунта на каждом SM-цикле, пока кто-то не заметит и
+   не восстановится квота. `sm-agent.yml` следующим циклом (workflow_run
+   после любого completed, включая failure — см. выше) сам переоценит тикет
+   заново, когда квота освободится.
+
+Если `CLAUDE_CODE_OAUTH_TOKEN_2` не задан — поведение как раньше, один
+аккаунт, без fallback.
 
 ## Крон / триггеры
 

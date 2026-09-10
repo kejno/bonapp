@@ -102,9 +102,14 @@ jobs:
           SOURCE_GITHUB_REPOSITORY: bonapp
           GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
 
-          # Claude Code as the Teammate CLI agent (see .dmtools/scripts/providers/claude.sh)
+          # Claude Code as the Teammate CLI agent (see .dmtools/agents/scripts/providers/claude.sh)
           AI_AGENT_PROVIDER: claude-code
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Optional second Pro/Max account — claude.sh automatically retries
+          # the whole job against this token if the first account hits its
+          # Claude usage limit mid-run. Leave the secret unset to disable
+          # fallback (single-account behavior, unchanged).
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           CLAUDE_CODE_MODEL: claude-sonnet-4-6
           CLAUDE_CODE_MAX_TURNS: '30'
 

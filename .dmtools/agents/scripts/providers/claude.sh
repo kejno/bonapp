@@ -15,11 +15,106 @@
 #   CLAUDE_CODE_MODEL     - Model ID (default: claude-sonnet-4-6)
 #   CLAUDE_CODE_MAX_TURNS - Max agentic turns (default: 10)
 #
+# Optional multi-account fallback (oauth mode only):
+#   CLAUDE_CODE_OAUTH_TOKEN_2 - a second Pro/Max subscription's token. If the
+#                               first token's account hits its Claude usage
+#                               limit mid-run, the CLI prints the literal
+#                               string "Claude AI usage limit reached" (see
+#                               anthropics/claude-code#2087, #9046) — this is
+#                               currently the only detectable signal for
+#                               subscription-limit exhaustion, there is no
+#                               dedicated exit code or stream-json subtype for
+#                               it. On that signal, the whole run is retried
+#                               once from scratch against the second account.
+#                               If the second account ALSO hits the same
+#                               limit, run_claude_code returns non-zero and
+#                               the job fails — ai-teammate.yml then reports
+#                               failure and sm-agent.yml's next cycle will
+#                               naturally re-queue this ticket once a human
+#                               notices and a token has capacity again; there
+#                               is no automatic third retry or backoff here by
+#                               design, to avoid silently burning through a
+#                               fully exhausted pair of accounts on every SM
+#                               cycle.
+#
 # Note: ANTHROPIC_*/CLAUDE_CODE_OAUTH_TOKEN vars are set locally inside this
 # script only (required by the Claude Code CLI). They are never exported at
 # the workflow level to avoid conflicts with DMTools ANTHROPIC_* vars.
 
+# Literal substring the Claude Code CLI prints (stdout/stderr and inside the
+# stream-json result text) when the authenticated account's Claude
+# subscription usage limit (5-hour or weekly window) is exhausted. Not a
+# structured field — see anthropics/claude-code#2087, #9046, #50321.
+readonly CLAUDE_USAGE_LIMIT_MARKER="usage limit reached"
+
 run_claude_code() {
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${CLAUDE_CODE_API_KEY:-}" ]; then
+    echo "Error: either CLAUDE_CODE_OAUTH_TOKEN or CLAUDE_CODE_API_KEY is required for claude-code provider" >&2
+    return 1
+  fi
+
+  # Build the ordered list of oauth tokens to try. API-key auth has no
+  # concept of a second account here (billed usage, not a plan quota), so it
+  # always gets exactly one attempt.
+  local -a claude_token_attempts=()
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    claude_token_attempts+=("${CLAUDE_CODE_OAUTH_TOKEN}")
+    if [ -n "${CLAUDE_CODE_OAUTH_TOKEN_2:-}" ]; then
+      claude_token_attempts+=("${CLAUDE_CODE_OAUTH_TOKEN_2}")
+    fi
+  else
+    claude_token_attempts+=("")  # placeholder: api-key mode ignores this value
+  fi
+
+  local claude_attempt_idx=0
+  local claude_attempt_total=${#claude_token_attempts[@]}
+  local claude_final_exit_code=0
+  for claude_current_token in "${claude_token_attempts[@]}"; do
+    claude_attempt_idx=$((claude_attempt_idx + 1))
+    if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+      export CLAUDE_CODE_OAUTH_TOKEN="${claude_current_token}"
+      if [ "$claude_attempt_total" -gt 1 ]; then
+        echo "🔑 Claude Code account attempt ${claude_attempt_idx}/${claude_attempt_total}"
+      fi
+    fi
+
+    _run_claude_code_once
+    claude_final_exit_code=$?
+
+    if [ "$claude_final_exit_code" -eq 0 ]; then
+      return 0
+    fi
+
+    if [ "${CLAUDE_USAGE_LIMIT_HIT:-false}" != "true" ]; then
+      # Failed for a reason other than usage-limit exhaustion — do not burn
+      # the second account on an unrelated failure (bad prompt, tool error,
+      # network blip); surface it immediately as-is.
+      return "$claude_final_exit_code"
+    fi
+
+    if [ "$claude_attempt_idx" -lt "$claude_attempt_total" ]; then
+      echo "⚠️  Account ${claude_attempt_idx} hit its Claude usage limit — switching to the next configured account and retrying this job from scratch."
+      # A saved session id belongs to the account that created it — resuming
+      # it under a different account's token would either fail outright or
+      # (worse) silently mix state across two unrelated Claude accounts.
+      # Drop it so the next attempt starts a genuinely fresh session.
+      rm -f .claude-session-id
+    fi
+  done
+
+  if [ "${CLAUDE_USAGE_LIMIT_HIT:-false}" = "true" ]; then
+    echo "🛑 All configured Claude Code accounts (${claude_attempt_total}) are usage-limited — stopping this job. It will be retried automatically once sm-agent's next cycle re-scans this ticket and a token has capacity again." >&2
+  fi
+  return "$claude_final_exit_code"
+}
+
+# Single end-to-end attempt against whichever token run_claude_code just
+# exported. Sets CLAUDE_USAGE_LIMIT_HIT=true when the failure specifically
+# matches CLAUDE_USAGE_LIMIT_MARKER, so the caller can decide whether a
+# retry against a different account is warranted.
+_run_claude_code_once() {
+  CLAUDE_USAGE_LIMIT_HIT=false
+
   local claude_auth_mode=""
   if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
     claude_auth_mode="oauth"
@@ -135,6 +230,12 @@ run_claude_code() {
     claude_code_exit_code=${PIPESTATUS[0]}
   fi
   set -e
+
+  if [ "$claude_code_exit_code" -ne 0 ] && [ -f "${claude_code_log}" ] \
+     && grep -qi "${CLAUDE_USAGE_LIMIT_MARKER}" "${claude_code_log}"; then
+    CLAUDE_USAGE_LIMIT_HIT=true
+    echo "⚠️  Detected Claude subscription usage-limit exhaustion in this account's output (matched \"${CLAUDE_USAGE_LIMIT_MARKER}\")."
+  fi
 
   record_codegraph_usage "${claude_code_log}"
 
