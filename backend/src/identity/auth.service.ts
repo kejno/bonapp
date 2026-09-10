@@ -1,0 +1,96 @@
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { Repository } from 'typeorm';
+import { LoginDto } from './dto/login.dto.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { Tenant } from './entities/tenant.entity.js';
+import { Role, User } from './entities/user.entity.js';
+
+export interface JwtPayload {
+  sub: string;
+  tenantId: string;
+  role: Role;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async register(dto: RegisterDto): Promise<{ accessToken: string }> {
+    const slug = this.generateSlug(dto.name);
+
+    const existingTenant = await this.tenantRepo.findOne({ where: { slug } });
+    if (existingTenant) {
+      throw new ConflictException(
+        `Tenant with slug "${slug}" already exists`,
+      );
+    }
+
+    const existingUser = await this.userRepo.findOne({
+      where: { email: dto.email },
+    });
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    const tenant = this.tenantRepo.create({ name: dto.name, slug });
+    const savedTenant = await this.tenantRepo.save(tenant);
+
+    const user = this.userRepo.create({
+      tenantId: savedTenant.id,
+      email: dto.email,
+      passwordHash,
+      role: Role.OWNER,
+    });
+    const savedUser = await this.userRepo.save(user);
+
+    return { accessToken: this.signToken(savedUser) };
+  }
+
+  async login(dto: LoginDto): Promise<{ accessToken: string }> {
+    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isMatch = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return { accessToken: this.signToken(user) };
+  }
+
+  private signToken(user: User): string {
+    const payload: JwtPayload = {
+      sub: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+    };
+    return this.jwtService.sign(payload);
+  }
+
+  generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+}
