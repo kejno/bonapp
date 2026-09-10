@@ -48,6 +48,12 @@ describe('BNP-23: Регистрация с дублирующимся email и�
       .send({ name: 'BNP23 Other Cafe', email: firstEmail, password });
 
     expect(res.status).toBe(409);
+    expect(res.body).toHaveProperty('message');
+    expect(res.body.message).toMatch(/email/i);
+    const rows = await dataSource.query(`SELECT * FROM users WHERE email = $1`, [firstEmail]);
+    expect(rows.length).toBe(1);
+    const tenantRows = await dataSource.query(`SELECT * FROM tenants WHERE slug = 'bnp23-other-cafe'`);
+    expect(tenantRows.length).toBe(0);
   });
 
   it('POST /auth/register with duplicate venue name (slug collision) returns 409', async () => {
@@ -56,5 +62,9 @@ describe('BNP-23: Регистрация с дублирующимся email и�
       .send({ name, email: 'owner2-bnp23@test.com', password });
 
     expect(res.status).toBe(409);
+    expect(res.body).toHaveProperty('message');
+    expect(res.body.message).toMatch(/slug/i);
+    const rows = await dataSource.query(`SELECT * FROM users WHERE email = 'owner2-bnp23@test.com'`);
+    expect(rows.length).toBe(0);
   });
 });

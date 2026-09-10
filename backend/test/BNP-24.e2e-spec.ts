@@ -47,6 +47,7 @@ describe('BNP-24: Аутентификация с неверными учётн�
       .send({ email: 'nonexistent-bnp24@test.com', password });
 
     expect(res.status).toBe(401);
+    expect(res.body).not.toHaveProperty('accessToken');
   });
 
   it('POST /auth/login with wrong password returns 401', async () => {
@@ -55,6 +56,21 @@ describe('BNP-24: Аутентификация с неверными учётн�
       .send({ email, password: 'wrongpassword' });
 
     expect(res.status).toBe(401);
+    expect(res.body).not.toHaveProperty('accessToken');
+  });
+
+  it('POST /auth/login 401 responses do not reveal which credential is wrong (anti-enumeration)', async () => {
+    const resWrongEmail = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'nonexistent-bnp24@test.com', password });
+
+    const resWrongPass = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email, password: 'wrongpassword' });
+
+    expect(resWrongEmail.status).toBe(401);
+    expect(resWrongPass.status).toBe(401);
+    expect(resWrongEmail.body).toEqual(resWrongPass.body);
   });
 
   it('POST /auth/login with correct credentials returns 200 (positive control)', async () => {

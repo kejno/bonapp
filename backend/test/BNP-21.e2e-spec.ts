@@ -57,6 +57,10 @@ describe('BNP-21: Регистрация нового заведения — Ten
     expect(rows.length).toBe(1);
     expect(rows[0].role).toBe('OWNER');
     expect(rows[0].email).toBe('owner-bnp21@test.com');
+    expect(rows[0].passwordHash).toBeTruthy();
+    expect(rows[0].passwordHash).not.toBe('password123');
+    const tenantRows = await dataSource.query(`SELECT id FROM tenants WHERE slug = 'bnp21-cafe'`);
+    expect(rows[0].tenantId).toBe(tenantRows[0].id);
   });
 
   it('POST /auth/register returns 400 for missing required fields', async () => {

@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../src/identity/guards/jwt-auth.guard.js';
 describe('BNP-22: Аутентификация пользователя — возвращён JWT access token сроком 24 часа', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
+  let dbUser: { id: string; tenantId: string };
 
   const email = 'owner-bnp22@test.com';
   const password = 'password123';
@@ -34,6 +35,9 @@ describe('BNP-22: Аутентификация пользователя — во
     await request(app.getHttpServer())
       .post('/auth/register')
       .send({ name, email, password });
+
+    const [row] = await dataSource.query(`SELECT * FROM users WHERE email = $1`, [email]);
+    dbUser = { id: row.id, tenantId: row.tenantId };
   });
 
   afterAll(async () => {
@@ -82,5 +86,7 @@ describe('BNP-22: Аутентификация пользователя — во
     expect(payload).toHaveProperty('tenantId');
     expect(payload).toHaveProperty('role');
     expect(payload.role).toBe('OWNER');
+    expect(payload.sub).toBe(dbUser.id);
+    expect(payload.tenantId).toBe(dbUser.tenantId);
   });
 });
