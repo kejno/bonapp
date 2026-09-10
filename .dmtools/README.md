@@ -180,7 +180,13 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
   standalone-запуске без override (напр. диагностический `gh workflow run`
   на конкретный тикет). Эти конкретные `BNP-N` тикеты ещё не существуют —
   создать первый Epic перед первым standalone-прогоном.
-- `intake.json` ещё не прогонялся вживую в bonapp.
+- `intake.json` прогонялся вживую в bonapp: сначала упёрся в
+  `CLAUDE_CODE_MAX_TURNS=30` (error_max_turns на 31 ходу) — Claude успел
+  исследовать пустой backend/frontend скелет и написать 5 epic + 14 story
+  markdown-файлов, но не успел записать финальный `outputs/stories.json`
+  до отсечки, поэтому `createIntakeTickets.js` не создал ни одного тикета.
+  Тот же баг 7 (см. выше), просто на новом job'е — добавлен
+  `CLAUDE_CODE_MAX_TURNS: "60"` override в `intake.json`.
 - `recover_failed_tc_bug_status.json` (upstream edge-case recovery job для
   зависших TC/Bug статусов) не портирован — не блокирует happy path, можно
   добавить позже если понадобится.
