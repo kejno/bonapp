@@ -1,0 +1,19 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "bug_test_automation_merge",
+      "descriptionPath": "agents/docs/agents/bug_test_automation_merge.md"
+    },
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "postJSAction": "agents/js/mergeStoryTestAutomationPR.js",
+    "customParams": {
+      "removeLabel": "sm_bug_test_merge_triggered",
+      "storyTestMerge": true
+    },
+    "inputJql": "key = PROJ-1"
+  }
+}

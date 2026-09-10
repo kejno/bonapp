@@ -1,0 +1,226 @@
+#!/bin/bash
+# Common helpers shared by all run-agent provider subscripts.
+
+# Directory where the full, untruncated CLI-agent provider transcript (Claude
+# Code / Copilot / Cursor / Kimi / Codemie stdout+stderr) is persisted.
+#
+# Every provider used to `tee` its raw output to a `mktemp` file, grep it once
+# for codegraph usage / session-id extraction, then `rm -f` it — so the actual
+# conversation the agent had was never recoverable after the job finished,
+# even though `record_codegraph_usage` had already looked at it. That is the
+# single biggest source of "blind" CI runs: unlike nested `dmtools run`
+# subprocess output (capped/persisted on the Java side via
+# CommandLineUtils/DMTOOLS_CLI_LOG_DIR), the top-level agent's own transcript
+# was never written anywhere durable at all.
+#
+# Uses the SAME .dmtools-logs/cli root as DMTOOLS_CLI_LOG_DIR on the Java side
+# (see CommandLineUtils.java / PropertyReader.getCliFullOutputLogDir) so a
+# single CI artifact glob (.dmtools-logs/**) picks up both nested `dmtools run`
+# transcripts and the top-level provider CLI transcript.
+agent_full_log_dir() {
+  echo "${DMTOOLS_CLI_LOG_DIR:-.dmtools-logs/cli}/agent"
+}
+
+# When a provider resumes a previously cached CLI session (Claude Code
+# --resume, Copilot --resume, Cursor --resume, Kimi --session), the model
+# carries over its full prior conversation history/memory, including
+# assumptions about input/*.md files it already looked at in an earlier run.
+# Those files (comments.md, confluence_output_comments.md, request.md, ...)
+# are regenerated fresh on every job run and can contain materially new
+# content (e.g. new inline comments), but a resumed model can silently skip
+# re-reading them because it "remembers" checking them before — even when
+# the prompt explicitly instructs it to read them.
+#
+# The fix is deliberately NOT "paste the full prompt text again, with a
+# warning on top": pasting the same (or near-same) content into the
+# conversation body again is exactly the kind of thing a resumed model can
+# pattern-match as "I've already seen this" and skim past. Instead, on an
+# actual resume, the message body sent to the model is kept SHORT and simply
+# points at the real prompt file on disk, instructing the model to open it
+# with its own Read tool right now. Making the model perform a concrete,
+# observable tool call to fetch the current file content is a much stronger
+# guarantee of a fresh read than re-including text it may treat as familiar.
+#
+# Every provider that supports session resume should use this pair of
+# helpers, but ONLY when a resume is actually happening (an existing session
+# was found and is being continued) — never for a brand-new session, which
+# should keep sending the full prompt inline as before (it has no prior-turn
+# memory to distrust, and forcing an extra Read round-trip there would just
+# be wasted latency).
+
+# Ensures the full prompt text is available at a stable file path, reusing
+# PROMPT_ARG if DMTools already passed the prompt as a file (the normal CI
+# path), or materializing $PROMPT into a fresh temp file otherwise. Echoes
+# the absolute path on stdout. Callers that receive a freshly created temp
+# file (i.e. PROMPT_ARG was NOT already a file) are responsible for removing
+# it once the CLI invocation that reads it has finished.
+ensure_prompt_file() {
+  if [ -f "${PROMPT_ARG}" ]; then
+    echo "$(cd "$(dirname "${PROMPT_ARG}")" && pwd)/$(basename "${PROMPT_ARG}")"
+    return 0
+  fi
+  local f
+  f="$(mktemp)"
+  printf "%s" "${PROMPT}" > "${f}"
+  echo "${f}"
+}
+
+# The short message body sent to the model on an actual resume. $1: absolute
+# path to the file containing the full, current prompt for this run (see
+# ensure_prompt_file above).
+resumed_session_reread_pointer_notice() {
+  local prompt_file="$1"
+  cat <<EOF
+**IMPORTANT — resumed session:** this is a re-run of this job for the same ticket. Do NOT rely on memory from a previous turn — the \`input/\` folder has been freshly re-downloaded for this run and may contain new or changed content (ticket description, comments, tracker page content, inline comments) compared to what you saw before.
+
+Your full instructions for this run are in this file (they are NOT repeated here on purpose):
+  ${prompt_file}
+
+Use your file-read tool to open and read that file IN FULL right now — do not skip this step just because you resumed this session — then follow it exactly, including re-reading every file it references under \`input/\` (\`request.md\`, \`comments.md\`, \`confluence_output_comments.md\`, \`confluence_output_current.md\`, etc.) from scratch.
+EOF
+}
+
+# Allocates a fresh, unique path under agent_full_log_dir() for a provider to
+# tee its full stdout+stderr to. $1: provider/attempt label (e.g. "copilot",
+# "copilot-attempt2", "claude-code"). The caller is responsible for `tee`-ing
+# into this path and MUST NOT delete it afterwards (unlike the old mktemp
+# pattern) — that's the whole point: it needs to survive for the CI job to
+# archive as an artifact.
+new_agent_log_file() {
+  local label="${1:-agent}"
+  local dir
+  dir="$(agent_full_log_dir)"
+  mkdir -p "$dir"
+  echo "${dir}/${label}-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}.log"
+}
+
+# Record a *_usage.json file path to outputs/token_usage_files.json so that
+# post-action JavaScript can discover usage summaries without relying on fs.
+record_usage_file() {
+  local usage_file="$1"
+  local manifest="outputs/token_usage_files.json"
+  mkdir -p outputs
+  python3 - "$usage_file" "$manifest" << 'PYEOF'
+import json
+import os
+import sys
+
+usage_file = sys.argv[1]
+manifest = sys.argv[2]
+
+entries = []
+if os.path.exists(manifest):
+    try:
+        with open(manifest, 'r', encoding='utf-8') as f:
+            entries = json.load(f)
+        if not isinstance(entries, list):
+            entries = []
+    except Exception:
+        entries = []
+
+if usage_file not in entries:
+    entries.append(usage_file)
+
+with open(manifest, 'w', encoding='utf-8') as f:
+    json.dump(entries, f, indent=2)
+PYEOF
+}
+
+# Record CodeGraph command usage to .dmtools/codegraph-usage.log
+record_codegraph_usage() {
+  local log_file="$1"
+  if [ ! -s "$log_file" ]; then
+    return 0
+  fi
+
+  local matches
+  matches="$(grep -E '(^|[[:space:];|&])codegraph[[:space:]]+(context|query|callees|callers|impact|node|files|sync|affected|status)([[:space:]]|$)' "$log_file" || true)"
+  if [ -z "$matches" ]; then
+    return 0
+  fi
+
+  mkdir -p .dmtools
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line" >> .dmtools/codegraph-usage.log
+  done <<< "$matches"
+}
+
+# Creates a timestamp marker used by rescue_misplaced_outputs() to identify
+# files written *during* the upcoming CLI invocation (as opposed to files
+# that already existed in some dependency checkout beforehand).
+# Call this immediately before invoking the CLI provider.
+start_output_rescue_marker() {
+  mktemp
+}
+
+# Defense-in-depth against agent working-directory drift.
+#
+# Coding-agent CLIs (Claude Code, Copilot CLI, etc.) typically run their Bash
+# tool as ONE persistent shell across the whole session — a `cd` in one tool
+# call carries over to every later call, including the final `Write` of
+# outputs/response.md (or outputs/pr_review.json, outputs/pr_review_comments/*.md,
+# etc). When an agent explores a dependency checkout (`cd dependencies/<repo>
+# && ...`) to read source while producing its own output, and never `cd`s
+# back to the job root before writing outputs/*, those files silently land
+# under dependencies/<repo>/outputs/... instead of ./outputs/. The agent's own
+# tool result still reports success ("File created successfully at:
+# outputs/response.md") because that path really was created — just relative
+# to the wrong cwd. Left undetected, dmtools then reports "did not produce
+# output file", skips the Jira field update, and posts a giant raw-log
+# fallback comment that itself is too long to post — a fully silent failure
+# with no usable content anywhere.
+#
+# This rescues ANY output file misplaced this way — not just response.md —
+# by searching for other outputs/ directories created/modified since
+# start_output_rescue_marker() was called, and copying their newer files up
+# into the job's own ./outputs/. It never overwrites a file that's already
+# correctly present at the real ./outputs/ path (that one is trusted as
+# authoritative).
+#
+# Usage:
+#   local marker; marker="$(start_output_rescue_marker)"
+#   run_claude_code || exit_code=$?
+#   rescue_misplaced_outputs "$marker"
+#   rm -f "$marker"
+rescue_misplaced_outputs() {
+  local start_marker="$1"
+  local root_outputs="./outputs"
+  local rescued=0
+
+  if [ -z "$start_marker" ] || [ ! -e "$start_marker" ]; then
+    return 0
+  fi
+
+  local candidate_dir
+  while IFS= read -r -d '' candidate_dir; do
+    local misplaced_file
+    while IFS= read -r -d '' misplaced_file; do
+      local rel_path="${misplaced_file#"${candidate_dir}"/}"
+      local dest="${root_outputs}/${rel_path}"
+      if [ -e "$dest" ]; then
+        echo "⚠️  Found misplaced output '${misplaced_file}' but '${dest}' already exists at the job root — leaving both, not overwriting"
+        continue
+      fi
+      mkdir -p "$(dirname "$dest")" 2>/dev/null || {
+        echo "⚠️  Could not create directory for rescued output '${dest}' — skipping this file (original left untouched at '${misplaced_file}')"
+        continue
+      }
+      if cp -p "$misplaced_file" "$dest" 2>/dev/null; then
+        echo "⚠️  Rescued misplaced output: '${misplaced_file}' -> '${dest}' (agent's shell working directory likely drifted into '${candidate_dir%/outputs}' before writing — check its final cd/pwd discipline)"
+        rescued=$((rescued + 1))
+      fi
+    done < <(find "$candidate_dir" -type f -newer "$start_marker" -print0 2>/dev/null)
+  done < <(find . -maxdepth 6 -type d -name outputs \
+              -not -path "./outputs" \
+              -not -path "*/.git/*" \
+              -not -path "*/node_modules/*" \
+              -not -path "*/vendor/*" \
+              -print0 2>/dev/null)
+
+  if [ "$rescued" -gt 0 ]; then
+    echo "⚠️  Rescued ${rescued} misplaced output file(s) into ${root_outputs}/ — see warnings above."
+  fi
+
+  return 0
+}

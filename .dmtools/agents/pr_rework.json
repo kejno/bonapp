@@ -1,0 +1,45 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "pr_rework",
+      "descriptionPath": "agents/docs/agents/pr_rework.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "attachResponseAsFile": false,
+    "cleanupInputFolder": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "envVariables": {
+      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,run-agent.sh,gradlew"
+    },
+    "timerJSAction": "agents/js/timerAutoCommitAndSave.js",
+    "timerIntervalSeconds": 300,
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "preCliJSAction": "agents/js/preCliReworkSetup.js",
+    "postJSAction": "agents/js/pushReworkChanges.js",
+    "customParams": {
+      "removeLabels": [
+        "sm_story_rework_triggered",
+        "sm_story_review_triggered"
+      ],
+      "checkOpenPR": true
+    },
+    "inputJql": "key = PROJ-243",
+    "cliPrompts": [
+      "Senior Developer Engineer focused on code fixes",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/coding_guidelines.md",
+      "./agents/instructions/pr_rework/general_guidelines.md",
+      "./agents/instructions/pr_rework/tdd_approach.md",
+      "./agents/instructions/pr_rework/formatting_rules.md",
+      "./agents/instructions/pr_rework/output_rules.md",
+      "./agents/instructions/common/dmtools_cli.md",
+      "./agents/prompts/bash_tools.md"
+    ]
+  }
+}

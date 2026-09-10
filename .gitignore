@@ -1,0 +1,15 @@
+node_modules
+dist
+*.local
+.DS_Store
+.env
+.env.*
+npm-debug.log*
+
+# dmtools SM pipeline runtime artifacts (session state, logs, usage reports —
+# generated per-run by .dmtools/agents/scripts/run-agent.sh, not source)
+.dmtools/.claude-session-id
+.dmtools/.dmtools-logs/
+.dmtools/outputs/
+.dmtools/input/
+.dmtools/cacheBasicJiraClient/

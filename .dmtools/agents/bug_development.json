@@ -1,0 +1,41 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "bug_development",
+      "descriptionPath": "agents/docs/agents/bug_development.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "attachResponseAsFile": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "envVariables": {
+      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,npm,npx,git,run-agent.sh",
+      "CLAUDE_CODE_MAX_TURNS": "60"
+    },
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "preCliJSAction": "agents/js/preCliDevelopmentSetup.js",
+    "postJSAction": "agents/js/developBugAndCreatePR.js",
+    "customParams": {
+      "removeLabel": "sm_bug_development_triggered"
+    },
+    "inputJql": "key = SCRUM-15",
+    "cliPrompts": [
+      "Senior Developer Engineer specializing in root cause analysis and bug fixing",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/coding_guidelines.md",
+      "./agents/instructions/common/input_context_reading.md",
+      "./agents/instructions/bug_development/general_guidelines.md",
+      "./agents/instructions/bug_development/tdd_approach.md",
+      "./agents/instructions/bug_development/output_rules.md",
+      "./agents/instructions/bug_development/formatting_rules.md",
+      "./agents/instructions/bug_development/few_shots.md",
+      "./agents/instructions/common/dmtools_cli.md",
+      "./agents/prompts/bash_tools.md"
+    ]
+  }
+}

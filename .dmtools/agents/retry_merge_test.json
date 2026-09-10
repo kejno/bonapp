@@ -1,0 +1,21 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "retry_merge_test",
+      "descriptionPath": "agents/docs/agents/retry_merge_test.md"
+    },
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "postJSAction": "agents/js/retryMergePR.js",
+    "customParams": {
+      "removeLabel": "sm_test_merge_triggered",
+      "testCaseMerge": true,
+      "checkOpenPR": true
+    },
+    "inputJql": "key = SCRUM-2"
+  }
+}

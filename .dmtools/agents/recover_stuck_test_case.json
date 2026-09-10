@@ -1,0 +1,16 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "recover_stuck_test_case",
+      "descriptionPath": "agents/docs/agents/recover_stuck_test_case.md"
+    },
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "postJSAction": "agents/js/recoverStuckTestCase.js",
+    "customParams": {},
+    "inputJql": "key = SCRUM-2"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "po_refinement",
+      "descriptionPath": "agents/docs/agents/po_refinement.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "field",
+    "fieldName": "Answer",
+    "operationType": "Replace",
+    "ticketContextDepth": 1,
+    "attachResponseAsFile": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "preCliJSAction": "agents/js/fetchParentContextToInput.js",
+    "postJSAction": "agents/js/closeQuestionTicket.js",
+    "inputJql": "key = JD-95",
+    "cliPrompts": [
+      "Experienced Product Owner and Business Analyst",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/po_refinement/workflow.md",
+      "./agents/instructions/common/input_context_reading.md",
+      "./agents/instructions/po_refinement/product_focus.md",
+      "./agents/prompts/po_refinement_prompt.md",
+      "./agents/prompts/bash_tools.md"
+    ],
+    "cliPromptsByTracker": {
+      "jira": [
+        "./agents/instructions/tracker/jira_comment_format.md"
+      ],
+      "ado": [
+        "./agents/instructions/tracker/ado_markup_transform.md"
+      ]
+    },
+    "customParams": {
+      "parentContextFetch": {
+        "enabled": true
+      }
+    }
+  }
+}

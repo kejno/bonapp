@@ -1,0 +1,51 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "bulk_bugs_creation",
+      "descriptionPath": "agents/docs/agents/bulk_bugs_creation.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 0,
+    "attachResponseAsFile": false,
+    "cleanupInputFolder": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": false,
+    "preCliJSAction": "agents/js/prepareBulkBugsCreationContext.js",
+    "postJSAction": "agents/js/postBulkBugsCreation.js",
+    "customParams": {
+      "batchSize": 50,
+      "openBugsJql": "project = {jiraProject} AND issuetype in (Bug) AND status not in (Done)",
+      "failedTCsJql": "project = {jiraProject} AND issuetype = \"Test Case\" AND status = Failed AND (labels is EMPTY OR labels NOT IN (sm_bug_creation_triggered)) ORDER BY created ASC",
+      "removeLabel": "sm_bug_creation_triggered",
+      "smTriggerLabel": "sm_bulk_bugs_creation_triggered",
+      "feedbackLoop": {
+        "postAction": {
+          "enabled": true,
+          "maxAttempts": 1
+        }
+      }
+    },
+    "inputJql": "key = SCRUM-12",
+    "cliPrompts": [
+      "QA Engineer",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/coding_guidelines.md",
+      "./agents/instructions/common/input_context_reading.md",
+      "./agents/instructions/bulk_bugs_creation/general_guidelines.md",
+      "./agents/instructions/bulk_bugs_creation/output_rules.md",
+      "./agents/instructions/bulk_bugs_creation/formatting_rules.md",
+      "./agents/instructions/bulk_bugs_creation/few_shots.md",
+      "./agents/instructions/common/dmtools_cli.md",
+      "./agents/prompts/bash_tools.md"
+    ],
+    "cliPromptsByTracker": {
+      "jira": [
+        "./agents/instructions/tracker/jira_comment_format.md"
+      ]
+    }
+  }
+}

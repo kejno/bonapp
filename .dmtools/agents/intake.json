@@ -1,0 +1,39 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "intake",
+      "descriptionPath": "agents/docs/agents/intake.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 0,
+    "cleanupInputFolder": false,
+    "attachResponseAsFile": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "preCliJSAction": "agents/js/fetchEpicsToInput.js",
+    "postJSAction": "agents/js/createIntakeTickets.js",
+    "inputJql": "key = SCRUM-1",
+    "cliPrompts": [
+      "Experienced Product Owner and Business Analyst",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/intake/workflow.md",
+      "./agents/instructions/intake/formatting_rules.md",
+      "./agents/instructions/intake/description_template.md",
+      "./agents/instructions/intake/json_validation.md",
+      "./agents/instructions/common/no_development.md",
+      "./agents/instructions/common/error_handling.md",
+      "./agents/prompts/bash_tools.md"
+    ],
+    "cliPromptsByTracker": {
+      "jira": [
+        "./agents/instructions/tracker/jira_markup_transform.md",
+        "./agents/instructions/tracker/jira_comment_format.md"
+      ]
+    }
+  }
+}

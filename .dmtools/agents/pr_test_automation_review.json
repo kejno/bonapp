@@ -1,0 +1,44 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "pr_test_automation_review",
+      "descriptionPath": "agents/docs/agents/pr_test_automation_review.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "attachResponseAsFile": false,
+    "cleanupInputFolder": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "preJSAction": "agents/js/prepareTestPRForReview.js",
+    "postJSAction": "agents/js/postTestReviewComments.js",
+    "envVariables": {
+      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,npm,npx,git,run-agent.sh"
+    },
+    "customParams": {
+      "removeLabel": "sm_test_review_triggered"
+    },
+    "inputJql": "key = PROJ-1",
+    "cliPrompts": [
+      "Senior QA Engineer & Code Reviewer",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/coding_guidelines.md",
+      "./agents/instructions/common/input_context_reading.md",
+      "./agents/instructions/pr_test_automation_review/general_guidelines.md",
+      "./agents/instructions/pr_test_automation_review/output_rules.md",
+      "./agents/instructions/pr_test_automation_review/formatting_rules.md",
+      "./agents/instructions/pr_test_automation_review/few_shots.md",
+      "./agents/instructions/common/dmtools_cli.md",
+      "./agents/prompts/bash_tools.md"
+    ],
+    "cliPromptsByTracker": {
+      "jira": [
+        "./agents/instructions/tracker/jira_comment_format.md"
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "story_development",
+      "descriptionPath": "agents/docs/agents/story_development.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "attachResponseAsFile": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "envVariables": {
+      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,run-agent.sh,gradlew"
+    },
+    "timerJSAction": "agents/js/timerAutoCommitAndSave.js",
+    "timerIntervalSeconds": 300,
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "preCliJSAction": "agents/js/preCliDevelopmentSetup.js",
+    "postJSAction": "agents/js/developTicketAndCreatePR.js",
+    "customParams": {
+      "removeLabel": "sm_story_development_triggered"
+    },
+    "inputJql": "key = SCRUM-11",
+    "cliPrompts": [
+      "Senior Developer Engineer",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/coding_guidelines.md",
+      "./agents/instructions/common/input_context_reading.md",
+      "./agents/instructions/story_development/general_guidelines.md",
+      "./agents/instructions/story_development/tdd_approach.md",
+      "./agents/instructions/story_development/output_rules.md",
+      "./agents/instructions/story_development/formatting_rules.md",
+      "./agents/instructions/story_development/few_shots.md",
+      "./agents/instructions/common/dmtools_cli.md",
+      "./agents/prompts/bash_tools.md"
+    ]
+  }
+}

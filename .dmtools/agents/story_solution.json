@@ -1,0 +1,53 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "story_solution",
+      "descriptionPath": "agents/docs/agents/story_solution.md"
+    },
+    "cliCommands": [
+      "./agents/scripts/run-agent.sh"
+    ],
+    "outputType": "none",
+    "ticketContextDepth": 0,
+    "attachResponseAsFile": false,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "preJSAction": "agents/js/checkWipLabel.js",
+    "preCliJSAction": "agents/js/preCliSolutionSetup.js",
+    "postJSAction": "agents/js/writeSolutionAndDiagrams.js",
+    "customParams": {
+      "removeLabel": "sm_story_solution_triggered"
+    },
+    "inputJql": "key = JD-82",
+    "cliPrompts": [
+      "Senior Software Architect",
+      "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/story_solution/workflow.md",
+      "./agents/instructions/common/investigate_before_solution.md",
+      "./agents/instructions/common/no_development.md",
+      "./agents/instructions/common/error_handling.md",
+      "./agents/instructions/common/media_handling.md",
+      "./agents/instructions/enhancement/solution_design_ac_referencing.md",
+      "./agents/instructions/enhancement/solution_design_formatting_rules.md",
+      "./agents/instructions/common/diagram_output_contract.md",
+      "./agents/instructions/enhancement/solution_design_few_shots.md",
+      "./agents/prompts/story_solution_prompt.md",
+      "./agents/instructions/common/confluence_comments.md",
+      "./agents/prompts/bash_tools.md"
+    ],
+    "cliPromptsByTracker": {
+      "jira": [
+        "./agents/instructions/common/jira_context.md",
+        "./agents/instructions/tracker/jira_markup_transform.md"
+      ],
+      "ado": [
+        "./agents/instructions/tracker/ado_context.md",
+        "./agents/instructions/tracker/ado_markup_transform.md"
+      ],
+      "confluence": [
+        "./agents/instructions/tracker/confluence_markup_transform.md"
+      ]
+    }
+  }
+}
