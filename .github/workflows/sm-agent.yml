@@ -2,13 +2,13 @@ name: SM Agent
 
 on:
   workflow_dispatch: {}
-  # Runs right after every AI Teammate run finishes — no fixed polling
-  # interval needed, and the SM cycle reacts within seconds of the event
-  # that actually changes ticket state (a PR opened, reviewed, or merged)
-  # instead of up to 5 minutes late.
-  workflow_run:
-    workflows: ["AI Teammate"]
-    types: [completed]
+  # TEMPORARILY DISABLED (2026-09-10, manual-only mode by request): auto-firing
+  # on every AI Teammate completion was queuing up new tickets faster than
+  # they could be reviewed/triaged. Re-enable by uncommenting once ready to
+  # go back to fully automatic cycling.
+  # workflow_run:
+  #   workflows: ["AI Teammate"]
+  #   types: [completed]
 
 permissions:
   contents: read
