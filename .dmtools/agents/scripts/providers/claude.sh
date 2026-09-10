@@ -57,6 +57,14 @@
 readonly CLAUDE_USAGE_LIMIT_MARKER='usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"'
 
 run_claude_code() {
+  # TEMP DIAGNOSTIC (2026-09-10): a live run-agent.sh --continue call
+  # (postPRReviewComments.js's resume path) never printed the account-1
+  # attempt line at all despite CLAUDE_CODE_OAUTH_TOKEN_2 showing non-empty
+  # in the workflow step's own env dump — investigating whether the token is
+  # actually visible AT THIS FUNCTION, inside whatever process
+  # cli_execute_command spawned. Remove once resolved.
+  echo "[diag] run_claude_code entered. TOKEN set: $([ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && echo yes || echo no). TOKEN_2 set: $([ -n "${CLAUDE_CODE_OAUTH_TOKEN_2:-}" ] && echo yes || echo no). PID=$$" >&2
+
   if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${CLAUDE_CODE_API_KEY:-}" ]; then
     echo "Error: either CLAUDE_CODE_OAUTH_TOKEN or CLAUDE_CODE_API_KEY is required for claude-code provider" >&2
     return 1
