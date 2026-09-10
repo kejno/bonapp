@@ -326,24 +326,44 @@ function publishExistingBranch(branchName, workingDir) {
 }
 
 function performGitOperations(branchName, commitMessage, workingDir, testFilesPath) {
-    var addPath = testFilesPath || 'testing/';
-    var inspectPath = addPath.replace(/\/$/, '') || '.';
+    // testFilesPath may be a single path (legacy) or an array of paths/
+    // pathspecs — a project can have test code under more than one root
+    // (e.g. backend/test/ + frontend/test/), and staging only one silently
+    // drops every change outside it: `git diff --cached --stat` comes back
+    // empty, this function reports "no changes" as if nothing was written,
+    // and the commit/push never happens even though Claude Code's real fix
+    // is sitting on disk. See .dmtools/README.md known bugs 6/6b.
+    var addPaths = Array.isArray(testFilesPath) ? testFilesPath : [testFilesPath || 'testing/'];
+    var addPathsLabel = addPaths.join(' ');
     try {
-        try {
-            var lsOutput = runInRepo('git status --short -- ' + inspectPath, workingDir) || '';
-            console.log('Git status for ' + inspectPath + ':', cleanCommandOutput(lsOutput) || '(empty)');
-        } catch (e) {
-            console.warn('Could not list ' + inspectPath + ':', e);
+        for (var i = 0; i < addPaths.length; i++) {
+            var inspectPath = addPaths[i].replace(/\/$/, '') || '.';
+            try {
+                var lsOutput = runInRepo('git status --short -- ' + inspectPath, workingDir) || '';
+                console.log('Git status for ' + inspectPath + ':', cleanCommandOutput(lsOutput) || '(empty)');
+            } catch (e) {
+                console.warn('Could not list ' + inspectPath + ':', e);
+            }
         }
 
-        console.log('Staging test path:', addPath);
-        runInRepo('git add ' + addPath, workingDir);
+        console.log('Staging test paths:', addPathsLabel);
+        for (var j = 0; j < addPaths.length; j++) {
+            try {
+                runInRepo('git add ' + addPaths[j], workingDir);
+            } catch (addErr) {
+                // A path/pathspec matching nothing in this checkout (e.g.
+                // frontend/test/ before any frontend tests exist) is not an
+                // error — the other paths in the list may still have real
+                // changes to stage.
+                console.warn('git add ' + addPaths[j] + ' failed (path may not exist yet):', addErr);
+            }
+        }
 
         var stagedOutput = cleanCommandOutput(runInRepo('git diff --cached --stat', workingDir) || '');
         console.log('Staged changes:', stagedOutput || '(none)');
 
         if (!stagedOutput || !stagedOutput.trim()) {
-            console.warn('No new staged changes in ' + addPath + ' (files may already exist on branch)');
+            console.warn('No new staged changes in ' + addPathsLabel + ' (files may already exist on branch)');
             var remoteBranchCheck = cleanCommandOutput(
                 runInRepo('git ls-remote --heads origin ' + branchName, workingDir) || ''
             );
@@ -517,16 +537,40 @@ function moveSkippedTcToStatus(tcKey, skippedStatus) {
     }
 }
 
-function getTestCaseDirectory(tcKey, testFilesPath) {
-    var basePath = (testFilesPath || 'testing/').replace(/\/$/, '');
-    return basePath + '/tests/' + tcKey;
+// Test files in this project are flat, named by ticket key
+// (backend/test/{TCKEY}.e2e-spec.ts or a co-located
+// backend/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
+// <root>/tests/<TCKEY>/ directory layout. Build every plausible location a
+// Test Case's spec could live under any of the configured test roots, in
+// either the integration (*.e2e-spec.ts) or unit (*.spec.ts/*.test.ts(x))
+// naming this project uses.
+function getTestCasePaths(tcKey, testFilesPath) {
+    var roots = Array.isArray(testFilesPath) ? testFilesPath : [testFilesPath || 'testing/'];
+    var suffixes = ['.e2e-spec.ts', '.spec.ts', '.test.ts', '.test.tsx'];
+    var paths = [];
+    for (var i = 0; i < roots.length; i++) {
+        var basePath = roots[i].replace(/\/\*\*.*$/, '').replace(/\/$/, '');
+        if (!basePath) continue;
+        for (var j = 0; j < suffixes.length; j++) {
+            paths.push(basePath + '/' + tcKey + suffixes[j]);
+        }
+        // Legacy per-ticket directory layout, kept as a fallback in case an
+        // older branch still has it.
+        paths.push(basePath + '/tests/' + tcKey);
+    }
+    return paths;
 }
 
 function deleteTestCaseCode(tcKey, testFilesPath, workingDir) {
     try {
-        var dir = getTestCaseDirectory(tcKey, testFilesPath);
-        console.log('Deleting test code for', tcKey, '—', dir);
-        runInRepo('git rm -r --ignore-unmatch -- ' + dir, workingDir);
+        var paths = getTestCasePaths(tcKey, testFilesPath);
+        console.log('Deleting test code for', tcKey, '— trying:', paths.join(', '));
+        for (var i = 0; i < paths.length; i++) {
+            // --ignore-unmatch: most of these candidate paths won't exist
+            // for any given ticket (unit vs. integration, which root) —
+            // that's expected, not an error.
+            runInRepo('git rm -r --ignore-unmatch -- ' + paths[i], workingDir);
+        }
     } catch (e) {
         console.warn('Failed to delete test code for', tcKey, ':', e);
     }

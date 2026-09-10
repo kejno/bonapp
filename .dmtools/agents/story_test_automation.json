@@ -18,7 +18,7 @@
     },
     "customParams": {
       "removeLabel": "sm_story_test_automation_triggered",
-      "testFilesGlob": "backend/test/"
+      "testFilesGlob": ["backend/test/", "backend/src/**/*.spec.ts", "frontend/test/", "frontend/src/**/*.spec.ts", "frontend/src/**/*.test.ts", "frontend/src/**/*.test.tsx"]
     },
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliStoryTestAutomationSetup.js",
