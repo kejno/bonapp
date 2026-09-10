@@ -132,6 +132,35 @@ jobs:
             dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi
 
+      # dmtools' Java core treats "the CLI subprocess produced no output" as a
+      # soft failure for skipAIProcessing/outputType:none jobs (records it in
+      # the result/Jira comment) rather than propagating run-agent.sh's exit
+      # code as a process exception — so the "Run AI Teammate" step above can
+      # report success even when Claude Code never actually did anything
+      # because BOTH configured accounts were usage-limited (see
+      # .dmtools/README.md, known bug 9). Independently re-check the most
+      # recent CLI transcript this run just wrote: if the LAST attempt in it
+      # still shows the usage-limit signal, every configured account was
+      # exhausted and nothing was accomplished — fail this step explicitly so
+      # the job (and this whole Actions run) shows red, instead of a
+      # misleadingly green run that quietly produced no output at all. A run
+      # where account 1 was limited but account 2 answered is NOT a failure
+      # here — that log's last line comes from account 2's successful call.
+      - name: Fail if every configured Claude account was usage-limited
+        if: always()
+        working-directory: .dmtools
+        run: |
+          latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
+          if [ -z "${latest_log}" ]; then
+            echo "No Claude Code transcript found for this run — nothing to check."
+            exit 0
+          fi
+          if grep -Eqi 'usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"' "${latest_log}"; then
+            echo "🛑 The most recent Claude Code call in this run (${latest_log}) hit a usage limit and no configured account had capacity — this job accomplished nothing real." >&2
+            exit 1
+          fi
+          echo "✅ Latest Claude Code call in this run did not hit a usage limit."
+
       # The provider CLI's own transcript (the raw claude-code / codemie / copilot
       # output, including anything it printed before writing outputs/*.json) is
       # `tee`-d to .dmtools-logs/cli/agent/*.log — see new_agent_log_file() in
