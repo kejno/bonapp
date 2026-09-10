@@ -87,10 +87,8 @@ export class AuthService {
   generateSlug(name: string): string {
     return name
       .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
       .trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
+      .replace(/\s+/g, '-');
   }
 }
