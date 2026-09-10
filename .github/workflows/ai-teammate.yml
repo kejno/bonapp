@@ -1,0 +1,138 @@
+name: AI Teammate
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Path to config (relative to .dmtools/, e.g. agents/story_development.json)'
+        required: true
+      encoded_config:
+        description: 'Encoded or JSON Agent Config override'
+        required: false
+      display_key:
+        description: 'Ticket key shown in run naming/logs (set by SM agent)'
+        required: false
+      concurrency_key:
+        description: 'Concurrency group override (set by SM agent)'
+        required: false
+      input_jql:
+        description: 'JQL that selected the ticket (set by SM agent)'
+        required: false
+      project_key:
+        description: 'Jira project key (set by SM agent)'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  ai-teammate-agent:
+    runs-on: ubuntu-latest
+    # smAgent.js already computes a per-ticket concurrency_key (defaulting to the
+    # ticket key) and passes it on every dispatch — see concurrencyKey in
+    # agents/js/smAgent.js. But this group keyed only on config_file, so every
+    # ticket sharing one config (e.g. all Test Cases going through
+    # pr_test_automation_review.json) landed in the SAME concurrency group and
+    # competed for one slot — GitHub cancels the older queued run in favor of a
+    # newer one in the same group, so BNP-25/26/27 review runs could cancel each
+    # other out even though they're unrelated tickets. Fall back to config_file
+    # only for the rare dispatch that omits concurrency_key.
+    concurrency:
+      group: ai-teammate-agent-${{ inputs.concurrency_key || inputs.config_file }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Cache DMTools
+        id: cache-dmtools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dmtools
+          key: dmtools-release-latest-${{ runner.os }}
+
+      - name: Install DMTools CLI
+        if: steps.cache-dmtools.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL https://github.com/epam/dm.ai/releases/latest/download/install.sh | bash
+
+      - name: Add DMTools to PATH
+        run: echo "$HOME/.dmtools/bin" >> "$GITHUB_PATH"
+
+      - name: Verify DMTools installation
+        run: dmtools --version
+
+      - name: Run AI Teammate
+        working-directory: .dmtools
+        env:
+          # Jira
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_BASE_PATH: ${{ vars.JIRA_BASE_PATH }}
+          # JIRA_AUTH_TYPE intentionally omitted — dmtools 1.7.254 returns 404
+          # on every Jira Cloud call when it's set to basic or bearer, even
+          # with a curl-verified working token. Leaving it unset works.
+
+          # GitHub auth for branch/commit/PR operations (needs `repo` scope;
+          # a PAT, not the default GITHUB_TOKEN — see .dmtools/README.md)
+          SOURCE_GITHUB_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          SOURCE_GITHUB_WORKSPACE: kejno
+          SOURCE_GITHUB_REPOSITORY: bonapp
+          GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+
+          # Claude Code as the Teammate CLI agent (see .dmtools/scripts/providers/claude.sh)
+          AI_AGENT_PROVIDER: claude-code
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_MODEL: claude-sonnet-4-6
+          CLAUDE_CODE_MAX_TURNS: '30'
+
+          DMTOOLS_INTEGRATIONS: 'jira,github,ai,cli,file'
+          ENCODED_CONFIG: ${{ inputs.encoded_config }}
+        run: |
+          echo "Using configuration: ${{ inputs.config_file }}"
+          CI_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "CI run URL: ${CI_RUN_URL}"
+
+          if [ -n "${ENCODED_CONFIG}" ]; then
+            dmtools run "${{ inputs.config_file }}" "${ENCODED_CONFIG}" --ciRunUrl "${CI_RUN_URL}"
+          else
+            dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
+          fi
+
+      # The provider CLI's own transcript (the raw claude-code / codemie / copilot
+      # output, including anything it printed before writing outputs/*.json) is
+      # `tee`-d to .dmtools-logs/cli/agent/*.log — see new_agent_log_file() in
+      # agents/scripts/providers/_common.sh — but was never archived, so a run
+      # that silently produced no output (no result JSON, no commit) left no way
+      # to see what the CLI actually did. Upload it on every outcome so failures
+      # are diagnosable after the runner is gone.
+      - name: Upload agent CLI logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-cli-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dmtools/.dmtools-logs/cli/**
+          if-no-files-found: ignore
+          retention-days: 14

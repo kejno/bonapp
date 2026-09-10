@@ -75,19 +75,25 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | Что | Значение | Статус |
 |---|---|---|
 | Jira-проект | `BNP` ("BonApp" на `kejno.atlassian.net`) | ✅ создан |
-| Секрет `JIRA_EMAIL` | email Jira-аккаунта | ⬜ настроить в GitHub Actions |
-| Секрет `JIRA_API_TOKEN` | API-токен Jira | ⬜ настроить в GitHub Actions |
-| Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` | ⬜ настроить в GitHub Actions |
-| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code | ⬜ настроить в GitHub Actions |
-| Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ⬜ настроить в GitHub Actions |
-| `.github/workflows/{sm,ai-teammate}.yml` | скопировать из resume | ⬜ |
+| Секрет `JIRA_EMAIL` | email Jira-аккаунта | ✅ настроен |
+| Секрет `JIRA_API_TOKEN` | API-токен Jira | ✅ настроен |
+| Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` | ✅ настроен |
+| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code | ✅ настроен |
+| Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ✅ настроена |
+| `.github/workflows/{sm-agent,ai-teammate}.yml` | скопированы из resume, `runs-on` переключён на `ubuntu-latest` (в resume — `self-hosted`, отдельный runner не поднимали для bonapp) | ✅ |
+| `package.json` / `npm ci` в `ai-teammate.yml` | bonapp ещё docs-only, нет package.json — первый реальный прогон `ai-teammate.yml` упадёт на шаге `npm ci`, пока в репо не появится Node-проект (React/NestJS) | ⬜ |
 
-## Крон
+## Крон / триггеры
 
-`sm.yml` крутится по расписанию (`schedule: '*/20 * * * *'`) плюс
-`workflow_dispatch` для ручных прогонов. SM сам сканит весь Jira-бэклог и
-диспатчит `ai-teammate.yml` под каждый подходящий тикет — с созданной Epic/
-Story идеи владелец дальше не трогает пайплайн руками до готового PR.
+`sm-agent.yml` не на фиксированном расписании — триггерится `workflow_run`
+сразу после завершения `ai-teammate.yml` (событийно, без опроса), плюс
+`workflow_dispatch` для ручных прогонов. Значит первый цикл нужно запустить
+руками (`gh workflow run sm-agent.yml` или Actions → Run workflow) — без хотя
+бы одного ручного старта цепочка никогда не начнётся сама. SM сам сканит весь
+Jira-бэклог и диспатчит `ai-teammate.yml` под каждый подходящий тикет — с
+созданной Epic/Story идеи владелец дальше не трогает пайплайн руками до
+готового PR. Оба workflow используют `runs-on: ubuntu-latest`
+(GitHub-hosted), не self-hosted, как в resume.
 
 ## Известные баги upstream-кода (найдены и исправлены при отладке в resume)
 
@@ -178,10 +184,13 @@ Story идеи владелец дальше не трогает пайплай�
 - `recover_failed_tc_bug_status.json` (upstream edge-case recovery job для
   зависших TC/Bug статусов) не портирован — не блокирует happy path, можно
   добавить позже если понадобится.
-- **Workflow-файлы `.github/workflows/sm.yml` и `.github/workflows/
-  ai-teammate.yml` ещё не скопированы в bonapp** — были только в resume,
-  нужно перенести и настроить секреты (см. таблицу «Настройка» выше) перед
-  первым живым прогоном.
+- **`ai-teammate.yml`'s `npm ci` шаг упадёт до первого Node-коммита** —
+  bonapp пока docs-only (нет `package.json`); как только появится
+  React/NestJS-скелет, шаг заработает сам, без правок workflow.
+- **Первый цикл нужно запустить вручную** — `sm-agent.yml` триггерится
+  `workflow_run` от `ai-teammate.yml`, у которого своих триггеров кроме
+  `workflow_dispatch` нет; без ручного `gh workflow run sm-agent.yml`
+  (Actions → Run workflow) цепочка не стартует сама первый раз.
 - **Ничего из пайплайна ещё не прогонялось на bonapp** — весь раздел «Известные
   баги upstream-кода» выше основан на опыте resume; стоит быть готовым, что
   в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4

@@ -1,0 +1,134 @@
+name: SM Agent
+
+on:
+  workflow_dispatch: {}
+  # Runs right after every AI Teammate run finishes — no fixed polling
+  # interval needed, and the SM cycle reacts within seconds of the event
+  # that actually changes ticket state (a PR opened, reviewed, or merged)
+  # instead of up to 5 minutes late.
+  workflow_run:
+    workflows: ["AI Teammate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: sm-agent
+  # Keep false — true would cancel an *in-progress* dmtools run mid-cycle
+  # (GitHub Actions cancels the running job, not just queued ones), which
+  # can leave a ticket half-processed (lock label added, status never
+  # moved). Runs still queue; the staleness check below thins them out
+  # instead.
+  cancel-in-progress: false
+
+jobs:
+  sm-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check no other AI Teammate run is active
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+        run: |
+          set -euo pipefail
+          active=$(gh api "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?status=in_progress&per_page=100" --jq '.total_count')
+          queued=$(gh api "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?status=queued&per_page=100" --jq '.total_count')
+          if [ "$active" -gt 0 ] || [ "$queued" -gt 0 ]; then
+            echo "Another AI Teammate run is still active ($active in_progress, $queued queued) — skipping this SM cycle."
+            echo "SKIP_SM=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # AI Teammate runs up to 3 tickets in parallel (see ai-teammate.yml's
+          # per-ticket concurrency group), so 3 completions can each fire this
+          # workflow within seconds of one another. cancel-in-progress stays
+          # false (see concurrency block above) so a run already executing
+          # dmtools is never killed mid-cycle — but that means every one of
+          # those events still queues and, once the fleet drains, each runs
+          # the full cycle back-to-back instead of settling on one. If a
+          # newer AI Teammate completion has landed since the one that
+          # triggered this run, that newer event will fire its own SM run
+          # (or already has) — skip here rather than duplicate the cycle.
+          latest_completed=$(gh api "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?status=completed&per_page=1" --jq '.workflow_runs[0].id // 0')
+          triggering_run=${{ github.event.workflow_run.id }}
+          if [ "$latest_completed" != "0" ] && [ "$latest_completed" -gt "$triggering_run" ]; then
+            echo "A newer AI Teammate completion ($latest_completed) exists since the one that triggered this run ($triggering_run) — skipping, its own event will run the cycle."
+            echo "SKIP_SM=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Checkout repository
+        if: env.SKIP_SM != 'true'
+        uses: actions/checkout@v4
+        with:
+          # workflow_run inherits the default branch by default, but pin it
+          # explicitly — AI Teammate runs happen on ai/BNP-* branches and
+          # this must always run sm.json against main.
+          ref: main
+
+      - name: Setup Java
+        if: env.SKIP_SM != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache DMTools
+        id: cache-dmtools
+        if: env.SKIP_SM != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.dmtools
+          key: dmtools-release-latest-${{ runner.os }}
+
+      - name: Install DMTools CLI
+        if: env.SKIP_SM != 'true' && steps.cache-dmtools.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL https://github.com/epam/dm.ai/releases/latest/download/install.sh | bash
+
+      - name: Add DMTools to PATH
+        if: env.SKIP_SM != 'true'
+        run: echo "$HOME/.dmtools/bin" >> "$GITHUB_PATH"
+
+      - name: Run SM agent
+        if: env.SKIP_SM != 'true'
+        working-directory: .dmtools
+        env:
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_BASE_PATH: ${{ vars.JIRA_BASE_PATH }}
+          # JIRA_AUTH_TYPE intentionally omitted — dmtools 1.7.254 returns 404
+          # on every Jira Cloud call when it's set to basic or bearer, even
+          # with a curl-verified working token. Leaving it unset works.
+          # SOURCE_GITHUB_TOKEN needs workflow-dispatch rights (a PAT with `repo` +
+          # `workflow` scope) since sm.json rules trigger ai-teammate.yml via the
+          # GitHub Actions API — the default GITHUB_TOKEN cannot dispatch workflows.
+          SOURCE_GITHUB_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          SOURCE_GITHUB_WORKSPACE: kejno
+          SOURCE_GITHUB_REPOSITORY: bonapp
+          DMTOOLS_INTEGRATIONS: 'jira,github,cli,file'
+        run: |
+          dmtools run agents/sm.json --ciRunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            | tee sm-output.log
+
+      - name: Re-dispatch if a local-only status move needs another pass
+        if: env.SKIP_SM != 'true'
+        working-directory: .dmtools
+        env:
+          GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # A rule with localExecution:true (e.g. unblockResolvedDependencies.js
+          # moving a Story out of Blocked into Backlog) changes a ticket's status
+          # without dispatching an AI Teammate run — so there's no future
+          # workflow_run completion event to bring SM back around and act on the
+          # new status (e.g. "Backlog Stories → ask questions" for that same
+          # ticket, which this pass's JQL read already missed). Re-dispatch
+          # ourselves once so the next pass picks it up. smAgent.js sets
+          # needsAnotherPass:true in its JSON result when this happens.
+          if grep -q '"needsAnotherPass":true' sm-output.log; then
+            echo "Local status change needs another pass — re-dispatching SM Agent."
+            gh workflow run sm-agent.yml --repo "${{ github.repository }}"
+          fi
+
