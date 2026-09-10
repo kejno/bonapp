@@ -185,22 +185,9 @@ describe('BNP-11: Table/QR — управление столами и генер
       expect((res.body as Buffer).length).toBeGreaterThan(100);
     });
 
-    it('QR encodes the correct guest URL', async () => {
-      const Jimp = await import('jimp').catch(() => null);
-      if (!Jimp) return;
-
-      const res = await request(app.getHttpServer())
-        .get(`/tables/${tableId}/qr`)
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .buffer(true)
-        .parse((res, callback) => {
-          const chunks: Buffer[] = [];
-          res.on('data', (chunk: Buffer) => chunks.push(chunk));
-          res.on('end', () => callback(null, Buffer.concat(chunks)));
-        });
-
-      expect(res.status).toBe(200);
-    });
+    // Verifying the QR-encoded URL content requires a QR-decoding library (e.g. @zxing/library).
+    // Add it to devDependencies and decode the PNG buffer to assert the expected guest URL:
+    // `${APP_URL}/menu/${tenantSlug}?table=${tableId}`
   });
 
   describe('DELETE /tables/:id — удаление стола', () => {
@@ -274,6 +261,31 @@ describe('BNP-11: Table/QR — управление столами и генер
         .set('Authorization', `Bearer ${ownerToken}`);
 
       expect(res.status).toBe(404);
+    });
+
+    it('cleans up historical (DONE/CANCELLED) orders when table is deleted', async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/tables')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Table with History' });
+      const histTableId = createRes.body.id as string;
+
+      await dataSource.query(
+        `INSERT INTO orders ("tableId", status) VALUES ($1, 'DONE'), ($1, 'CANCELLED')`,
+        [histTableId],
+      );
+
+      const delRes = await request(app.getHttpServer())
+        .delete(`/tables/${histTableId}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(delRes.status).toBe(204);
+
+      const [{ count }] = await dataSource.query(
+        `SELECT COUNT(*)::int as count FROM orders WHERE "tableId" = $1`,
+        [histTableId],
+      );
+      expect(count).toBe(0);
     });
   });
 

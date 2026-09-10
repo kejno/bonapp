@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Order } from '../order/entities/order.entity.js';
+import { OrderModule } from '../order/order.module.js';
 import { Tenant } from '../identity/entities/tenant.entity.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { PublicTableController } from './public-table.controller.js';
@@ -10,7 +10,8 @@ import { TableService } from './table.service.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Table, Order, Tenant]),
+    TypeOrmModule.forFeature([Table, Tenant]),
+    OrderModule,
     IdentityModule,
   ],
   controllers: [TableController, PublicTableController],

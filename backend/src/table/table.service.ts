@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -64,6 +63,7 @@ export class TableService {
       throw new BadRequestException('Cannot delete table with active orders');
     }
 
+    await this.orderRepo.delete({ tableId: id });
     await this.tableRepo.remove(table);
   }
 
@@ -90,7 +90,7 @@ export class TableService {
   private async getOwnedTable(tenantId: string, id: string): Promise<Table> {
     const table = await this.tableRepo.findOne({ where: { id } });
     if (!table) throw new NotFoundException('Table not found');
-    if (table.tenantId !== tenantId) throw new ForbiddenException('Access denied');
+    if (table.tenantId !== tenantId) throw new NotFoundException('Table not found');
     return table;
   }
 }

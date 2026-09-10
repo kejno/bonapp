@@ -40,13 +40,11 @@ export class TableController {
   }
 
   @Post()
-  @Roles(Role.OWNER, Role.STAFF)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTableDto) {
     return this.tableService.create(user.tenantId, dto);
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.STAFF)
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -57,7 +55,6 @@ export class TableController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(Role.OWNER, Role.STAFF)
   async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     await this.tableService.remove(user.tenantId, id);
   }
