@@ -41,11 +41,20 @@
 # script only (required by the Claude Code CLI). They are never exported at
 # the workflow level to avoid conflicts with DMTools ANTHROPIC_* vars.
 
-# Literal substring the Claude Code CLI prints (stdout/stderr and inside the
-# stream-json result text) when the authenticated account's Claude
-# subscription usage limit (5-hour or weekly window) is exhausted. Not a
-# structured field — see anthropics/claude-code#2087, #9046, #50321.
-readonly CLAUDE_USAGE_LIMIT_MARKER="usage limit reached"
+# Extended-regex pattern (grep -E) matching the various ways the Claude Code
+# CLI signals that the authenticated account's Claude subscription usage
+# limit (5-hour or weekly window) is exhausted. There is no single stable
+# structured field for this — observed forms across CLI versions/contexts
+# include, in the stream-json output:
+#   {"type":"rate_limit_event","rate_limit_info":{"status":"rejected",...}}
+#   {"type":"result",...,"error":"rate_limit","api_error_status":429,
+#    "result":"You've hit your session limit · resets 11:40am (UTC)"}
+# and, per anthropics/claude-code#2087/#9046/#50321, the older/alternate
+# phrasing:
+#   "Claude AI usage limit reached|<unix_timestamp>"
+# Matching ANY of these (not just the older phrasing alone, which a live
+# 2026-09-10 run did NOT print) is what actually triggers the fallback below.
+readonly CLAUDE_USAGE_LIMIT_MARKER='usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"'
 
 run_claude_code() {
   if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${CLAUDE_CODE_API_KEY:-}" ]; then
@@ -235,9 +244,9 @@ _run_claude_code_once() {
   set -e
 
   if [ "$claude_code_exit_code" -ne 0 ] && [ -f "${claude_code_log}" ] \
-     && grep -qi "${CLAUDE_USAGE_LIMIT_MARKER}" "${claude_code_log}"; then
+     && grep -Eqi "${CLAUDE_USAGE_LIMIT_MARKER}" "${claude_code_log}"; then
     CLAUDE_USAGE_LIMIT_HIT=true
-    echo "⚠️  Detected Claude subscription usage-limit exhaustion in this account's output (matched \"${CLAUDE_USAGE_LIMIT_MARKER}\")."
+    echo "⚠️  Detected Claude subscription usage-limit exhaustion in this account's output."
   fi
 
   record_codegraph_usage "${claude_code_log}"

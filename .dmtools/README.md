@@ -188,11 +188,41 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
    технически был написан, просто позже отсечки. Исправлено per-job
    override'ом `CLAUDE_CODE_MAX_TURNS: "60"` в `envVariables` для всех
    test-automation/bug-fix job'ов.
+8. **`claude usage limit reached` не имеет стабильного детектируемого
+   маркера** — наблюдался на живом прогоне (2026-09-10, pr_review job) как
+   `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected",...}}`
+   и `{"type":"result",...,"error":"rate_limit","api_error_status":429,
+   "result":"You've hit your session limit · resets ..."}` — НЕ как строку
+   `"Claude AI usage limit reached|<epoch>"`, которую документируют
+   anthropics/claude-code#2087/#9046 и на которую изначально была рассчитана
+   detection-логика в `claude.sh` (см. «Fallback на второй Claude-аккаунт»
+   выше). Detection теперь матчит оба варианта через `grep -E` на несколько
+   паттернов, не одну строку — проверено против реального лога этого
+   инцидента.
+9. **CLI-level failure (exit code от `run-agent.sh`) не всегда становится
+   GitHub Actions job failure.** В том же инциденте: `run-agent.sh` вернул
+   exit code 1 (Claude CLI упал на usage limit), но `dmtools run` внутри
+   `ai-teammate.yml`'s "Run AI Teammate" step завершился успешно — job
+   помечен `success`, хотя реально ничего не было сделано (`"result": "CLI
+   command executed but did not produce output file"` осталось только в
+   Jira-комментарии). Похоже, что для job'ов с `skipAIProcessing: true` /
+   `outputType: "none"` dmtools-ядро трактует "CLI команда не произвела
+   output" как soft-failure (пишет об этом в комментарий/result), а не как
+   process-level exception, которая провалила бы сам `dmtools run` и,
+   соответственно, весь Actions step. Это поведение closed-source Java-ядра
+   dmtools, не наших bash/JS-обвязок — почему это происходит и можно ли
+   настроить строгий режим не выяснено, `agents/README.md`/публичный API
+   dmtools такого флага не документируют. Практическое следствие: **не
+   полагайся на зелёный статус `ai-teammate.yml` run'а как доказательство,
+   что job реально что-то сделал** — при подозрении на тихий сбой смотри
+   Jira-комментарий job'а и/или скачанный `agent-cli-logs-*` artifact
+   напрямую.
 
 Если апгрейдишь `dmtools` до новой версии — стоит перепроверить, не
-исправлены ли баги 1-3, 5, 6 в самом Java-ядре (тогда наши JS-патчи/конфиг-
+исправлены ли баги 1-3, 5, 6, 9 в самом Java-ядре (тогда наши JS-патчи/конфиг-
 обходы станут избыточны, но безвредны). Баг 4 — это состояние Jira-проекта,
-апгрейд `dmtools` на него не повлияет.
+апгрейд `dmtools` на него не повлияет. Баг 8 — детектится строкой в самом
+`claude.sh`, апгрейд `dmtools` на него не влияет вовсе (это Claude Code CLI).
 
 ## Известные пробелы
 
