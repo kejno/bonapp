@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bonapp
+    ports:
+      - '5432:5432'
+    volumes:
+      - bonapp-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  bonapp-postgres-data:

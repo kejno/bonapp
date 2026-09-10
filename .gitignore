@@ -5,6 +5,7 @@ dist
 .DS_Store
 .env
 .env.*
+!.env.example
 npm-debug.log*
 
 # dmtools SM pipeline runtime artifacts (session state, logs, usage reports —
