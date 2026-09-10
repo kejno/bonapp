@@ -145,8 +145,18 @@ function isSubmodulePath(path) {
     }
 }
 
+// testFilesGlob may be a single path (legacy) or an array of paths/pathspecs
+// — this project has test code under more than one root (backend/test/ +
+// co-located backend/src/**/*.spec.ts, and the equivalent frontend/ paths
+// once frontend tests exist). Staging or matching against only the first
+// one would silently miss real changes under the others.
+function testFilesRoots(config) {
+    const raw = (config.customParams && config.customParams.testFilesGlob) || 'testing/';
+    return Array.isArray(raw) ? raw : [raw];
+}
+
 function stageUnmergedPaths(config) {
-    const testFilesPath = (config.customParams && config.customParams.testFilesGlob) || 'testing/';
+    const testFilesPaths = testFilesRoots(config);
     const unmerged = cleanCommandOutput(
         cli_execute_command({ command: 'git diff --name-only --diff-filter=U' }) || ''
     ).split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
@@ -174,7 +184,7 @@ function stageUnmergedPaths(config) {
     if (filesWithMarkers.length > 0) {
         console.warn('⚠️ Conflict markers remain in ' + filesWithMarkers.length + ' file(s); auto-resolving');
         filesWithMarkers.forEach(function(f) {
-            if (f.indexOf(testFilesPath) === 0) {
+            if (testFilesPaths.some(function(p) { return f.indexOf(p.replace(/\*\*.*$/, '')) === 0; })) {
                 console.log('  Keeping test-branch version for', f);
                 cli_execute_command({ command: 'git checkout --ours -- "' + f + '"' });
             } else {
@@ -232,7 +242,7 @@ function commitIfNeeded(ticketKey, passed, config) {
 }
 
 function commitAndPush(ticketKey, passed, config, prIsDirty) {
-    const testFilesPath = (config.customParams && config.customParams.testFilesGlob) || 'testing/';
+    const testFilesPaths = testFilesRoots(config);
     const branchName = cleanCommandOutput(
         cli_execute_command({ command: 'git branch --show-current' }) || ''
     );
@@ -259,7 +269,13 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
 
     if (!mergeInProgress && prIsDirty) {
         // Commit any test fixes first so the working tree/index is clean for the merge.
-        cli_execute_command({ command: 'git add ' + testFilesPath });
+        testFilesPaths.forEach(function(p) {
+            try {
+                cli_execute_command({ command: 'git add ' + p });
+            } catch (addErr) {
+                console.warn('git add ' + p + ' failed (path may not exist yet):', addErr);
+            }
+        });
         commitIfNeeded(ticketKey, passed, config);
         console.log('PR is dirty — starting merge of origin/' + baseBranch);
         try {
@@ -270,7 +286,13 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
     }
 
     // Stage test fixes and any resolved conflict files.
-    cli_execute_command({ command: 'git add ' + testFilesPath });
+    testFilesPaths.forEach(function(p) {
+        try {
+            cli_execute_command({ command: 'git add ' + p });
+        } catch (addErr) {
+            console.warn('git add ' + p + ' failed (path may not exist yet):', addErr);
+        }
+    });
     stageUnmergedPaths(config);
 
     // Commit. If a merge is in progress this creates the merge commit.

@@ -236,3 +236,22 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
   в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4
   про workflow-transitions — это состояние конкретного Jira-проекта, не
   переносится автоматически).
+- ~~`customParams.testFilesGlob` — один путь на весь pipeline~~ — **исправлено**:
+  `testFilesGlob` теперь принимает **массив** путей/pathspecs, not a single
+  string. All four job configs (`story_test_automation`,
+  `bug_test_automation`, `pr_test_automation_rework`,
+  `story_test_automation_rework`/`bug_test_automation_rework`) list every
+  test root the project could plausibly use: `backend/test/`,
+  `backend/src/**/*.spec.ts`, and the `frontend/` equivalents (unused until
+  frontend tests exist — `git add` on a non-existent path/pathspec is a
+  harmless no-op, not an error). `performGitOperations()`,
+  `stageUnmergedPaths()`/`commitAndPush()` in `postTestReworkResults.js`,
+  and `storyTestAutomationRework.js`'s own `commitAndPush()` all loop over
+  the array and stage each root independently, so a change under any one of
+  them is never silently dropped just because it wasn't the first path in
+  the list. `getTestCaseDirectory()` (used only for the `irrelevant`-status
+  deletion path) was also rewritten to build every plausible
+  `{root}/{TCKEY}.e2e-spec.ts` / `.spec.ts` / `.test.ts(x)` combination
+  across all configured roots, replacing the old single hardcoded
+  `<root>/tests/<TCKEY>/` framework-agnostic layout that never matched this
+  project's flat, ticket-key-named files anyway.

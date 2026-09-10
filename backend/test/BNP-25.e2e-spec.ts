@@ -20,6 +20,7 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { AuthController } from '../src/identity/auth.controller.js';
 import { AuthService } from '../src/identity/auth.service.js';
+import { CurrentUser } from '../src/identity/decorators/current-user.decorator.js';
 import { Roles } from '../src/identity/decorators/roles.decorator.js';
 import { Tenant } from '../src/identity/entities/tenant.entity.js';
 import { Role, User } from '../src/identity/entities/user.entity.js';
@@ -32,8 +33,8 @@ class TestGuardController {
   @Get('owner-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
-  ownerOnly() {
-    return { ok: true };
+  ownerOnly(@CurrentUser() user: { userId: string; tenantId: string }) {
+    return { ok: true, userId: user.userId, tenantId: user.tenantId };
   }
 }
 
@@ -128,12 +129,21 @@ describe('BNP-25: Доступ к защищённому эндпоинту бе
     expect(res.status).toBe(403);
   });
 
-  it('GET /test-guard-bnp25/owner-only with OWNER token returns 200', async () => {
+  it('GET /test-guard-bnp25/owner-only with OWNER token returns 200 and correct userId/tenantId', async () => {
     const res = await request(app.getHttpServer())
       .get('/test-guard-bnp25/owner-only')
       .set('Authorization', `Bearer ${ownerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
+
+    const [, payloadB64] = ownerToken.split('.');
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString()) as {
+      sub: string;
+      tenantId: string;
+    };
+
+    expect(res.body.ok).toBe(true);
+    expect(res.body.userId).toBe(payload.sub);
+    expect(res.body.tenantId).toBe(payload.tenantId);
   });
 });

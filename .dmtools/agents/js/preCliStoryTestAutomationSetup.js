@@ -304,9 +304,24 @@ function writePrContext(storyKey, scm, pr) {
     }
 }
 
-function getTestCaseDirectory(tcKey, testFilesPath) {
-    var basePath = (testFilesPath || 'testing/').replace(/\/$/, '');
-    return basePath + '/tests/' + tcKey;
+// Test files in this project are flat, named by ticket key
+// (backend/test/{TCKEY}.e2e-spec.ts or a co-located
+// backend/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
+// <root>/tests/<TCKEY>/ directory layout. Build every plausible location a
+// Test Case's spec could live under any of the configured test roots.
+function getTestCasePaths(tcKey, testFilesPath) {
+    var roots = Array.isArray(testFilesPath) ? testFilesPath : [testFilesPath || 'testing/'];
+    var suffixes = ['.e2e-spec.ts', '.spec.ts', '.test.ts', '.test.tsx'];
+    var paths = [];
+    for (var i = 0; i < roots.length; i++) {
+        var basePath = roots[i].replace(/\/\*\*.*$/, '').replace(/\/$/, '');
+        if (!basePath) continue;
+        for (var j = 0; j < suffixes.length; j++) {
+            paths.push(basePath + '/' + tcKey + suffixes[j]);
+        }
+        paths.push(basePath + '/tests/' + tcKey);
+    }
+    return paths;
 }
 
 function removeIrrelevantTestCode(testCases, workingDir, testFilesPath, irrelevantStatus) {
@@ -314,16 +329,21 @@ function removeIrrelevantTestCode(testCases, workingDir, testFilesPath, irreleva
     testCases.forEach(function(tc) {
         var status = tc.fields && tc.fields.status && tc.fields.status.name;
         if (status !== irrelevantStatus) return;
-        var dir = getTestCaseDirectory(tc.key, testFilesPath);
+        var paths = getTestCasePaths(tc.key, testFilesPath);
         try {
-            var lsOutput = cleanCommandOutput(runGit('git ls-files -- ' + dir, workingDir) || '');
-            if (!lsOutput.trim()) {
+            var anyRemoved = false;
+            paths.forEach(function(p) {
+                var lsOutput = cleanCommandOutput(runGit('git ls-files -- ' + p, workingDir) || '');
+                if (!lsOutput.trim()) return;
+                console.log('Removing test code for irrelevant TC:', tc.key, '—', p);
+                runGit('git rm -r --ignore-unmatch -- ' + p, workingDir);
+                anyRemoved = true;
+            });
+            if (anyRemoved) {
+                removed.push(tc.key);
+            } else {
                 console.log('No tracked test code to remove for irrelevant TC:', tc.key);
-                return;
             }
-            console.log('Removing test code for irrelevant TC:', tc.key, '—', dir);
-            runGit('git rm -r --ignore-unmatch -- ' + dir, workingDir);
-            removed.push(tc.key);
         } catch (e) {
             console.warn('Failed to remove test code for irrelevant TC', tc.key, ':', e);
         }

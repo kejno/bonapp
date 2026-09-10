@@ -141,7 +141,24 @@ function commitAndPush(storyKey, config) {
     mergeMain(storyKey, config);
     runInRepo('git config user.name "' + config.git.authorName + '"', workingDir);
     runInRepo('git config user.email "' + config.git.authorEmail + '"', workingDir);
-    runInRepo('git add testing/', workingDir);
+
+    // testFilesGlob may be a single path (legacy) or an array — this
+    // project has test code under more than one root (backend/test/ +
+    // co-located backend/src/**/*.spec.ts, and the frontend/ equivalents
+    // once frontend tests exist). Staging only one silently drops real
+    // changes under the others: `git diff --cached --stat` comes back
+    // empty, this function logs "no changes" even though Claude Code's
+    // real fix is sitting on disk, and the rework is never actually
+    // committed. See .dmtools/README.md known bugs 6/6b.
+    var rawTestFilesGlob = (config.customParams && config.customParams.testFilesGlob) || 'backend/test/';
+    var testFilesPaths = Array.isArray(rawTestFilesGlob) ? rawTestFilesGlob : [rawTestFilesGlob];
+    testFilesPaths.forEach(function(p) {
+        try {
+            runInRepo('git add ' + p, workingDir);
+        } catch (addErr) {
+            console.warn('git add ' + p + ' failed (path may not exist yet):', addErr);
+        }
+    });
 
     var statusOutput = cleanCommandOutput(runInRepo('git diff --cached --stat', workingDir) || '');
     if (statusOutput.trim()) {
@@ -152,7 +169,7 @@ function commitAndPush(storyKey, config) {
         runInRepo('git commit -m "' + commitMsg.replace(/"/g, '\\"') + '"', workingDir);
         console.log('✅ Committed rework changes');
     } else {
-        console.warn('No changes to commit in testing/ — pushing existing commits only');
+        console.warn('No changes to commit in ' + testFilesPaths.join(', ') + ' — pushing existing commits only');
     }
 
     try {

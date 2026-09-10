@@ -21,7 +21,8 @@
     "postJSAction": "agents/js/storyTestAutomationRework.js",
     "customParams": {
       "removeLabel": "sm_story_test_rework_triggered",
-      "checkOpenPR": true
+      "checkOpenPR": true,
+      "testFilesGlob": ["backend/test/", "backend/src/**/*.spec.ts", "frontend/test/", "frontend/src/**/*.spec.ts", "frontend/src/**/*.test.ts", "frontend/src/**/*.test.tsx"]
     },
     "inputJql": "key = PROJ-1",
     "cliPrompts": [
