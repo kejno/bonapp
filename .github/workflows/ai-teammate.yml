@@ -121,6 +121,31 @@ jobs:
             dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi
 
+      # dmtools' Java core treats "the CLI subprocess produced no output" as a
+      # soft failure for skipAIProcessing/outputType:none jobs — it writes
+      # that into the Jira comment/result but does not propagate
+      # run-agent.sh's exit code as a process exception, so "Run AI Teammate"
+      # above can report success even when Claude Code never actually did
+      # anything (e.g. it hit an Anthropic-side rate/usage limit and exited
+      # 1). See .dmtools/README.md, known bug 8. Independently re-check the
+      # most recent CLI transcript this run just wrote and fail the job
+      # explicitly if it shows a rate-limit/usage-limit signal, so a run that
+      # accomplished nothing shows red instead of a misleadingly green one.
+      - name: Fail if Claude Code hit a rate/usage limit
+        if: always()
+        working-directory: .dmtools
+        run: |
+          latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
+          if [ -z "${latest_log}" ]; then
+            echo "No Claude Code transcript found for this run — nothing to check."
+            exit 0
+          fi
+          if grep -Eqi 'usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"' "${latest_log}"; then
+            echo "::error::Claude Code hit an Anthropic-side rate or usage limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. This is not a bug in this repo's code; it means the Claude account behind CLAUDE_CODE_OAUTH_TOKEN is temporarily out of capacity. Wait for the limit to reset (the transcript's 'resets ...' message says when) and re-run — sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2
+            exit 1
+          fi
+          echo "✅ Latest Claude Code call in this run did not hit a rate/usage limit."
+
       # The provider CLI's own transcript (the raw claude-code / codemie / copilot
       # output, including anything it printed before writing outputs/*.json) is
       # `tee`-d to .dmtools-logs/cli/agent/*.log — see new_agent_log_file() in
