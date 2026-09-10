@@ -14,6 +14,9 @@
     "attachResponseAsFile": false,
     "skipAIProcessing": true,
     "alwaysPostComments": true,
+    "envVariables": {
+      "CLAUDE_CODE_MAX_TURNS": "60"
+    },
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/fetchEpicsToInput.js",
     "postJSAction": "agents/js/createIntakeTickets.js",
