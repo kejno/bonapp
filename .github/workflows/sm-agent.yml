@@ -56,6 +56,27 @@ jobs:
           if [ "$latest_completed" != "0" ] && [ "$latest_completed" -gt "$triggering_run" ]; then
             echo "A newer AI Teammate completion ($latest_completed) exists since the one that triggered this run ($triggering_run) — skipping, its own event will run the cycle."
             echo "SKIP_SM=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # If the AI Teammate run that triggered this cycle failed
+          # specifically because Claude Code hit an Anthropic-side rate or
+          # usage limit (ai-teammate.yml's "Fail if Claude Code hit a
+          # rate/usage limit" step), do NOT let SM dispatch a fresh
+          # ai-teammate.yml run — the account is still out of capacity, so
+          # any ticket SM picks would fail the exact same way. This is a
+          # deliberate full stop, not a per-ticket skip: re-enable by running
+          # sm-agent.yml manually (workflow_dispatch) once capacity is back.
+          if [ "${{ github.event.workflow_run.conclusion }}" = "failure" ]; then
+            failed_job_id=$(gh api "repos/${{ github.repository }}/actions/runs/${triggering_run}/jobs" --jq '.jobs[] | select(.name == "ai-teammate-agent") | .id' | head -1)
+            if [ -n "${failed_job_id:-}" ]; then
+              failed_step_conclusion=$(gh api "repos/${{ github.repository }}/actions/jobs/${failed_job_id}" --jq '.steps[] | select(.name == "Fail if Claude Code hit a rate/usage limit") | .conclusion')
+              if [ "${failed_step_conclusion}" = "failure" ]; then
+                echo "The AI Teammate run that triggered this cycle ($triggering_run) failed on a Claude rate/usage limit — stopping the pipeline entirely until you re-run manually. Not dispatching anything."
+                echo "SKIP_SM=true" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
           fi
 
       - name: Checkout repository
