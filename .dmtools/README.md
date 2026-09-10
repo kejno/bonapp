@@ -236,3 +236,17 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
   в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4
   про workflow-transitions — это состояние конкретного Jira-проекта, не
   переносится автоматически).
+- **`customParams.testFilesGlob` — один путь на весь pipeline, не различает
+  backend/frontend.** Сейчас `'backend/test/'` (см. баги 6/6b выше) — верно,
+  пока весь test-automation живёт в backend. Когда появится реальный
+  frontend-код и тест-раннер для него (`story_test_automation`'s инструкция
+  сейчас явно требует помечать FE Test Case как `skipped`, не ставить
+  Playwright/другой framework самостоятельно — см. `general_guidelines.md`),
+  один `testFilesGlob` перестанет покрывать оба случая: `git add
+  backend/test/` не подхватит файлы под `frontend/`, и получится тот же
+  тихий баг — "No changes to commit", ложный Passed, потерянный тест-код.
+  Нужно будет либо развести `story_test_automation`/`bug_test_automation` на
+  раздельные BE/FE job'ы с разными `testFilesGlob`, либо научить
+  `postStoryTestAutomationResults.js`/`storyTestAutomationRework.js`
+  определять путь по типу Story/файлам в диффе вместо одного жёсткого
+  значения в конфиге.
