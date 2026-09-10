@@ -141,7 +141,7 @@ function commitAndPush(storyKey, config) {
     mergeMain(storyKey, config);
     runInRepo('git config user.name "' + config.git.authorName + '"', workingDir);
     runInRepo('git config user.email "' + config.git.authorEmail + '"', workingDir);
-    runInRepo('git add testing/', workingDir);
+    runInRepo('git add backend/test/', workingDir);
 
     var statusOutput = cleanCommandOutput(runInRepo('git diff --cached --stat', workingDir) || '');
     if (statusOutput.trim()) {

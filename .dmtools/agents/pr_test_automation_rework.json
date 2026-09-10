@@ -24,7 +24,7 @@
     "customParams": {
       "removeLabel": "sm_test_rework_triggered",
       "checkOpenPR": true,
-      "testFilesGlob": "tests/e2e/"
+      "testFilesGlob": "backend/test/"
     },
     "inputJql": "project = BNP AND issuetype = 'Test Case' AND status = 'In Rework'",
     "cliPrompts": [
