@@ -78,36 +78,10 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | Секрет `JIRA_EMAIL` | email Jira-аккаунта | ✅ настроен |
 | Секрет `JIRA_API_TOKEN` | API-токен Jira | ✅ настроен |
 | Секрет `GH_PROJECT_TOKEN` | GitHub PAT, `repo`+`workflow` | ✅ настроен |
-| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code (основной аккаунт) | ✅ настроен |
-| Секрет `CLAUDE_CODE_OAUTH_TOKEN_2` | второй Pro/Max аккаунт — fallback при исчерпании usage limit основного (см. «Fallback на второй Claude-аккаунт» ниже) | ⬜ опционально |
+| Секрет `CLAUDE_CODE_OAUTH_TOKEN` | подписка Claude Code | ✅ настроен |
 | Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ✅ настроена |
 | `.github/workflows/{sm-agent,ai-teammate}.yml` | скопированы из resume, `runs-on` переключён на `ubuntu-latest` (в resume — `self-hosted`, отдельный runner не поднимали для bonapp) | ✅ |
 | `package.json` / `npm ci` в `ai-teammate.yml` | npm workspaces (`backend/` NestJS + `frontend/` React) — скелет создан, `npm ci` теперь работает | ✅ |
-
-## Fallback на второй Claude-аккаунт
-
-`.dmtools/agents/scripts/providers/claude.sh` умеет переключаться на второй
-Pro/Max аккаунт, если основной упирается в usage limit подписки (5-часовое
-или недельное окно):
-
-1. Прогоняет job с `CLAUDE_CODE_OAUTH_TOKEN`.
-2. Если CLI падает и в его выводе встречается строка `usage limit reached`
-   (единственный сейчас detectable сигнал — нет отдельного exit code или
-   `stream-json` subtype для этого случая, см. anthropics/claude-code#2087,
-   #9046) — весь job перезапускается с нуля на `CLAUDE_CODE_OAUTH_TOKEN_2`
-   (если секрет задан). Сохранённый `.claude-session-id` от первой попытки
-   удаляется перед retry — сессия принадлежит другому аккаунту, resume под
-   чужим токеном либо упадёт, либо смешает состояние.
-3. Если второй аккаунт **тоже** упирается в limit — job падает
-   (`run_claude_code` возвращает ненулевой код), `ai-teammate.yml` репортит
-   failure. Никакого третьего автоматического ретрая нет специально — чтобы
-   не жечь впустую оба аккаунта на каждом SM-цикле, пока кто-то не заметит и
-   не восстановится квота. `sm-agent.yml` следующим циклом (workflow_run
-   после любого completed, включая failure — см. выше) сам переоценит тикет
-   заново, когда квота освободится.
-
-Если `CLAUDE_CODE_OAUTH_TOKEN_2` не задан — поведение как раньше, один
-аккаунт, без fallback.
 
 ## Крон / триггеры
 
@@ -188,35 +162,32 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
    технически был написан, просто позже отсечки. Исправлено per-job
    override'ом `CLAUDE_CODE_MAX_TURNS: "60"` в `envVariables` для всех
    test-automation/bug-fix job'ов.
-8. **`claude usage limit reached` не имеет стабильного детектируемого
-   маркера** — наблюдался на живом прогоне (2026-09-10, pr_review job) как
-   `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected",...}}`
-   и `{"type":"result",...,"error":"rate_limit","api_error_status":429,
-   "result":"You've hit your session limit · resets ..."}` — НЕ как строку
-   `"Claude AI usage limit reached|<epoch>"`, которую документируют
-   anthropics/claude-code#2087/#9046 и на которую изначально была рассчитана
-   detection-логика в `claude.sh` (см. «Fallback на второй Claude-аккаунт»
-   выше). Detection теперь матчит оба варианта через `grep -E` на несколько
-   паттернов, не одну строку — проверено против реального лога этого
-   инцидента.
-9. **CLI-level failure (exit code от `run-agent.sh`) не всегда становится
-   GitHub Actions job failure.** В том же инциденте: `run-agent.sh` вернул
-   exit code 1 (Claude CLI упал на usage limit), но `dmtools run` внутри
-   `ai-teammate.yml`'s "Run AI Teammate" step завершился успешно — job
-   помечен `success`, хотя реально ничего не было сделано (`"result": "CLI
-   command executed but did not produce output file"` осталось только в
-   Jira-комментарии). Похоже, что для job'ов с `skipAIProcessing: true` /
-   `outputType: "none"` dmtools-ядро трактует "CLI команда не произвела
-   output" как soft-failure (пишет об этом в комментарий/result), а не как
-   process-level exception, которая провалила бы сам `dmtools run` и,
-   соответственно, весь Actions step. Это поведение closed-source Java-ядра
-   dmtools, не наших bash/JS-обвязок — почему это происходит и можно ли
-   настроить строгий режим не выяснено, `agents/README.md`/публичный API
-   dmtools такого флага не документируют. Практическое следствие: **не
-   полагайся на зелёный статус `ai-teammate.yml` run'а как доказательство,
-   что job реально что-то сделал** — при подозрении на тихий сбой смотри
-   Jira-комментарий job'а и/или скачанный `agent-cli-logs-*` artifact
-   напрямую.
+8. **CLI-level failure (exit code от `run-agent.sh`) не всегда становится
+   GitHub Actions job failure.** Наблюдалось на живом прогоне (2026-09-10,
+   pr_review job на BNP-9): Claude Code упал на своей стороне (Anthropic
+   account/session limit — `"error":"rate_limit"`, `api_error_status:429`,
+   `"result":"You've hit your session limit · resets ..."`), `run-agent.sh`
+   вернул exit code 1, но `dmtools run` внутри `ai-teammate.yml`'s "Run AI
+   Teammate" step завершился успешно — job помечен `success`, хотя реально
+   ничего не было сделано (`"result": "CLI command executed but did not
+   produce output file"` осталось только в Jira-комментарии). Похоже, что для
+   job'ов с `skipAIProcessing: true` / `outputType: "none"` dmtools-ядро
+   трактует "CLI команда не произвела output" как soft-failure (пишет об этом
+   в комментарий/result), а не как process-level exception, которая
+   провалила бы сам `dmtools run` и, соответственно, весь Actions step. Это
+   поведение closed-source Java-ядра dmtools, не наших bash/JS-обвязок —
+   почему это происходит и можно ли настроить строгий режим не выяснено,
+   `agents/README.md`/публичный API dmtools такого флага не документируют.
+   Практическое следствие: **не полагайся на зелёный статус
+   `ai-teammate.yml` run'а как доказательство, что job реально что-то
+   сделал** — при подозрении на тихий сбой смотри Jira-комментарий job'а
+   и/или скачанный `agent-cli-logs-*` artifact напрямую (ищи в
+   `.dmtools-logs/cli/agent/claude-code-*.log`, финальный `"result"` в
+   stream-json). Учитывая, что нет ни detectable-сигнала выше уровня
+   разового текстового сообщения от Anthropic, ни гарантии что exit code
+   вообще пробросится в job conclusion, попытка автоматически переключаться
+   между несколькими Claude-аккаунтами на этом уровне признана слишком
+   хрупкой для этого проекта и не реализована.
 
 Если апгрейдишь `dmtools` до новой версии — стоит перепроверить, не
 исправлены ли баги 1-3, 5, 6, 9 в самом Java-ядре (тогда наши JS-патчи/конфиг-
