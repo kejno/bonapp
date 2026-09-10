@@ -82,6 +82,7 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | Переменная `JIRA_BASE_PATH` | `https://kejno.atlassian.net` | ✅ настроена |
 | `.github/workflows/{sm-agent,ai-teammate}.yml` | скопированы из resume, `runs-on` переключён на `ubuntu-latest` (в resume — `self-hosted`, отдельный runner не поднимали для bonapp) | ✅ |
 | `package.json` / `npm ci` в `ai-teammate.yml` | npm workspaces (`backend/` NestJS + `frontend/` React) — скелет создан, `npm ci` теперь работает | ✅ |
+| `services.postgres` в `ai-teammate.yml` | `backend/test/*.e2e-spec.ts` бутстрапит реальный Nest-модуль с живым TypeORM-подключением (не мок) — без сервиса каждый integration-тест падает/висит на недоступном `localhost:5432` | ✅ |
 
 ## Крон / триггеры
 
