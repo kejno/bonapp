@@ -23,6 +23,7 @@
     "cliPrompts": [
       "Senior Software Architect",
       "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/language.md",
       "./agents/instructions/story_solution/workflow.md",
       "./agents/instructions/common/investigate_before_solution.md",
       "./agents/instructions/common/no_development.md",

@@ -33,6 +33,7 @@
     "cliPrompts": [
       "QA Engineer",
       "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/language.md",
       "./agents/instructions/common/coding_guidelines.md",
       "./agents/instructions/common/input_context_reading.md",
       "./agents/instructions/bulk_bugs_creation/general_guidelines.md",

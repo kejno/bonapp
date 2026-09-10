@@ -16,6 +16,7 @@
     "cliPrompts": [
       "Experienced Business Analyst",
       "./agents/instructions/common/agent_task_preamble.md",
+      "./agents/instructions/common/language.md",
       "./agents/instructions/story_questions/general_guidelines.md",
       "./agents/instructions/common/input_context_reading.md",
       "./agents/instructions/story_questions/output_rules.md",
