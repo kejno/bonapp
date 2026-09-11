@@ -1,4 +1,12 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { Table } from '../../table/entities/table.entity.js';
 
 export enum OrderStatus {
@@ -8,10 +16,25 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export interface OrderItem {
+  menuItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+const priceTransformer = {
+  to: (v: number) => v,
+  from: (v: string) => parseFloat(v),
+};
+
 @Entity('orders')
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'uuid' })
+  tenantId!: string;
 
   @ManyToOne(() => Table, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'tableId' })
@@ -20,4 +43,16 @@ export class Order {
 
   @Column({ type: 'varchar', default: OrderStatus.NEW })
   status!: OrderStatus;
+
+  @Column({ type: 'jsonb' })
+  items!: OrderItem[];
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: priceTransformer })
+  totalAmount!: number;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
 }
