@@ -19,6 +19,7 @@ const makeQb = (overrides: Record<string, unknown> = {}) => ({
   where: vi.fn().mockReturnThis(),
   andWhere: vi.fn().mockReturnThis(),
   orderBy: vi.fn().mockReturnThis(),
+  addOrderBy: vi.fn().mockReturnThis(),
   skip: vi.fn().mockReturnThis(),
   take: vi.fn().mockReturnThis(),
   getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
@@ -229,6 +230,15 @@ describe('OrderService', () => {
       await service.findAll(TENANT, {});
 
       expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('adds secondary sort by id DESC for stable pagination', async () => {
+      const qb = makeQb();
+      orderRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll(TENANT, {});
+
+      expect(qb.addOrderBy).toHaveBeenCalledWith('order.id', 'DESC');
     });
 
     it('returns multiple orders correctly', async () => {

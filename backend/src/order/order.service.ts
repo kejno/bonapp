@@ -90,6 +90,7 @@ export class OrderService {
       .createQueryBuilder('order')
       .where('order.tenantId = :tenantId', { tenantId })
       .orderBy('order.createdAt', 'DESC')
+      .addOrderBy('order.id', 'DESC')
       .skip(offset)
       .take(limit);
 

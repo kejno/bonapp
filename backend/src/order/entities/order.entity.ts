@@ -4,9 +4,10 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { priceTransformer } from '../../database/price-transformer.js';
+import { TenantScopedEntity } from '../../database/tenant-scoped.entity.js';
 import { Table } from '../../table/entities/table.entity.js';
 
 export enum OrderStatus {
@@ -23,19 +24,8 @@ export interface OrderItem {
   quantity: number;
 }
 
-const priceTransformer = {
-  to: (v: number) => v,
-  from: (v: string) => parseFloat(v),
-};
-
 @Entity('orders')
-export class Order {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
-
-  @Column({ type: 'uuid' })
-  tenantId!: string;
-
+export class Order extends TenantScopedEntity {
   @ManyToOne(() => Table, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'tableId' })
   @Column({ type: 'uuid' })
