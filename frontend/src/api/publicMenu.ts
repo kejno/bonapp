@@ -1,7 +1,8 @@
 import type { PublicMenu } from '../types/menu.ts';
 
 export async function fetchPublicMenu(slug: string): Promise<PublicMenu> {
-  const res = await fetch(`/public/menu/${slug}`);
-  if (!res.ok) throw new Error('Venue not found');
+  const res = await fetch(`/public/menu/${encodeURIComponent(slug)}`);
+  if (res.status === 404) throw new Error('not_found');
+  if (!res.ok) throw new Error('server_error');
   return res.json() as Promise<PublicMenu>;
 }

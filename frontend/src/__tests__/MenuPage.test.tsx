@@ -134,6 +134,70 @@ describe('MenuPage', () => {
     );
   });
 
+  it('shows service unavailable message on server error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    renderMenuPage('test-venue');
+    await waitFor(() =>
+      expect(screen.getByText(/сервис временно недоступен/i)).toBeInTheDocument()
+    );
+  });
+
+  it('does not render unavailable items', async () => {
+    const menuWithUnavailable = {
+      ...mockMenu,
+      categories: [
+        {
+          ...mockMenu.categories[0],
+          items: [
+            ...mockMenu.categories[0].items,
+            { id: 'item-99', categoryId: 'cat-1', name: 'Недоступный напиток', description: null, price: 999, isAvailable: false, imageUrl: null },
+          ],
+        },
+        mockMenu.categories[1],
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(menuWithUnavailable),
+    }));
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+    expect(screen.queryByText('Недоступный напиток')).not.toBeInTheDocument();
+  });
+
+  it('opens cart panel on cart button click', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+
+    const cartBtn = screen.getByTestId('cart-button');
+    await user.click(cartBtn);
+
+    expect(screen.getByRole('heading', { name: /корзина/i })).toBeInTheDocument();
+  });
+
+  it('decrements item quantity via remove button', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+    await user.click(addButtons[0]); // quantity = 2
+
+    const cartBtn = screen.getByTestId('cart-button');
+    await user.click(cartBtn); // open panel
+
+    const removeBtn = screen.getByRole('button', { name: '−' });
+    await user.click(removeBtn); // quantity = 1
+
+    expect(cartBtn).toHaveTextContent('1');
+    expect(cartBtn).toHaveTextContent('150');
+  });
+
   it('shows item description when present', async () => {
     renderMenuPage();
     await waitFor(() => screen.getByText('Эспрессо'));

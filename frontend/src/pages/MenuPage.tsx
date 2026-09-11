@@ -140,9 +140,11 @@ function MenuContent({ menu, tableId }: MenuContentProps) {
             <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#444' }}>
               {category.name}
             </h2>
-            {category.items.map(item => (
-              <MenuItemCard key={item.id} item={item} />
-            ))}
+            {category.items
+              .filter(item => item.isAvailable)
+              .map(item => (
+                <MenuItemCard key={item.id} item={item} />
+              ))}
           </section>
         ))}
       </main>
@@ -159,7 +161,7 @@ export default function MenuPage() {
 
   const [menu, setMenu] = useState<PublicMenu | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -168,17 +170,20 @@ export default function MenuPage() {
         setMenu(data);
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
+      .catch((e: unknown) => {
+        const msg = e instanceof Error && e.message === 'not_found'
+          ? 'Заведение не найдено'
+          : 'Сервис временно недоступен. Попробуйте позже.';
+        setError(msg);
         setLoading(false);
       });
   }, [slug]);
 
   if (loading) return <SkeletonLoader />;
-  if (error || !menu) {
+  if (error !== null || !menu) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#c00' }}>
-        Заведение не найдено
+        {error ?? 'Заведение не найдено'}
       </div>
     );
   }
