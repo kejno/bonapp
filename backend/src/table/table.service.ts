@@ -48,9 +48,16 @@ export class TableService {
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
-    const table = await this.getOwnedTable(tenantId, id);
-
     await this.tableRepo.manager.transaction(async (em) => {
+      // SELECT FOR UPDATE blocks concurrent order inserts (FK INSERT acquires FOR KEY SHARE,
+      // which conflicts with FOR UPDATE), eliminating the TOCTOU window.
+      const table = await em.findOne(Table, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!table) throw new NotFoundException('Table not found');
+      if (table.tenantId !== tenantId) throw new NotFoundException('Table not found');
+
       const activeCount = await em.count(Order, {
         where: { tableId: id, status: In([OrderStatus.NEW, OrderStatus.IN_PROGRESS]) },
       });
