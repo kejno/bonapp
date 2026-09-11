@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from './components/AdminLayout';
 import { PrivateRoute } from './components/PrivateRoute';
 import { Login } from './pages/Login';
+import { MenuPage } from './pages/MenuPage';
 import { Register } from './pages/Register';
 
 function App() {
@@ -14,7 +15,7 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="orders" replace />} />
             <Route path="orders" element={<div>Заказы</div>} />
-            <Route path="menu" element={<div>Меню</div>} />
+            <Route path="menu" element={<MenuPage />} />
             <Route path="tables" element={<div>Столы</div>} />
           </Route>
         </Route>
