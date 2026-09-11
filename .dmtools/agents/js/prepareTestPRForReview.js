@@ -174,12 +174,19 @@ function markTestPrMerged(ticketKey) {
     } catch (e) {
         console.warn('Could not add test_pr_merged label:', e);
     }
-    // Anti-cycle guard (see config.js comment on TEST_PR_FINALIZED): without this,
-    // the "In Testing Stories with an open test PR → review" SM rule matches on
-    // Jira status alone, ignores whether a PR/branch still exists, and re-triggers
-    // review on an already-finalized Story. The review agent then finds no PR and
-    // no branch (both correctly deleted here) and wrongly concludes the ticket
-    // needs full re-automation, bouncing it to In Rework. Observed on BNP-23.
+}
+
+// Anti-cycle guard (see config.js comment on TEST_PR_FINALIZED): without this,
+// the "In Testing Stories with an open test PR → review" SM rule matches on
+// Jira status alone, ignores whether a PR/branch still exists, and re-triggers
+// review on an already-finalized Story. The review agent then finds no PR and
+// no branch (both correctly deleted here) and wrongly concludes the ticket
+// needs full re-automation, bouncing it to In Rework. Observed on BNP-23.
+// MUST be called only AFTER jira_move_to_status succeeds: adding it before a
+// failing status move leaves the ticket finalized-but-not-moved (stuck in
+// In Review - Passed), and the anti-cycle skip then blocks every retry,
+// stranding it forever. Observed on BNP-31/32/33.
+function markTestPrFinalized(ticketKey) {
     try {
         jira_add_label({ key: ticketKey, label: LABELS.TEST_PR_FINALIZED });
         console.log('Added label', LABELS.TEST_PR_FINALIZED, 'to', ticketKey);
@@ -197,6 +204,7 @@ function finalizeAlreadyMergedTestCase(ticketKey, branchName, issueType, jiraCon
             : '';
         const finalStatus = resolveFinalStatus(currentStatus, issueType, jiraConfig);
         jira_move_to_status({ key: ticketKey, statusName: finalStatus });
+        markTestPrFinalized(ticketKey);
         jira_post_comment({
             key: ticketKey,
             comment: 'h3. ✅ Test Code Already Merged\n\n' +
@@ -328,6 +336,7 @@ function action(params) {
                     ? ticket.fields.status.name : '';
                 const finalStatus = resolveFinalStatus(currentStatus, issueType, jiraConfig);
                 jira_move_to_status({ key: ticketKey, statusName: finalStatus });
+                markTestPrFinalized(ticketKey);
                 jira_post_comment({
                     key: ticketKey,
                     comment: 'h3. ✅ Test PR Already Merged\n\n' +
