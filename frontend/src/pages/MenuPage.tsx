@@ -32,6 +32,7 @@ function MenuItemCard({ item }: MenuItemCardProps) {
         </div>
         <button
           type="button"
+          aria-label={`Добавить в корзину: ${item.name}`}
           onClick={() => addItem(item)}
           style={{ marginLeft: '0.75rem', padding: '0.4rem 0.75rem', background: '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
         >
@@ -46,35 +47,37 @@ function CartButton() {
   const { totalCount, totalPrice } = useCart();
   const [open, setOpen] = useState(false);
 
-  if (totalCount === 0) return null;
+  if (totalCount === 0 && !open) return null;
 
   return (
     <>
-      <button
-        type="button"
-        data-testid="cart-button"
-        onClick={() => setOpen(o => !o)}
-        style={{
-          position: 'fixed',
-          bottom: '1.5rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#333',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '2rem',
-          padding: '0.75rem 1.5rem',
-          fontSize: '1rem',
-          cursor: 'pointer',
-          zIndex: 100,
-          display: 'flex',
-          gap: '0.75rem',
-        }}
-      >
-        <span>{totalCount}</span>
-        <span>Корзина</span>
-        <span>{totalPrice} ₽</span>
-      </button>
+      {totalCount > 0 && (
+        <button
+          type="button"
+          data-testid="cart-button"
+          onClick={() => setOpen(o => !o)}
+          style={{
+            position: 'fixed',
+            bottom: '1.5rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#333',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '2rem',
+            padding: '0.75rem 1.5rem',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            zIndex: 100,
+            display: 'flex',
+            gap: '0.75rem',
+          }}
+        >
+          <span>{totalCount}</span>
+          <span>Корзина</span>
+          <span>{totalPrice} ₽</span>
+        </button>
+      )}
       {open && (
         <CartPanel onClose={() => setOpen(false)} />
       )}
@@ -86,6 +89,9 @@ function CartPanel({ onClose }: { onClose: () => void }) {
   const { cartItems, removeItem } = useCart();
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Корзина"
       style={{
         position: 'fixed',
         inset: 0,
@@ -95,6 +101,7 @@ function CartPanel({ onClose }: { onClose: () => void }) {
         alignItems: 'flex-end',
       }}
       onClick={onClose}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
     >
       <div
         style={{ background: '#fff', width: '100%', borderRadius: '1rem 1rem 0 0', padding: '1.5rem', maxHeight: '60vh', overflowY: 'auto' }}

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
@@ -72,6 +72,7 @@ describe('MenuPage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    testNavigate = null;
   });
 
   it('shows skeleton while loading', () => {
@@ -328,5 +329,53 @@ describe('MenuPage', () => {
     renderMenuPage('test-venue');
     await waitFor(() => screen.getByText('Тестовое Заведение'));
     expect(localStorage.getItem('bonapp_table_test-venue')).toBeNull();
+  });
+
+  // Thread 14: aria-label on add-to-cart button
+  it('add-to-cart button has aria-label with item name', async () => {
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    expect(screen.getByRole('button', { name: /добавить в корзину: кофе/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /добавить в корзину: чай/i })).toBeInTheDocument();
+  });
+
+  // Thread 15: cart panel stays open when last item removed
+  it('keeps cart panel visible when last item is removed', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]); // add Кофе
+
+    const cartBtn = screen.getByTestId('cart-button');
+    await user.click(cartBtn); // open panel
+
+    const removeBtn = screen.getByRole('button', { name: /уменьшить количество: кофе/i });
+    await user.click(removeBtn); // remove last item — cart empty
+
+    // Panel remains visible (empty cart state)
+    expect(screen.getByRole('heading', { name: /корзина/i })).toBeInTheDocument();
+    // Floating button disappears
+    expect(screen.queryByTestId('cart-button')).not.toBeInTheDocument();
+  });
+
+  // Thread 16: CartPanel ARIA dialog attributes and Escape key
+  it('cart panel has role="dialog" with aria-modal and closes on Escape', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+    await user.click(screen.getByTestId('cart-button'));
+
+    const dialog = screen.getByRole('dialog', { name: /корзина/i });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
