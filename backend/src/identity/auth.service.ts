@@ -17,6 +17,8 @@ export interface JwtPayload {
   sub: string;
   tenantId: string;
   role: Role;
+  tenantName: string;
+  tenantSlug: string;
 }
 
 @Injectable()
@@ -24,6 +26,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
     private readonly jwtService: JwtService,
     private readonly dataSource: DataSource,
   ) {}
@@ -62,7 +66,7 @@ export class AuthService {
       });
       const savedUser = await em.save(user);
 
-      return { accessToken: this.signToken(savedUser) };
+      return { accessToken: this.signToken(savedUser, savedTenant) };
     });
   }
 
@@ -77,14 +81,17 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return { accessToken: this.signToken(user) };
+    const tenant = await this.tenantRepo.findOneOrFail({ where: { id: user.tenantId } });
+    return { accessToken: this.signToken(user, tenant) };
   }
 
-  private signToken(user: User): string {
+  private signToken(user: User, tenant: Tenant): string {
     const payload: JwtPayload = {
       sub: user.id,
       tenantId: user.tenantId,
       role: user.role,
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
     };
     return this.jwtService.sign(payload);
   }
