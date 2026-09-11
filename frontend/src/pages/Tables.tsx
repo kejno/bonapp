@@ -12,7 +12,9 @@ export function downloadQr(blob: Blob, tableName: string): void {
   const a = document.createElement('a');
   a.href = url;
   a.download = `table-${tableName}.png`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
