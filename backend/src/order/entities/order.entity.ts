@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Table } from '../../table/entities/table.entity.js';
 
 export enum OrderStatus {
   NEW = 'NEW',
@@ -12,6 +13,8 @@ export class Order {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @ManyToOne(() => Table, { onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'tableId' })
   @Column({ type: 'uuid' })
   tableId!: string;
 

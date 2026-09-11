@@ -365,5 +365,13 @@ describe('BNP-11: Table/QR — управление столами и генер
       const ids = (res.body as Array<{ id: string }>).map((t) => t.id);
       expect(ids).not.toContain(myTableId);
     });
+
+    it('GET /tables/:id/qr by other tenant returns 404', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/tables/${myTableId}/qr`)
+        .set('Authorization', `Bearer ${otherToken}`);
+
+      expect(res.status).toBe(404);
+    });
   });
 });

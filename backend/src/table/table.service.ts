@@ -20,8 +20,6 @@ export class TableService {
   constructor(
     @InjectRepository(Table)
     private readonly tableRepo: Repository<Table>,
-    @InjectRepository(Order)
-    private readonly orderRepo: Repository<Order>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly config: ConfigService,
@@ -52,19 +50,13 @@ export class TableService {
   async remove(tenantId: string, id: string): Promise<void> {
     const table = await this.getOwnedTable(tenantId, id);
 
-    const activeOrderCount = await this.orderRepo.count({
-      where: {
-        tableId: id,
-        status: In([OrderStatus.NEW, OrderStatus.IN_PROGRESS]),
-      },
-    });
-
-    if (activeOrderCount > 0) {
-      throw new BadRequestException('Cannot delete table with active orders');
-    }
-
     await this.tableRepo.manager.transaction(async (em) => {
-      await em.delete(Order, { tableId: id });
+      const activeCount = await em.count(Order, {
+        where: { tableId: id, status: In([OrderStatus.NEW, OrderStatus.IN_PROGRESS]) },
+      });
+      if (activeCount > 0) {
+        throw new BadRequestException('Cannot delete table with active orders');
+      }
       await em.remove(table);
     });
   }

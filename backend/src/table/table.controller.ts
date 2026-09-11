@@ -22,12 +22,6 @@ import { CreateTableDto } from './dto/create-table.dto.js';
 import { UpdateTableDto } from './dto/update-table.dto.js';
 import { TableService } from './table.service.js';
 
-interface AuthUser {
-  userId: string;
-  tenantId: string;
-  role: Role;
-}
-
 @Controller('tables')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.OWNER, Role.STAFF)
@@ -35,18 +29,18 @@ export class TableController {
   constructor(private readonly tableService: TableService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthUser) {
+  findAll(@CurrentUser() user: { tenantId: string }) {
     return this.tableService.findAll(user.tenantId);
   }
 
   @Post()
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateTableDto) {
+  create(@CurrentUser() user: { tenantId: string }, @Body() dto: CreateTableDto) {
     return this.tableService.create(user.tenantId, dto);
   }
 
   @Patch(':id')
   update(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: { tenantId: string },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTableDto,
   ) {
@@ -55,13 +49,13 @@ export class TableController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+  async remove(@CurrentUser() user: { tenantId: string }, @Param('id', ParseUUIDPipe) id: string) {
     await this.tableService.remove(user.tenantId, id);
   }
 
   @Get(':id/qr')
   async getQr(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: { tenantId: string },
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
