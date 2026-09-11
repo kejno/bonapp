@@ -11,7 +11,6 @@ import type { CartItem, MenuItem } from '../types/menu.ts';
 
 interface CartContextValue {
   cartItems: CartItem[];
-  tableId: string | null;
   totalCount: number;
   totalPrice: number;
   addItem: (item: MenuItem) => void;
@@ -82,8 +81,8 @@ export function CartProvider({ children, tableId, slug }: CartProviderProps) {
   }, []);
 
   const value = useMemo(
-    () => ({ cartItems, tableId, totalCount, totalPrice, addItem, removeItem }),
-    [cartItems, tableId, totalCount, totalPrice, addItem, removeItem]
+    () => ({ cartItems, totalCount, totalPrice, addItem, removeItem }),
+    [cartItems, totalCount, totalPrice, addItem, removeItem]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

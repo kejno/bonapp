@@ -1,8 +1,28 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import MenuPage from '../pages/MenuPage.tsx';
+
+let testNavigate: ((to: string) => void) | null = null;
+
+function NavigationCapture() {
+  const navigate = useNavigate();
+  testNavigate = navigate;
+  return null;
+}
+
+function renderMenuPageWithNav(initialSlug: string, table?: string) {
+  const path = `/menu/${initialSlug}${table !== undefined ? `?table=${table}` : ''}`;
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <NavigationCapture />
+      <Routes>
+        <Route path="/menu/:slug" element={<MenuPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
 
 const mockMenu = {
   tenantId: 'tenant-1',
@@ -191,11 +211,48 @@ describe('MenuPage', () => {
     const cartBtn = screen.getByTestId('cart-button');
     await user.click(cartBtn); // open panel
 
-    const removeBtn = screen.getByRole('button', { name: '−' });
+    const removeBtn = screen.getByRole('button', { name: /уменьшить количество: кофе/i });
     await user.click(removeBtn); // quantity = 1
 
     expect(cartBtn).toHaveTextContent('1');
     expect(cartBtn).toHaveTextContent('150');
+  });
+
+  // Thread 10: state reset on slug change
+  it('clears error and shows menu when navigating from errored slug to valid slug', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    renderMenuPageWithNav('bad-slug');
+    await waitFor(() =>
+      expect(screen.getByText(/заведение не найдено/i)).toBeInTheDocument()
+    );
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockMenu),
+    }));
+
+    act(() => { testNavigate!('/menu/test-venue'); });
+
+    await waitFor(() =>
+      expect(screen.getByText('Тестовое Заведение')).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/заведение не найдено/i)).not.toBeInTheDocument();
+  });
+
+  // Thread 10: old content not visible during fetch after slug change
+  it('shows skeleton and not stale menu when navigating to a different slug', async () => {
+    renderMenuPageWithNav('test-venue');
+    await waitFor(() => screen.getByText('Тестовое Заведение'));
+
+    // Hang the next fetch so skeleton stays visible
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
+
+    act(() => { testNavigate!('/menu/venue-b'); });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skeleton-loader')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Тестовое Заведение')).not.toBeInTheDocument();
   });
 
   it('shows item description when present', async () => {

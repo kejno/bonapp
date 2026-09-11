@@ -105,7 +105,7 @@ function CartPanel({ onClose }: { onClose: () => void }) {
           <div key={ci.item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <span>{ci.item.name} × {ci.quantity}</span>
             <span>{ci.item.price * ci.quantity} ₽</span>
-            <button type="button" onClick={() => removeItem(ci.item.id)} style={{ marginLeft: '0.5rem' }}>−</button>
+            <button type="button" aria-label={`Уменьшить количество: ${ci.item.name}`} onClick={() => removeItem(ci.item.id)} style={{ marginLeft: '0.5rem' }}>−</button>
           </div>
         ))}
       </div>
@@ -167,6 +167,9 @@ export default function MenuPage() {
 
   useEffect(() => {
     if (!slug) return;
+    setLoading(true);
+    setMenu(null);
+    setError(null);
     const controller = new AbortController();
     fetchPublicMenu(slug, controller.signal)
       .then(data => {
