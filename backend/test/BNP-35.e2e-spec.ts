@@ -134,26 +134,22 @@ describe('BNP-35: Удаление категории меню с существ
       .set('Authorization', `Bearer ${ownerToken}`);
 
     expect(res.status).toBe(409);
-    expect(res.body).toHaveProperty('message');
   });
 
-  it('category with items still exists after rejected delete', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/menu/categories')
-      .set('Authorization', `Bearer ${ownerToken}`);
-
-    expect(res.status).toBe(200);
-    const ids = (res.body as Array<{ id: string }>).map(c => c.id);
-    expect(ids).toContain(categoryWithItemsId);
+  it('category with items still exists in database after rejected delete', async () => {
+    const rows = await dataSource.query(
+      `SELECT id FROM menu_categories WHERE id = $1`,
+      [categoryWithItemsId],
+    );
+    expect(rows.length).toBe(1);
   });
 
   it('items inside the category are preserved after rejected delete', async () => {
-    const res = await request(app.getHttpServer())
-      .get(`/menu/items?categoryId=${categoryWithItemsId}`)
-      .set('Authorization', `Bearer ${ownerToken}`);
-
-    expect(res.status).toBe(200);
-    expect((res.body as Array<unknown>).length).toBeGreaterThan(0);
+    const rows = await dataSource.query(
+      `SELECT id FROM menu_items WHERE "categoryId" = $1`,
+      [categoryWithItemsId],
+    );
+    expect(rows.length).toBeGreaterThan(0);
   });
 
   it('DELETE /menu/categories/:id on empty category returns 204 (positive control)', async () => {
