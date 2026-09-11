@@ -19,6 +19,10 @@ const mockUserRepo = () => ({
   save: vi.fn(),
 });
 
+const mockTenantRepo = () => ({
+  findOne: vi.fn(),
+});
+
 const mockJwtService = () => ({
   sign: vi.fn(),
 });
@@ -26,6 +30,7 @@ const mockJwtService = () => ({
 describe('AuthService', () => {
   let service: AuthService;
   let userRepo: ReturnType<typeof mockUserRepo>;
+  let tenantRepo: ReturnType<typeof mockTenantRepo>;
   let jwtService: ReturnType<typeof mockJwtService>;
   let em: { findOne: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> };
   let dataSource: { transaction: ReturnType<typeof vi.fn> };
@@ -40,6 +45,7 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useFactory: mockUserRepo },
+        { provide: getRepositoryToken(Tenant), useFactory: mockTenantRepo },
         { provide: JwtService, useFactory: mockJwtService },
         { provide: DataSource, useValue: dataSource },
       ],
@@ -47,6 +53,7 @@ describe('AuthService', () => {
 
     service = module.get(AuthService);
     userRepo = module.get(getRepositoryToken(User));
+    tenantRepo = module.get(getRepositoryToken(Tenant));
     jwtService = module.get(JwtService);
   });
 
@@ -137,6 +144,27 @@ describe('AuthService', () => {
       expect(em.create).toHaveBeenCalledWith(User, expect.objectContaining({ role: Role.OWNER }));
     });
 
+    it('includes tenantName and tenantSlug in JWT payload on register', async () => {
+      em.findOne.mockResolvedValueOnce(null);
+      em.findOne.mockResolvedValueOnce(null);
+      vi.mocked(bcrypt.hash).mockResolvedValue('hashed' as never);
+      em.create.mockReturnValueOnce(savedTenant);
+      em.save.mockResolvedValueOnce(savedTenant);
+      em.create.mockReturnValueOnce(savedUser);
+      em.save.mockResolvedValueOnce(savedUser);
+      jwtService.sign.mockReturnValue('jwt-token');
+
+      await service.register(dto);
+
+      expect(jwtService.sign).toHaveBeenCalledWith({
+        sub: savedUser.id,
+        tenantId: savedUser.tenantId,
+        role: savedUser.role,
+        tenantName: savedTenant.name,
+        tenantSlug: savedTenant.slug,
+      });
+    });
+
     it('throws BadRequestException when venue name produces an empty slug (Cyrillic only)', async () => {
       const cyrillicDto = { name: 'Кафе Петра', email: 'owner@test.com', password: 'secret123' };
 
@@ -154,10 +182,12 @@ describe('AuthService', () => {
       passwordHash: 'hashed',
       role: Role.OWNER,
     };
+    const tenant = { id: 'tenant-uuid', name: 'My Cafe', slug: 'my-cafe' };
 
     it('returns access token on valid credentials', async () => {
       userRepo.findOne.mockResolvedValue(user);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      tenantRepo.findOne.mockResolvedValue(tenant);
       jwtService.sign.mockReturnValue('jwt-token');
 
       const result = await service.login(dto);
@@ -180,9 +210,19 @@ describe('AuthService', () => {
       expect(jwtService.sign).not.toHaveBeenCalled();
     });
 
-    it('includes userId, tenantId, and role in JWT payload', async () => {
+    it('throws UnauthorizedException when tenant not found (instead of 500)', async () => {
       userRepo.findOne.mockResolvedValue(user);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      tenantRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
+    it('includes userId, tenantId, role, tenantName and tenantSlug in JWT payload', async () => {
+      userRepo.findOne.mockResolvedValue(user);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      tenantRepo.findOne.mockResolvedValue(tenant);
       jwtService.sign.mockReturnValue('jwt-token');
 
       await service.login(dto);
@@ -191,7 +231,20 @@ describe('AuthService', () => {
         sub: user.id,
         tenantId: user.tenantId,
         role: user.role,
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
       });
+    });
+
+    it('looks up tenant by tenantId from user on login', async () => {
+      userRepo.findOne.mockResolvedValue(user);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      tenantRepo.findOne.mockResolvedValue(tenant);
+      jwtService.sign.mockReturnValue('jwt-token');
+
+      await service.login(dto);
+
+      expect(tenantRepo.findOne).toHaveBeenCalledWith({ where: { id: user.tenantId } });
     });
   });
 });
