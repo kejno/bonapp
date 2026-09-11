@@ -15,8 +15,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
-    const status = (error as { response?: { status?: number } }).response?.status;
-    if (status === 401) {
+    const axiosError = error as { response?: { status?: number }; config?: { url?: string } };
+    const status = axiosError.response?.status;
+    const url = axiosError.config?.url ?? '';
+    if (status === 401 && !url.startsWith('/auth/')) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

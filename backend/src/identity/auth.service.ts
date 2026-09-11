@@ -81,7 +81,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const tenant = await this.tenantRepo.findOneOrFail({ where: { id: user.tenantId } });
+    const tenant = await this.tenantRepo.findOne({ where: { id: user.tenantId } });
+    if (!tenant) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
     return { accessToken: this.signToken(user, tenant) };
   }
 

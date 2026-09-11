@@ -17,10 +17,12 @@ export function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
       const { data } = await api.post<{ accessToken: string }>('/auth/register', {
         name,
@@ -31,6 +33,8 @@ export function Register() {
       navigate('/admin/orders');
     } catch {
       setError('Ошибка регистрации. Проверьте данные и попробуйте снова.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -75,7 +79,7 @@ export function Register() {
           </label>
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit">Зарегистрироваться</button>
+        <button type="submit" disabled={loading}>{loading ? 'Регистрация...' : 'Зарегистрироваться'}</button>
       </form>
       <p>
         <Link to="/login">Уже есть аккаунт? Войти</Link>

@@ -16,16 +16,20 @@ export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
       const { data } = await api.post<{ accessToken: string }>('/auth/login', { email, password });
       localStorage.setItem('token', data.accessToken);
       navigate('/admin/orders');
     } catch {
       setError('Неверный email или пароль');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -58,7 +62,7 @@ export function Login() {
           </label>
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit">Войти</button>
+        <button type="submit" disabled={loading}>{loading ? 'Вход...' : 'Войти'}</button>
       </form>
       <p>
         <Link to="/register">Зарегистрироваться</Link>

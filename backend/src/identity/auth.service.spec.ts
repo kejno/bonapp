@@ -20,7 +20,7 @@ const mockUserRepo = () => ({
 });
 
 const mockTenantRepo = () => ({
-  findOneOrFail: vi.fn(),
+  findOne: vi.fn(),
 });
 
 const mockJwtService = () => ({
@@ -187,7 +187,7 @@ describe('AuthService', () => {
     it('returns access token on valid credentials', async () => {
       userRepo.findOne.mockResolvedValue(user);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      tenantRepo.findOneOrFail.mockResolvedValue(tenant);
+      tenantRepo.findOne.mockResolvedValue(tenant);
       jwtService.sign.mockReturnValue('jwt-token');
 
       const result = await service.login(dto);
@@ -210,10 +210,19 @@ describe('AuthService', () => {
       expect(jwtService.sign).not.toHaveBeenCalled();
     });
 
+    it('throws UnauthorizedException when tenant not found (instead of 500)', async () => {
+      userRepo.findOne.mockResolvedValue(user);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      tenantRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
     it('includes userId, tenantId, role, tenantName and tenantSlug in JWT payload', async () => {
       userRepo.findOne.mockResolvedValue(user);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      tenantRepo.findOneOrFail.mockResolvedValue(tenant);
+      tenantRepo.findOne.mockResolvedValue(tenant);
       jwtService.sign.mockReturnValue('jwt-token');
 
       await service.login(dto);
@@ -230,12 +239,12 @@ describe('AuthService', () => {
     it('looks up tenant by tenantId from user on login', async () => {
       userRepo.findOne.mockResolvedValue(user);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-      tenantRepo.findOneOrFail.mockResolvedValue(tenant);
+      tenantRepo.findOne.mockResolvedValue(tenant);
       jwtService.sign.mockReturnValue('jwt-token');
 
       await service.login(dto);
 
-      expect(tenantRepo.findOneOrFail).toHaveBeenCalledWith({ where: { id: user.tenantId } });
+      expect(tenantRepo.findOne).toHaveBeenCalledWith({ where: { id: user.tenantId } });
     });
   });
 });
