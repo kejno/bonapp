@@ -120,7 +120,7 @@ interface MenuContentProps {
 
 function MenuContent({ menu, tableId }: MenuContentProps) {
   return (
-    <CartProvider tableId={tableId}>
+    <CartProvider tableId={tableId} slug={menu.slug}>
       <header style={{
         position: 'sticky',
         top: 0,
@@ -135,18 +135,20 @@ function MenuContent({ menu, tableId }: MenuContentProps) {
       </header>
 
       <main style={{ padding: '1rem', paddingBottom: '6rem' }}>
-        {menu.categories.map(category => (
-          <section key={category.id} style={{ marginBottom: '1.5rem' }}>
-            <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#444' }}>
-              {category.name}
-            </h2>
-            {category.items
-              .filter(item => item.isAvailable)
-              .map(item => (
-                <MenuItemCard key={item.id} item={item} />
-              ))}
-          </section>
-        ))}
+        {menu.categories
+          .filter(category => category.items.some(item => item.isAvailable))
+          .map(category => (
+            <section key={category.id} style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#444' }}>
+                {category.name}
+              </h2>
+              {category.items
+                .filter(item => item.isAvailable)
+                .map(item => (
+                  <MenuItemCard key={item.id} item={item} />
+                ))}
+            </section>
+          ))}
       </main>
 
       <CartButton />
@@ -165,18 +167,21 @@ export default function MenuPage() {
 
   useEffect(() => {
     if (!slug) return;
-    fetchPublicMenu(slug)
+    const controller = new AbortController();
+    fetchPublicMenu(slug, controller.signal)
       .then(data => {
         setMenu(data);
         setLoading(false);
       })
       .catch((e: unknown) => {
+        if (e instanceof Error && e.name === 'AbortError') return;
         const msg = e instanceof Error && e.message === 'not_found'
           ? 'Заведение не найдено'
           : 'Сервис временно недоступен. Попробуйте позже.';
         setError(msg);
         setLoading(false);
       });
+    return () => controller.abort();
   }, [slug]);
 
   if (loading) return <SkeletonLoader />;

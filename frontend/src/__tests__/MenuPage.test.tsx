@@ -208,4 +208,68 @@ describe('MenuPage', () => {
     await waitFor(() => screen.getByText('Кофе'));
     expect(screen.getByText('150 ₽')).toBeInTheDocument();
   });
+
+  // Thread 6: cross-venue cart isolation
+  it('isolates cart per venue — does not carry over items from another venue', async () => {
+    const user = userEvent.setup();
+
+    renderMenuPage('test-venue');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]); // Кофе → bonapp_cart_test-venue
+
+    expect(screen.getByTestId('cart-button')).toBeInTheDocument();
+    cleanup();
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ...mockMenu, slug: 'other-venue', name: 'Другое Заведение' }),
+    }));
+
+    renderMenuPage('other-venue');
+    await waitFor(() => screen.getByText('Другое Заведение'));
+
+    expect(screen.queryByTestId('cart-button')).not.toBeInTheDocument();
+  });
+
+  // Thread 7: empty category header not rendered
+  it('does not render header for a category where all items are unavailable', async () => {
+    const menuWithEmptyCategory = {
+      ...mockMenu,
+      categories: [
+        {
+          id: 'cat-empty',
+          name: 'Временно Недоступные',
+          sortOrder: 2,
+          items: [
+            { id: 'item-off', categoryId: 'cat-empty', name: 'Недоступное', description: null, price: 100, isAvailable: false, imageUrl: null },
+          ],
+        },
+        ...mockMenu.categories,
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(menuWithEmptyCategory),
+    }));
+
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Напитки'));
+
+    expect(screen.queryByText('Временно Недоступные')).not.toBeInTheDocument();
+  });
+
+  // Thread 9: stale tableId cleared on re-visit without ?table=
+  it('clears tableId from localStorage when table param is absent on re-visit', async () => {
+    renderMenuPage('test-venue', '5');
+    await waitFor(() => screen.getByText('Тестовое Заведение'));
+    expect(localStorage.getItem('bonapp_table_test-venue')).toBe('5');
+
+    cleanup();
+
+    renderMenuPage('test-venue');
+    await waitFor(() => screen.getByText('Тестовое Заведение'));
+    expect(localStorage.getItem('bonapp_table_test-venue')).toBeNull();
+  });
 });

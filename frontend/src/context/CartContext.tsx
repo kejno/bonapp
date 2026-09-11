@@ -9,9 +9,6 @@ import {
 import type { ReactNode } from 'react';
 import type { CartItem, MenuItem } from '../types/menu.ts';
 
-const CART_KEY = 'bonapp_cart';
-const TABLE_KEY = 'bonapp_tableId';
-
 interface CartContextValue {
   cartItems: CartItem[];
   tableId: string | null;
@@ -23,30 +20,33 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-function loadCart(): CartItem[] {
-  try {
-    const raw = localStorage.getItem(CART_KEY);
-    return raw ? (JSON.parse(raw) as CartItem[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 interface CartProviderProps {
   children: ReactNode;
   tableId: string | null;
+  slug: string;
 }
 
-export function CartProvider({ children, tableId }: CartProviderProps) {
-  const [cartItems, setCartItems] = useState<CartItem[]>(loadCart);
+export function CartProvider({ children, tableId, slug }: CartProviderProps) {
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(`bonapp_cart_${slug}`);
+      return raw ? (JSON.parse(raw) as CartItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
-    if (tableId) localStorage.setItem(TABLE_KEY, tableId);
-  }, [tableId]);
+    if (tableId) {
+      localStorage.setItem(`bonapp_table_${slug}`, tableId);
+    } else {
+      localStorage.removeItem(`bonapp_table_${slug}`);
+    }
+  }, [tableId, slug]);
 
   useEffect(() => {
-    localStorage.setItem(CART_KEY, JSON.stringify(cartItems));
-  }, [cartItems]);
+    localStorage.setItem(`bonapp_cart_${slug}`, JSON.stringify(cartItems));
+  }, [cartItems, slug]);
 
   const totalCount = useMemo(
     () => cartItems.reduce((sum, ci) => sum + ci.quantity, 0),
