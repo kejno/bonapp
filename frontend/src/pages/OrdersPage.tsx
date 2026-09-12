@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/axios';
 
@@ -15,6 +15,7 @@ interface OrderItem {
 export interface Order {
   id: string;
   tableId: string;
+  tableName: string;
   status: OrderStatus;
   items: OrderItem[];
   totalAmount: number;
@@ -90,7 +91,7 @@ export function OrderCard({ order, updatingId, onStatusChange }: OrderCardProps)
   return (
     <div style={isNew ? cardNew : cardBase}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <strong>Стол: {order.tableId}</strong>
+        <strong>Стол: {order.tableName}</strong>
         <span style={{ color: '#666', fontSize: '0.875rem' }}>{createdAt}</span>
       </div>
       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px' }}>
@@ -132,29 +133,38 @@ export function OrderCard({ order, updatingId, onStatusChange }: OrderCardProps)
   );
 }
 
+const VALID_STATUSES: OrderStatus[] = ['NEW', 'IN_PROGRESS', 'DONE', 'CANCELLED'];
+
 export function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const statusFilter = searchParams.get('status') as OrderStatus | null;
+  const isFirstLoad = useRef(true);
+
+  const raw = searchParams.get('status');
+  const statusFilter = (raw && VALID_STATUSES.includes(raw as OrderStatus) ? raw : null) as OrderStatus | null;
 
   const fetchOrders = useCallback(async () => {
     try {
       const params: Record<string, string> = { limit: '50' };
       if (statusFilter) params.status = statusFilter;
       const { data } = await api.get<PaginatedOrders>('/orders', { params });
+      setError('');
       setOrders(data.data);
     } catch {
       setError('Ошибка загрузки заказов');
     } finally {
       setLoading(false);
+      isFirstLoad.current = false;
     }
   }, [statusFilter]);
 
   useEffect(() => {
-    setLoading(true);
+    if (isFirstLoad.current) {
+      setLoading(true);
+    }
     void fetchOrders();
   }, [fetchOrders]);
 
@@ -166,15 +176,17 @@ export function OrdersPage() {
   }, [fetchOrders]);
 
   async function handleStatusChange(orderId: string, next: OrderStatus) {
+    const prevOrders = orders;
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: next } : o)));
     setUpdatingId(orderId);
     try {
       await api.patch(`/orders/${orderId}/status`, { status: next });
+      void fetchOrders();
     } catch {
-      // revert by refetching on error
+      setError('Не удалось изменить статус заказа');
+      setOrders(prevOrders);
     } finally {
       setUpdatingId(null);
-      void fetchOrders();
     }
   }
 
