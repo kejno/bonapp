@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { AdminLayout } from './components/AdminLayout'
 import { PrivateRoute } from './components/PrivateRoute'
+import { AdminMenuPage } from './pages/AdminMenuPage'
 import { Login } from './pages/Login'
 import MenuPage from './pages/MenuPage.tsx'
 import { Register } from './pages/Register'
@@ -20,7 +21,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="orders" replace />} />
             <Route path="orders" element={<div>Заказы</div>} />
-            <Route path="menu" element={<div>Меню</div>} />
+            <Route path="menu" element={<AdminMenuPage />} />
             <Route path="tables" element={<Tables />} />
           </Route>
         </Route>

@@ -223,8 +223,8 @@ describe('BNP-11: Table/QR — управление столами и генер
       const tableId = createRes.body.id as string;
 
       await dataSource.query(
-        `INSERT INTO orders ("tableId", status) VALUES ($1, 'NEW')`,
-        [tableId],
+        `INSERT INTO orders ("tenantId", "tableId", status, items, "totalAmount") VALUES ($1, $2, 'NEW', '[]', 0)`,
+        [tenantId, tableId],
       );
 
       const res = await request(app.getHttpServer())
@@ -245,8 +245,8 @@ describe('BNP-11: Table/QR — управление столами и генер
       const tableId = createRes.body.id as string;
 
       await dataSource.query(
-        `INSERT INTO orders ("tableId", status) VALUES ($1, 'IN_PROGRESS')`,
-        [tableId],
+        `INSERT INTO orders ("tenantId", "tableId", status, items, "totalAmount") VALUES ($1, $2, 'IN_PROGRESS', '[]', 0)`,
+        [tenantId, tableId],
       );
 
       const res = await request(app.getHttpServer())
@@ -275,8 +275,8 @@ describe('BNP-11: Table/QR — управление столами и генер
       const histTableId = createRes.body.id as string;
 
       await dataSource.query(
-        `INSERT INTO orders ("tableId", status) VALUES ($1, 'DONE'), ($1, 'CANCELLED')`,
-        [histTableId],
+        `INSERT INTO orders ("tenantId", "tableId", status, items, "totalAmount") VALUES ($1, $2, 'DONE', '[]', 0), ($1, $2, 'CANCELLED', '[]', 0)`,
+        [tenantId, histTableId],
       );
 
       const delRes = await request(app.getHttpServer())

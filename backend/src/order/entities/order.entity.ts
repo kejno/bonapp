@@ -1,4 +1,13 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  UpdateDateColumn,
+} from 'typeorm';
+import { priceTransformer } from '../../database/price-transformer.js';
+import { TenantScopedEntity } from '../../database/tenant-scoped.entity.js';
 import { Table } from '../../table/entities/table.entity.js';
 
 export enum OrderStatus {
@@ -8,11 +17,15 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
-@Entity('orders')
-export class Order {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+export interface OrderItem {
+  menuItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
 
+@Entity('orders')
+export class Order extends TenantScopedEntity {
   @ManyToOne(() => Table, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'tableId' })
   @Column({ type: 'uuid' })
@@ -20,4 +33,16 @@ export class Order {
 
   @Column({ type: 'varchar', default: OrderStatus.NEW })
   status!: OrderStatus;
+
+  @Column({ type: 'jsonb' })
+  items!: OrderItem[];
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: priceTransformer })
+  totalAmount!: number;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
 }

@@ -75,7 +75,7 @@ function CartButton() {
         >
           <span>{totalCount}</span>
           <span>Корзина</span>
-          <span>{totalPrice} ₽</span>
+          <span>{totalPrice.toFixed(2)} ₽</span>
         </button>
       )}
       {open && (

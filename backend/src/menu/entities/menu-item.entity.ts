@@ -1,11 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { priceTransformer } from '../../database/price-transformer.js';
 import { TenantScopedEntity } from '../../database/tenant-scoped.entity.js';
 import { MenuCategory } from './menu-category.entity.js';
-
-const priceTransformer = {
-  to: (v: number) => v,
-  from: (v: string) => parseFloat(v),
-};
 
 @Entity('menu_items')
 export class MenuItem extends TenantScopedEntity {
