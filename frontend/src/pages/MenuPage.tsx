@@ -242,8 +242,21 @@ export function MenuPage() {
   }
 
   async function handleDeleteCategory(cat: MenuCategory) {
+    setActionError('');
+    let items: MenuItem[];
     const cached = itemsByCategory[cat.id];
-    const items = cached !== undefined ? cached : await loadItems(cat.id);
+    if (cached !== undefined) {
+      items = cached;
+    } else {
+      try {
+        const { data } = await api.get<MenuItem[]>(`/menu/items?categoryId=${cat.id}`);
+        setItemsByCategory((prev) => ({ ...prev, [cat.id]: data }));
+        items = data;
+      } catch {
+        setActionError('Не удалось загрузить позиции — удаление отменено');
+        return;
+      }
+    }
     if (items.length > 0) {
       const suffix = getItemSuffix(items.length);
       const confirmed = window.confirm(
@@ -251,7 +264,6 @@ export function MenuPage() {
       );
       if (!confirmed) return;
     }
-    setActionError('');
     try {
       await api.delete(`/menu/categories/${cat.id}`);
       if (expandedId === cat.id) setExpandedId(null);

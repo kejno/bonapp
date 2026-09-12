@@ -77,6 +77,20 @@ describe('MenuPage — handleDeleteCategory', () => {
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('21 позицию'));
   });
+
+  it('does not delete category when loadItems fails during delete', async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: [cat1] })
+      .mockRejectedValueOnce(new Error('Network error'));
+
+    render(<MenuPage />);
+    await screen.findByRole('button', { name: /Напитки/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить' }));
+
+    expect(api.delete).not.toHaveBeenCalled();
+    expect(screen.getByText(/Не удалось загрузить позиции — удаление отменено/)).toBeInTheDocument();
+  });
 });
 
 describe('MenuPage — handleSaveItem category change', () => {
@@ -141,5 +155,31 @@ describe('MenuPage — handleDeleteItem', () => {
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Вода'));
     expect(api.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('MenuPage — handleToggleAvailability', () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('sends PATCH with toggled isAvailable and refetches the category', async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: [cat1] })
+      .mockResolvedValueOnce({ data: [item1] })
+      .mockResolvedValueOnce({ data: [{ ...item1, isAvailable: false }] });
+
+    vi.mocked(api.patch).mockResolvedValueOnce({});
+
+    render(<MenuPage />);
+    await screen.findByRole('button', { name: /Напитки/ });
+    await userEvent.click(screen.getByRole('button', { name: /Напитки/ }));
+    await screen.findByText('Вода');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Доступно' }));
+
+    expect(api.patch).toHaveBeenCalledWith('/menu/items/item-1', { isAvailable: false });
+    const allGetCalls = vi.mocked(api.get).mock.calls as [string][];
+    expect(allGetCalls.some(([url]) => url.includes('/menu/items?categoryId=cat-1'))).toBe(true);
   });
 });
