@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from '../api/axios';
-import { MenuPage } from './MenuPage';
+import { AdminMenuPage as MenuPage } from './AdminMenuPage';
 
 vi.mock('../api/axios', () => ({
   api: {
