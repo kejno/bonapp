@@ -115,7 +115,17 @@ function CartPanel({ onClose }: { onClose: () => void }) {
         style={{ background: '#fff', width: '100%', borderRadius: '1rem 1rem 0 0', padding: '1.5rem', maxHeight: '60vh', overflowY: 'auto' }}
         onClick={e => e.stopPropagation()}
       >
-        <h2 style={{ margin: '0 0 1rem' }}>Корзина</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 1rem' }}>
+          <h2 style={{ margin: 0 }}>Корзина</h2>
+          <button
+            type="button"
+            aria-label="Закрыть корзину"
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}
+          >
+            ×
+          </button>
+        </div>
         {cartItems.length === 0 ? (
           <p style={{ color: '#999', textAlign: 'center', margin: '2rem 0' }}>Корзина пуста</p>
         ) : (
