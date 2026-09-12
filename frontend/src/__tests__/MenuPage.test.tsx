@@ -424,4 +424,211 @@ describe('MenuPage', () => {
       expect(screen.getByText(/сервис временно недоступен/i)).toBeInTheDocument()
     );
   });
+
+  // BNP-18: cart panel shows + button and total price
+  it('shows + and − buttons and total price in cart panel', async () => {
+    const user = userEvent.setup();
+    renderMenuPage('test-venue', 'table-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]); // add Кофе 150
+    await user.click(addButtons[0]); // add Кофе again → quantity 2
+
+    await user.click(screen.getByTestId('cart-button'));
+
+    expect(screen.getByRole('button', { name: /уменьшить количество: кофе/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /увеличить количество: кофе/i })).toBeInTheDocument();
+    expect(screen.getByText(/итого/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/300/).length).toBeGreaterThan(0);
+  });
+
+  // BNP-18: place order — success flow
+  it('places order and shows confirmation screen with orderId', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-42', status: 'pending' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument()
+    );
+    expect(screen.getByText(/order-42/)).toBeInTheDocument();
+    expect(screen.getByText(/официант уточнит детали оплаты/i)).toBeInTheDocument();
+  });
+
+  // BNP-18: POST body contains tenantId, tableId, items
+  it('sends correct POST body to /public/orders', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-1', status: 'pending' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-99');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]); // Кофе × 1
+    await user.click(addButtons[0]); // Кофе × 2
+
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+
+    const orderCall = fetchMock.mock.calls[1];
+    expect(orderCall[0]).toBe('/public/orders');
+    const body = JSON.parse(orderCall[1].body as string);
+    expect(body.tenantId).toBe('tenant-1');
+    expect(body.tableId).toBe('table-uuid-99');
+    expect(body.items).toEqual([{ menuItemId: 'item-1', quantity: 2 }]);
+  });
+
+  // BNP-18: cart cleared after successful order
+  it('clears cart after successful order', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-1', status: 'pending' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /в корзину/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+    expect(screen.queryByTestId('cart-button')).not.toBeInTheDocument();
+  });
+
+  // BNP-18: continue order returns to menu with empty cart
+  it('returns to menu on "Продолжить заказ" after confirmation', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-1', status: 'pending' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /в корзину/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /продолжить заказ/i }));
+
+    expect(screen.queryByText(/ваш заказ принят/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Кофе')).toBeInTheDocument();
+  });
+
+  // BNP-18: network error shows inline error, cart stays open
+  it('shows inline error on network failure and keeps cart panel open', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockRejectedValueOnce(new TypeError('Network error'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /в корзину/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    );
+    expect(screen.getByRole('dialog', { name: /корзина/i })).toBeInTheDocument();
+  });
+
+  // BNP-18: server error (5xx) shows inline error
+  it('shows inline error on server error (5xx)', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /в корзину/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    );
+    expect(screen.getByRole('dialog', { name: /корзина/i })).toBeInTheDocument();
+  });
+
+  // BNP-18: submit button disabled and shows spinner during request
+  it('disables submit button and shows spinner while submitting', async () => {
+    const user = userEvent.setup();
+    let resolveOrder!: (v: unknown) => void;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockReturnValueOnce(new Promise(res => { resolveOrder = res; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /в корзину/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    expect(screen.getByRole('button', { name: /оформить заказ/i })).toBeDisabled();
+
+    await act(async () => {
+      resolveOrder({ ok: true, json: () => Promise.resolve({ orderId: 'order-1', status: 'pending' }) });
+    });
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+  });
+
+  // BNP-18: multiple items in order POST body
+  it('sends multiple distinct items in POST body', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-99', status: 'pending' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMenuPage('test-venue', 'table-uuid-1');
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]); // Кофе
+    await user.click(addButtons[1]); // Чай
+
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(body.items).toHaveLength(2);
+    expect(body.items).toEqual(expect.arrayContaining([
+      { menuItemId: 'item-1', quantity: 1 },
+      { menuItemId: 'item-2', quantity: 1 },
+    ]));
+  });
 });
