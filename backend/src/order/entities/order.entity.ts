@@ -31,6 +31,9 @@ export class Order extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   tableId!: string;
 
+  @Column({ type: 'varchar' })
+  tableName!: string;
+
   @Column({ type: 'varchar', default: OrderStatus.NEW })
   status!: OrderStatus;
 

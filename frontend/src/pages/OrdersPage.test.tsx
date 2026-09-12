@@ -1,15 +1,28 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { OrderCard } from './OrdersPage';
+import { MemoryRouter } from 'react-router-dom';
+import { api } from '../api/axios';
+import { OrderCard, OrdersPage } from './OrdersPage';
+
+vi.mock('../api/axios', () => ({
+  api: { get: vi.fn(), patch: vi.fn() },
+}));
+
+afterEach(() => vi.resetAllMocks());
 
 const baseOrder = {
   id: 'order-1',
   tableId: 'table-A',
+  tableName: 'Зал 1',
   status: 'NEW' as const,
   items: [{ menuItemId: 'item-1', name: 'Вода', price: 50, quantity: 2 }],
   totalAmount: 100,
   createdAt: '2026-09-12T10:00:00.000Z',
 };
+
+const paginatedResponse = (orders: typeof baseOrder[]) => ({
+  data: { data: orders, total: orders.length, page: 1, limit: 50 },
+});
 
 describe('OrderCard — кнопки по статусу', () => {
   it('NEW: показывает "Принять в работу" и "Отменить"', () => {
@@ -71,5 +84,40 @@ describe('OrderCard — кнопки по статусу', () => {
     render(<OrderCard order={order} updatingId={null} onStatusChange={vi.fn()} />);
     expect(screen.getByText('Пицца × 1')).toBeInTheDocument();
     expect(screen.getByText('Кола × 2')).toBeInTheDocument();
+  });
+
+  it('показывает tableName вместо tableId', () => {
+    render(<OrderCard order={baseOrder} updatingId={null} onStatusChange={vi.fn()} />);
+    expect(screen.getByText('Стол: Зал 1')).toBeInTheDocument();
+    expect(screen.queryByText('Стол: table-A')).not.toBeInTheDocument();
+  });
+});
+
+describe('OrdersPage — логика компонента', () => {
+  it('сбрасывает ошибку загрузки после успешного повторного запроса', async () => {
+    vi.mocked(api.get)
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(paginatedResponse([baseOrder]));
+
+    render(<MemoryRouter><OrdersPage /></MemoryRouter>);
+    await screen.findByText('Ошибка загрузки заказов');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Новые' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('Ошибка загрузки заказов')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('показывает ошибку при неудачной смене статуса', async () => {
+    vi.mocked(api.get).mockResolvedValue(paginatedResponse([baseOrder]));
+    vi.mocked(api.patch).mockRejectedValueOnce(new Error('server error'));
+
+    render(<MemoryRouter><OrdersPage /></MemoryRouter>);
+    await screen.findByText('Принять в работу');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Принять в работу' }));
+
+    await screen.findByText('Не удалось изменить статус заказа');
   });
 });

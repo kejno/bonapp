@@ -66,7 +66,7 @@ describe('OrderService', () => {
   afterEach(() => vi.clearAllMocks());
 
   describe('createPublic', () => {
-    const mockTable = { id: TABLE_ID, tenantId: TENANT };
+    const mockTable = { id: TABLE_ID, tenantId: TENANT, name: 'Зал 1' };
     const mockMenuItem = { id: ITEM_ID, tenantId: TENANT, name: 'Burger', price: 9.99, isAvailable: true };
     const dto = { tenantId: TENANT, tableId: TABLE_ID, items: [{ menuItemId: ITEM_ID, quantity: 2 }] };
 
@@ -107,6 +107,19 @@ describe('OrderService', () => {
         expect.objectContaining({
           items: [{ menuItemId: ITEM_ID, name: 'Burger', price: 9.99, quantity: 2 }],
         }),
+      );
+    });
+
+    it('snapshots tableName from table.name at order creation', async () => {
+      tableRepo.findOne.mockResolvedValue(mockTable);
+      menuItemRepo.find.mockResolvedValue([mockMenuItem]);
+      orderRepo.create.mockImplementation((data) => data);
+      orderRepo.save.mockImplementation((data) => Promise.resolve({ ...data, id: ORDER_ID }));
+
+      await service.createPublic(dto);
+
+      expect(orderRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ tableName: 'Зал 1' }),
       );
     });
 
