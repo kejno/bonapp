@@ -4,17 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import MenuPage from '../pages/MenuPage.tsx';
 
-let testNavigate: ((to: string) => void) | null = null;
-
-function NavigationCapture() {
-  const navigate = useNavigate();
-  testNavigate = navigate;
-  return null;
-}
-
 function renderMenuPageWithNav(initialSlug: string, table?: string) {
+  let capturedNavigate: ReturnType<typeof useNavigate> | null = null;
+
+  function NavigationCapture() {
+    capturedNavigate = useNavigate();
+    return null;
+  }
+
   const path = `/menu/${initialSlug}${table !== undefined ? `?table=${table}` : ''}`;
-  return render(
+  const result = render(
     <MemoryRouter initialEntries={[path]}>
       <NavigationCapture />
       <Routes>
@@ -22,6 +21,8 @@ function renderMenuPageWithNav(initialSlug: string, table?: string) {
       </Routes>
     </MemoryRouter>
   );
+
+  return { ...result, navigate: (to: string) => capturedNavigate!(to) };
 }
 
 const mockMenu = {
@@ -72,7 +73,6 @@ describe('MenuPage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
-    testNavigate = null;
   });
 
   it('shows skeleton while loading', () => {
@@ -222,7 +222,7 @@ describe('MenuPage', () => {
   // Thread 10: state reset on slug change
   it('clears error and shows menu when navigating from errored slug to valid slug', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
-    renderMenuPageWithNav('bad-slug');
+    const { navigate } = renderMenuPageWithNav('bad-slug');
     await waitFor(() =>
       expect(screen.getByText(/заведение не найдено/i)).toBeInTheDocument()
     );
@@ -232,7 +232,7 @@ describe('MenuPage', () => {
       json: () => Promise.resolve(mockMenu),
     }));
 
-    act(() => { testNavigate!('/menu/test-venue'); });
+    act(() => { navigate('/menu/test-venue'); });
 
     await waitFor(() =>
       expect(screen.getByText('Тестовое Заведение')).toBeInTheDocument()
@@ -242,13 +242,13 @@ describe('MenuPage', () => {
 
   // Thread 10: old content not visible during fetch after slug change
   it('shows skeleton and not stale menu when navigating to a different slug', async () => {
-    renderMenuPageWithNav('test-venue');
+    const { navigate } = renderMenuPageWithNav('test-venue');
     await waitFor(() => screen.getByText('Тестовое Заведение'));
 
     // Hang the next fetch so skeleton stays visible
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
 
-    act(() => { testNavigate!('/menu/venue-b'); });
+    act(() => { navigate('/menu/venue-b'); });
 
     await waitFor(() =>
       expect(screen.getByTestId('skeleton-loader')).toBeInTheDocument()
@@ -377,5 +377,36 @@ describe('MenuPage', () => {
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  // Thread 19: CartPanel receives focus on open so Escape works in real browsers
+  it('cart panel receives focus when opened', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+    await user.click(screen.getByTestId('cart-button'));
+
+    const dialog = screen.getByRole('dialog', { name: /корзина/i });
+    expect(dialog).toHaveFocus();
+  });
+
+  // Thread 20: CartPanel shows empty state message when cart is emptied
+  it('shows empty cart message when all items removed', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    const addButtons = screen.getAllByRole('button', { name: /в корзину/i });
+    await user.click(addButtons[0]);
+
+    await user.click(screen.getByTestId('cart-button'));
+
+    const removeBtn = screen.getByRole('button', { name: /уменьшить количество: кофе/i });
+    await user.click(removeBtn);
+
+    expect(screen.getByText(/корзина пуста/i)).toBeInTheDocument();
   });
 });

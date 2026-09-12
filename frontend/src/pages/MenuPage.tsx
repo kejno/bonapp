@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { fetchPublicMenu } from '../api/publicMenu.ts';
 import { CartProvider, useCart } from '../context/CartContext.tsx';
@@ -87,11 +87,19 @@ function CartButton() {
 
 function CartPanel({ onClose }: { onClose: () => void }) {
   const { cartItems, removeItem } = useCart();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+
   return (
     <div
+      ref={panelRef}
       role="dialog"
       aria-modal="true"
       aria-label="Корзина"
+      tabIndex={-1}
       style={{
         position: 'fixed',
         inset: 0,
@@ -108,13 +116,17 @@ function CartPanel({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}
       >
         <h2 style={{ margin: '0 0 1rem' }}>Корзина</h2>
-        {cartItems.map(ci => (
-          <div key={ci.item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span>{ci.item.name} × {ci.quantity}</span>
-            <span>{ci.item.price * ci.quantity} ₽</span>
-            <button type="button" aria-label={`Уменьшить количество: ${ci.item.name}`} onClick={() => removeItem(ci.item.id)} style={{ marginLeft: '0.5rem' }}>−</button>
-          </div>
-        ))}
+        {cartItems.length === 0 ? (
+          <p style={{ color: '#999', textAlign: 'center', margin: '2rem 0' }}>Корзина пуста</p>
+        ) : (
+          cartItems.map(ci => (
+            <div key={ci.item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span>{ci.item.name} × {ci.quantity}</span>
+              <span>{ci.item.price * ci.quantity} ₽</span>
+              <button type="button" aria-label={`Уменьшить количество: ${ci.item.name}`} onClick={() => removeItem(ci.item.id)} style={{ marginLeft: '0.5rem' }}>−</button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
