@@ -37,6 +37,8 @@ export function Tables() {
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -51,7 +53,7 @@ export function Tables() {
     setCreateError('');
     setCreating(true);
     try {
-      const { data } = await api.post<Table>('/tables', { name });
+      const { data } = await api.post<Table>('/tables', { name: name.trim() });
       setTables((prev) => [...prev, data]);
       setName('');
     } catch {
@@ -63,21 +65,28 @@ export function Tables() {
 
   async function handleDelete(table: Table) {
     if (!window.confirm(`Удалить стол "${table.name}"?`)) return;
+    setDeletingId(table.id);
     try {
       await api.delete(`/tables/${table.id}`);
       setTables((prev) => prev.filter((t) => t.id !== table.id));
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
       window.alert(msg ?? 'Ошибка удаления стола');
+    } finally {
+      setDeletingId(null);
     }
   }
 
   async function handleDownloadQr(table: Table) {
+    if (downloadingId === table.id) return;
+    setDownloadingId(table.id);
     try {
       const { data } = await api.get<Blob>(`/tables/${table.id}/qr`, { responseType: 'blob' });
       downloadQr(data, table.name);
     } catch {
       window.alert('Ошибка получения QR-кода');
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -110,10 +119,18 @@ export function Tables() {
           <li key={table.id} style={itemStyle}>
             <span>{table.name}</span>
             <div style={actionsStyle}>
-              <button type="button" onClick={() => handleDownloadQr(table)}>
-                Скачать QR
+              <button
+                type="button"
+                onClick={() => handleDownloadQr(table)}
+                disabled={downloadingId === table.id}
+              >
+                {downloadingId === table.id ? 'Загрузка...' : 'Скачать QR'}
               </button>
-              <button type="button" onClick={() => handleDelete(table)}>
+              <button
+                type="button"
+                onClick={() => handleDelete(table)}
+                disabled={deletingId === table.id}
+              >
                 Удалить
               </button>
             </div>
