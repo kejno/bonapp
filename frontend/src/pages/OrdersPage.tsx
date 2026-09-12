@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import axios from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/axios';
@@ -146,14 +147,15 @@ export function OrdersPage() {
   const raw = searchParams.get('status');
   const statusFilter = (raw && VALID_STATUSES.includes(raw as OrderStatus) ? raw : null) as OrderStatus | null;
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (signal?: AbortSignal) => {
     try {
       const params: Record<string, string> = { limit: '50' };
       if (statusFilter) params.status = statusFilter;
-      const { data } = await api.get<PaginatedOrders>('/orders', { params });
+      const { data } = await api.get<PaginatedOrders>('/orders', { params, signal });
       setError('');
       setOrders(data.data);
-    } catch {
+    } catch (err) {
+      if (axios.isCancel(err)) return;
       setError('Ошибка загрузки заказов');
     } finally {
       setLoading(false);
@@ -162,10 +164,12 @@ export function OrdersPage() {
   }, [statusFilter]);
 
   useEffect(() => {
+    const controller = new AbortController();
     if (isFirstLoad.current) {
       setLoading(true);
     }
-    void fetchOrders();
+    void fetchOrders(controller.signal);
+    return () => controller.abort();
   }, [fetchOrders]);
 
   useEffect(() => {
@@ -209,7 +213,7 @@ export function OrdersPage() {
         <div style={{ display: 'flex', gap: 6 }}>
           {FILTER_OPTIONS.map((opt) => (
             <button
-              key={opt.value}
+              key={opt.label}
               type="button"
               onClick={() => handleFilterChange(opt.value)}
               style={{

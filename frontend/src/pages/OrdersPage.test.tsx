@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -119,5 +120,17 @@ describe('OrdersPage — логика компонента', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Принять в работу' }));
 
     await screen.findByText('Не удалось изменить статус заказа');
+  });
+
+  it('не показывает ошибку при отмене запроса', async () => {
+    const cancelError = new axios.CanceledError('cancelled');
+    vi.mocked(api.get).mockRejectedValueOnce(cancelError);
+
+    render(<MemoryRouter><OrdersPage /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Загрузка...')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('Ошибка загрузки заказов')).not.toBeInTheDocument();
   });
 });
