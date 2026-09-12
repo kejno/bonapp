@@ -36,6 +36,15 @@ interface ItemFormState {
 
 const EMPTY_CATEGORY_FORM: CategoryFormState = { name: '', isVisible: true };
 
+function getItemSuffix(n: number): string {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'ий';
+  if (mod10 === 1) return 'ию';
+  if (mod10 >= 2 && mod10 <= 4) return 'ии';
+  return 'ий';
+}
+
 function emptyItemForm(categoryId: string): ItemFormState {
   return { name: '', description: '', price: '', imageUrl: '', categoryId, isAvailable: true };
 }
@@ -180,12 +189,14 @@ export function MenuPage() {
     void loadCategories();
   }, [loadCategories]);
 
-  async function loadItems(categoryId: string) {
+  async function loadItems(categoryId: string): Promise<MenuItem[]> {
     try {
       const { data } = await api.get<MenuItem[]>(`/menu/items?categoryId=${categoryId}`);
       setItemsByCategory((prev) => ({ ...prev, [categoryId]: data }));
+      return data;
     } catch {
       setActionError('Не удалось загрузить позиции');
+      return [];
     }
   }
 
@@ -231,9 +242,10 @@ export function MenuPage() {
   }
 
   async function handleDeleteCategory(cat: MenuCategory) {
-    const items = itemsByCategory[cat.id] ?? [];
+    const cached = itemsByCategory[cat.id];
+    const items = cached !== undefined ? cached : await loadItems(cat.id);
     if (items.length > 0) {
-      const suffix = items.length === 1 ? 'ию' : items.length < 5 ? 'ии' : 'ий';
+      const suffix = getItemSuffix(items.length);
       const confirmed = window.confirm(
         `Категория содержит ${items.length} позиц${suffix}. Удалить категорию вместе с позициями?`,
       );
@@ -280,12 +292,14 @@ export function MenuPage() {
     if (!itemFormCategoryId) return;
     setActionError('');
     try {
+      const originalCategoryId = editingItem?.categoryId;
+      const newCategoryId = itemForm.categoryId;
       const payload = {
         name: itemForm.name,
         description: itemForm.description,
         price: parseFloat(itemForm.price),
         imageUrl: itemForm.imageUrl,
-        categoryId: itemForm.categoryId,
+        categoryId: newCategoryId,
         isAvailable: itemForm.isAvailable,
       };
       if (editingItem) {
@@ -295,13 +309,17 @@ export function MenuPage() {
       }
       setItemFormCategoryId(null);
       setEditingItem(null);
-      await loadItems(itemForm.categoryId);
+      await loadItems(newCategoryId);
+      if (originalCategoryId && originalCategoryId !== newCategoryId) {
+        await loadItems(originalCategoryId);
+      }
     } catch {
       setActionError('Не удалось сохранить позицию');
     }
   }
 
   async function handleDeleteItem(item: MenuItem) {
+    if (!window.confirm(`Удалить позицию «${item.name}»?`)) return;
     setActionError('');
     try {
       await api.delete(`/menu/items/${item.id}`);
