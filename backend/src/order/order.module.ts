@@ -15,6 +15,5 @@ import { PublicOrderController } from './public-order.controller.js';
   ],
   controllers: [OrderController, PublicOrderController],
   providers: [OrderService],
-  exports: [TypeOrmModule],
 })
 export class OrderModule {}
