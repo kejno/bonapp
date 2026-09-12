@@ -409,4 +409,19 @@ describe('MenuPage', () => {
 
     expect(screen.getByText(/корзина пуста/i)).toBeInTheDocument();
   });
+
+  // Thread 23: API validation — category missing items field
+  it('shows service unavailable when API returns category without items field', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ...mockMenu,
+        categories: [{ id: 'cat-1', name: 'Напитки', sortOrder: 0 }], // no items field
+      }),
+    }));
+    renderMenuPage();
+    await waitFor(() =>
+      expect(screen.getByText(/сервис временно недоступен/i)).toBeInTheDocument()
+    );
+  });
 });
