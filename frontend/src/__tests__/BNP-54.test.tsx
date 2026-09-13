@@ -92,4 +92,27 @@ describe('BNP-54: Кнопка «Продолжить заказ» — возв�
 
     expect(screen.getByText(/Стол table-uuid-42/i)).toBeInTheDocument();
   });
+
+  it('repeat order after «Продолжить заказ» sends POST with original tableId and tenantId', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-bnp54', status: 'NEW' }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ orderId: 'order-repeat', status: 'NEW' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const user = userEvent.setup();
+    renderMenuPage('table-uuid-42');
+    await placeOrderFlow(user);
+    await user.click(screen.getByRole('button', { name: /продолжить заказ/i }));
+
+    await user.click(screen.getAllByRole('button', { name: /добавить в корзину: кофе/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /оформить заказ/i }));
+    await waitFor(() => expect(screen.getByText(/ваш заказ принят/i)).toBeInTheDocument());
+
+    const repeatCall = fetchMock.mock.calls[2];
+    const body = JSON.parse(repeatCall[1].body);
+    expect(body.tableId).toBe('table-uuid-42');
+    expect(body.tenantId).toBe('tenant-uuid-1');
+  });
 });

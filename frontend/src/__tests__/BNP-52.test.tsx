@@ -37,12 +37,6 @@ describe('BNP-52: Ошибка сети или сервера при оформ�
     localStorage.clear();
   });
 
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) }),
-    );
-  });
-
   it('shows inline error alert on network failure and keeps cart panel open', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockMenu) })
@@ -59,6 +53,7 @@ describe('BNP-52: Ошибка сети или сервера при оформ�
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: /корзина/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /оформить заказ/i })).not.toBeDisabled();
   });
 
   it('shows inline error alert on server 500 error and keeps cart panel open', async () => {
@@ -77,6 +72,7 @@ describe('BNP-52: Ошибка сети или сервера при оформ�
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: /корзина/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /оформить заказ/i })).not.toBeDisabled();
   });
 
   it('cart items are preserved after error — cart not cleared', async () => {

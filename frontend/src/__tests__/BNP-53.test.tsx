@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -85,6 +85,20 @@ describe('BNP-53: Панель корзины — кнопки +/- меняют 
     await user.click(screen.getByRole('button', { name: /уменьшить количество: кофе/i }));
 
     expect(screen.getAllByText(/150/).length).toBeGreaterThan(0);
+  });
+
+  it('− button removes item from cart when quantity reaches 0 and disables checkout button', async () => {
+    const user = userEvent.setup();
+    renderMenuPage();
+    await waitFor(() => screen.getByText('Кофе'));
+
+    await user.click(screen.getAllByRole('button', { name: /добавить в корзину: кофе/i })[0]);
+    await user.click(screen.getByTestId('cart-button'));
+    await user.click(screen.getByRole('button', { name: /уменьшить количество: кофе/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /корзина/i });
+    expect(within(dialog).queryByText('Кофе')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /оформить заказ/i })).not.toBeInTheDocument();
   });
 
   it('cart panel shows Итого section with total price', async () => {
