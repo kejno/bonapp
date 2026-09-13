@@ -4,6 +4,16 @@ import { fetchPublicMenu } from '../api/publicMenu.ts';
 import { CartProvider, useCart } from '../context/CartContext.tsx';
 import type { MenuItem, PublicMenu } from '../types/menu.ts';
 
+async function placeOrder(tenantId: string, tableId: string, items: Array<{ menuItemId: string; quantity: number }>): Promise<{ orderId: string; status: string }> {
+  const res = await fetch('/public/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantId, tableId, items }),
+  });
+  if (!res.ok) throw new Error('server_error');
+  return res.json() as Promise<{ orderId: string; status: string }>;
+}
+
 function SkeletonLoader() {
   return (
     <div data-testid="skeleton-loader" style={{ padding: '1rem' }}>
@@ -43,7 +53,12 @@ function MenuItemCard({ item }: MenuItemCardProps) {
   );
 }
 
-function CartButton() {
+interface CartButtonProps {
+  tenantId: string;
+  tableId: string | null;
+}
+
+function CartButton({ tenantId, tableId }: CartButtonProps) {
   const { totalCount, totalPrice } = useCart();
   const [open, setOpen] = useState(false);
 
@@ -79,19 +94,85 @@ function CartButton() {
         </button>
       )}
       {open && (
-        <CartPanel onClose={() => setOpen(false)} />
+        <CartPanel tenantId={tenantId} tableId={tableId} onClose={() => setOpen(false)} />
       )}
     </>
   );
 }
 
-function CartPanel({ onClose }: { onClose: () => void }) {
-  const { cartItems, removeItem } = useCart();
+interface OrderConfirmation {
+  orderId: string;
+}
+
+interface CartPanelProps {
+  tenantId: string;
+  tableId: string | null;
+  onClose: () => void;
+}
+
+function CartPanel({ tenantId, tableId, onClose }: CartPanelProps) {
+  const { cartItems, addItem, removeItem, totalPrice, clearCart } = useCart();
   const panelRef = useRef<HTMLDivElement>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
+
+  async function handlePlaceOrder() {
+    if (!tableId) return;
+    setSubmitting(true);
+    setOrderError(null);
+    try {
+      const items = cartItems.map(ci => ({ menuItemId: ci.item.id, quantity: ci.quantity }));
+      const result = await placeOrder(tenantId, tableId, items);
+      clearCart();
+      setConfirmation({ orderId: result.orderId });
+    } catch {
+      setOrderError('Не удалось отправить заказ. Попробуйте ещё раз.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (confirmation) {
+    return (
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Корзина"
+        tabIndex={-1}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.4)',
+          zIndex: 200,
+          display: 'flex',
+          alignItems: 'flex-end',
+        }}
+        onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+      >
+        <div
+          style={{ background: '#fff', width: '100%', borderRadius: '1rem 1rem 0 0', padding: '1.5rem', textAlign: 'center' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <p style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem' }}>Ваш заказ принят!</p>
+          <p style={{ color: '#666', marginBottom: '0.5rem' }}>Ожидайте, официант уточнит детали оплаты</p>
+          <p style={{ color: '#999', fontSize: '0.875rem', marginBottom: '1.5rem' }}>№ {confirmation.orderId}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: '#333', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer', width: '100%' }}
+          >
+            Продолжить заказ
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -129,13 +210,35 @@ function CartPanel({ onClose }: { onClose: () => void }) {
         {cartItems.length === 0 ? (
           <p style={{ color: '#999', textAlign: 'center', margin: '2rem 0' }}>Корзина пуста</p>
         ) : (
-          cartItems.map(ci => (
-            <div key={ci.item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <span>{ci.item.name} × {ci.quantity}</span>
-              <span>{ci.item.price * ci.quantity} ₽</span>
-              <button type="button" aria-label={`Уменьшить количество: ${ci.item.name}`} onClick={() => removeItem(ci.item.id)} style={{ marginLeft: '0.5rem' }}>−</button>
+          <>
+            {cartItems.map(ci => (
+              <div key={ci.item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ flex: 1 }}>{ci.item.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <button type="button" aria-label={`Уменьшить количество: ${ci.item.name}`} onClick={() => removeItem(ci.item.id)} style={{ padding: '0.25rem 0.5rem' }}>−</button>
+                  <span>{ci.quantity}</span>
+                  <button type="button" aria-label={`Увеличить количество: ${ci.item.name}`} onClick={() => addItem(ci.item)} style={{ padding: '0.25rem 0.5rem' }}>+</button>
+                </div>
+                <span style={{ marginLeft: '0.5rem' }}>{ci.item.price * ci.quantity} ₽</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, margin: '1rem 0 0.5rem', borderTop: '1px solid #eee', paddingTop: '0.75rem' }}>
+              <span>Итого</span>
+              <span>{totalPrice.toFixed(2)} ₽</span>
             </div>
-          ))
+            {orderError && (
+              <p role="alert" style={{ color: '#c00', margin: '0.5rem 0' }}>{orderError}</p>
+            )}
+            <button
+              type="button"
+              aria-label="Оформить заказ"
+              disabled={submitting}
+              onClick={handlePlaceOrder}
+              style={{ width: '100%', marginTop: '0.75rem', padding: '0.75rem', background: submitting ? '#999' : '#333', color: '#fff', border: 'none', borderRadius: '0.5rem', fontSize: '1rem', cursor: submitting ? 'default' : 'pointer' }}
+            >
+              {submitting ? '...' : 'Оформить заказ'}
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -180,7 +283,7 @@ function MenuContent({ menu, tableId }: MenuContentProps) {
           ))}
       </main>
 
-      <CartButton />
+      <CartButton tenantId={menu.tenantId} tableId={tableId} />
     </CartProvider>
   );
 }

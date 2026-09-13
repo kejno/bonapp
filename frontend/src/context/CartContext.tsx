@@ -15,6 +15,7 @@ interface CartContextValue {
   totalPrice: number;
   addItem: (item: MenuItem) => void;
   removeItem: (itemId: string) => void;
+  clearCart: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -80,9 +81,13 @@ export function CartProvider({ children, tableId, slug }: CartProviderProps) {
     });
   }, []);
 
+  const clearCart = useCallback(() => {
+    setCartItems([]);
+  }, []);
+
   const value = useMemo(
-    () => ({ cartItems, totalCount, totalPrice, addItem, removeItem }),
-    [cartItems, totalCount, totalPrice, addItem, removeItem]
+    () => ({ cartItems, totalCount, totalPrice, addItem, removeItem, clearCart }),
+    [cartItems, totalCount, totalPrice, addItem, removeItem, clearCart]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

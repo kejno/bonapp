@@ -72,6 +72,7 @@ export class OrderService {
     const order = this.orderRepo.create({
       tenantId: dto.tenantId,
       tableId: dto.tableId,
+      tableName: table.name,
       items,
       totalAmount,
       status: OrderStatus.NEW,

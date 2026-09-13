@@ -8,6 +8,7 @@ import { AdminMenuPage } from './pages/AdminMenuPage'
 import { Login } from './pages/Login'
 import MenuPage from './pages/MenuPage.tsx'
 import { Register } from './pages/Register'
+import { OrdersPage } from './pages/OrdersPage'
 import { Tables } from './pages/Tables'
 
 createRoot(document.getElementById('root')!).render(
@@ -20,7 +21,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<PrivateRoute />}>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="orders" replace />} />
-            <Route path="orders" element={<div>Заказы</div>} />
+            <Route path="orders" element={<OrdersPage />} />
             <Route path="menu" element={<AdminMenuPage />} />
             <Route path="tables" element={<Tables />} />
           </Route>

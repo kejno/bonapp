@@ -247,17 +247,6 @@ function triggerReworkIfConfigured(ticketKey, config, customParams) {
     }
 }
 
-function markForSmTestRework(ticketKey) {
-    try {
-        jira_add_label({ key: ticketKey, label: 'sm_test_rework_triggered' });
-        console.log('✅ Added SM rework label: sm_test_rework_triggered');
-        return true;
-    } catch (e) {
-        console.warn('⚠️ Failed to add SM rework label:', e.message || e);
-        return false;
-    }
-}
-
 function resolveCustomParams(params, config) {
     var merged = {};
     var patch = configLoader.resolveInstructions(
@@ -430,7 +419,8 @@ function action(params) {
                 jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.IN_REWORK });
                 console.log('✅ Changes requested — moved', ticketKey, 'to In Rework');
                 if (!triggerReworkIfConfigured(ticketKey, config, customParams)) {
-                    markForSmTestRework(ticketKey);
+                    // SM will pick this up via its own JQL poll on status "In Rework"
+                    // and apply its own idempotency label when it actually dispatches rework.
                     autoStart.triggerSmIfIdle({ config: config, customParams: customParams });
                 }
             } catch (e) {
