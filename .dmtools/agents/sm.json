@@ -167,6 +167,14 @@
           "enabled": true
         },
         {
+          "description": "In Rework Test Cases → trigger pr_test_automation_rework",
+          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Rework')",
+          "configFile": "agents/pr_test_automation_rework.json",
+          "skipIfLabel": "sm_test_rework_triggered",
+          "addLabel": "sm_test_rework_triggered",
+          "enabled": true
+        },
+        {
           "description": "In Review Test Cases → trigger pr_test_automation_review",
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
           "configFile": "agents/pr_test_automation_review.json",
@@ -179,14 +187,6 @@
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed')",
           "configFile": "agents/recover_dirty_review_test_case.json",
           "localExecution": true,
-          "enabled": true
-        },
-        {
-          "description": "In Rework Test Cases → trigger pr_test_automation_rework",
-          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Rework')",
-          "configFile": "agents/pr_test_automation_rework.json",
-          "skipIfLabel": "sm_test_rework_triggered",
-          "addLabel": "sm_test_rework_triggered",
           "enabled": true
         },
         {
