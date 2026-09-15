@@ -44,14 +44,13 @@ jobs:
       cancel-in-progress: false
 
     # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
-    # TypeORM connection (see apps/api/src/database/database.module.ts) —
+    # Prisma/PostgreSQL connection (see apps/api/src/prisma/prisma.service.ts) —
     # it does not mock the database. Without this service, every
     # integration test run (story_test_automation, bug_test_automation,
     # bug_development's TDD reproduction step, and any manual `npm run
     # test:e2e -w apps/api` the agent tries) fails or hangs on a connection
     # that never comes up. Host/port/credentials match
-    # apps/api/.env.example's defaults, which database.module.ts also
-    # falls back to when DB_* env vars are unset.
+    # apps/api/.env.example's DATABASE_URL default.
     services:
       postgres:
         image: postgres:16-alpine
@@ -89,6 +88,9 @@ jobs:
 
       - name: Install project dependencies
         run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
 
       - name: Cache DMTools
         id: cache-dmtools

@@ -5,7 +5,7 @@ QR-меню для гостя, кухонный KDS-экран в реально
 
 ## Монорепозиторий
 
-Turborepo / pnpm workspaces:
+Turborepo + npm workspaces:
 
 - `apps/guest-web` — гостевой QR-клиент (мобильный PWA). Критичны холодный
   старт (<0.4с на 3G/LTE) и размер бандла (<150 КБ). React + Vite + Zustand.
@@ -47,8 +47,8 @@ Turborepo / pnpm workspaces:
 - **Jest** — тесты (юнит co-located `*.spec.ts`, e2e в `test/*.e2e-spec.ts`,
   стандартный Nest CLI layout).
 - **PostgreSQL** — основное хранилище (tenants, users, orders, tables,
-  fiscal payments). ORM — Prisma или Drizzle (зафиксировать один вариант при
-  первой миграции, не смешивать).
+  fiscal payments). ORM — **Prisma** (`apps/api/prisma/schema.prisma`,
+  `PrismaService`/`PrismaModule` в `apps/api/src/prisma/`).
 - **Redis + BullMQ** — кэш меню, WebSocket rooms, очередь payment webhooks.
 - **Socket.io** — real-time слой (KDS, статусы заказов).
 
@@ -69,6 +69,23 @@ Auth — JWT для персонала, Table Session для гостя (без 
 
 Все платёжные webhooks идут через Redis/BullMQ очередь, не обрабатывать
 синхронно в HTTP-хендлере.
+
+## Быстрый старт
+
+```
+npm install
+cp apps/api/.env.example apps/api/.env   # затем поднять Postgres/Redis локально
+npx prisma generate --schema apps/api/prisma/schema.prisma
+npm run dev     # turbo run dev — все apps параллельно
+npm run build   # turbo run build
+npm test        # turbo run test — юнит-тесты всех apps
+npm run lint
+```
+
+`apps/guest-web` слушает 5173, `apps/admin-web` — 5174 (задано явно в обоих
+`playwright.config.ts`, чтобы dev-серверы не конфликтовали при параллельном
+запуске e2e). `packages/shared-types` — pure TS, без build step, apps/*
+импортируют `src/index.ts` напрямую через workspace-symlink.
 
 ## Тестирование — где что писать
 
