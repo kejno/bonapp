@@ -146,9 +146,9 @@ function isSubmodulePath(path) {
 }
 
 // testFilesGlob may be a single path (legacy) or an array of paths/pathspecs
-// — this project has test code under more than one root (backend/test/ +
-// co-located backend/src/**/*.spec.ts, and the equivalent frontend/ paths
-// once frontend tests exist). Staging or matching against only the first
+// — this project has test code under more than one root (apps/api/test/ +
+// co-located apps/api/src/**/*.spec.ts, and the equivalent apps/guest-web/src/
+// and apps/admin-web/src/ paths). Staging or matching against only the first
 // one would silently miss real changes under the others.
 function testFilesRoots(config) {
     const raw = (config.customParams && config.customParams.testFilesGlob) || 'testing/';

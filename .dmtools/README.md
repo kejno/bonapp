@@ -9,6 +9,14 @@ Story- и Bug-пайплайны из https://github.com/IstiN/dmtools-agents, �
 В bonapp пайплайн ещё не запускался — конфиг (`config.js`) указывает на
 `kejno/bonapp` и Jira-проект `BNP`, но живой прогон здесь предстоит.**
 
+**Целевая структура репозитория (см. `/CLAUDE.md` в корне для полного
+стека):** монорепо `apps/api` (NestJS+Jest), `apps/guest-web` и
+`apps/admin-web` (React+Vite+Vitest+Playwright), `packages/shared-types`.
+Test-automation job-конфиги (`testFilesGlob`) и инструкции ниже уже
+рассчитаны на эту структуру, а не на плоские `backend/`/`frontend/`,
+упомянутые в историческом разделе «Что уже сделано» ниже (та запись
+описывает раннее состояние скелета на момент первого intake-прогона).
+
 Полный пайплайн: Epic в Backlog → **intake** (разбивка на Story) → вопросы →
 BA Analysis → Acceptance Criteria → Solution Architecture →
 Ready For Development → разработка (branch+PR) → In Review →
@@ -241,9 +249,10 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
   string. All four job configs (`story_test_automation`,
   `bug_test_automation`, `pr_test_automation_rework`,
   `story_test_automation_rework`/`bug_test_automation_rework`) list every
-  test root the project could plausibly use: `backend/test/`,
-  `backend/src/**/*.spec.ts`, and the `frontend/` equivalents (unused until
-  frontend tests exist — `git add` on a non-existent path/pathspec is a
+  test root the project could plausibly use: `apps/api/test/`,
+  `apps/api/src/**/*.spec.ts`, and the `apps/guest-web`/`apps/admin-web`
+  equivalents (unused until those tests exist — `git add` on a non-existent
+  path/pathspec is a
   harmless no-op, not an error). `performGitOperations()`,
   `stageUnmergedPaths()`/`commitAndPush()` in `postTestReworkResults.js`,
   and `storyTestAutomationRework.js`'s own `commitAndPush()` all loop over

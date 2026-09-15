@@ -6,7 +6,7 @@ flowchart TD
     O4["Write outputs/pr_review_comments/ — directory with individual inline comment files"]
     O5["If pr_discussions.md present → include resolvedThreadIds in pr_review.json"]
     O6["Tracker-specific formatting is injected via cliPromptsByTracker — do NOT hardcode Jira/ADO markup in response.md"]
-    O7["A test-automation PR usually covers several Test Cases in one branch (one spec file per ticket, e.g. backend/test/BNP-27.e2e-spec.ts) — the postJSAction re-runs this same review once per linked Test Case and applies ITS OWN verdict, not a shared one, so pr_review.json MUST include perTestCase (see below)"]
+    O7["A test-automation PR usually covers several Test Cases in one branch (one spec file per ticket, e.g. apps/api/test/BNP-27.e2e-spec.ts) — the postJSAction re-runs this same review once per linked Test Case and applies ITS OWN verdict, not a shared one, so pr_review.json MUST include perTestCase (see below)"]
     O1 --> O2 --> O3 --> O4 --> O5 --> O6 --> O7
 ```
 
@@ -26,7 +26,7 @@ diff:
 ```
 
 - Key = the Test Case ticket key. Determine it from the spec file name
-  (`backend/test/{KEY}.e2e-spec.ts`, or a co-located `*.spec.ts` for a
+  (`apps/api/test/{KEY}.e2e-spec.ts`, or a co-located `*.spec.ts` for a
   unit-scoped Test Case) for every Test Case ticket linked to this PR's
   parent Story, whether or not that Test Case's file changed in this diff —
   a ticket with no blocking issues in the diff is `"APPROVE"`.

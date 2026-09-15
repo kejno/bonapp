@@ -18,7 +18,7 @@
     },
     "customParams": {
       "removeLabel": "sm_story_test_automation_triggered",
-      "testFilesGlob": ["backend/test/", "backend/src/**/*.spec.ts", "frontend/test/", "frontend/src/**/*.spec.ts", "frontend/src/**/*.test.ts", "frontend/src/**/*.test.tsx"]
+      "testFilesGlob": ["apps/api/test/", "apps/api/src/**/*.spec.ts", "apps/guest-web/test/", "apps/guest-web/src/**/*.spec.ts", "apps/guest-web/src/**/*.test.ts", "apps/guest-web/src/**/*.test.tsx", "apps/admin-web/test/", "apps/admin-web/src/**/*.spec.ts", "apps/admin-web/src/**/*.test.ts", "apps/admin-web/src/**/*.test.tsx"]
     },
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliStoryTestAutomationSetup.js",

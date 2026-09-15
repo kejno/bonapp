@@ -328,7 +328,7 @@ function publishExistingBranch(branchName, workingDir) {
 function performGitOperations(branchName, commitMessage, workingDir, testFilesPath) {
     // testFilesPath may be a single path (legacy) or an array of paths/
     // pathspecs — a project can have test code under more than one root
-    // (e.g. backend/test/ + frontend/test/), and staging only one silently
+    // (e.g. apps/api/test/ + apps/guest-web/src/ + apps/admin-web/src/), and staging only one silently
     // drops every change outside it: `git diff --cached --stat` comes back
     // empty, this function reports "no changes" as if nothing was written,
     // and the commit/push never happens even though Claude Code's real fix
@@ -352,7 +352,7 @@ function performGitOperations(branchName, commitMessage, workingDir, testFilesPa
                 runInRepo('git add ' + addPaths[j], workingDir);
             } catch (addErr) {
                 // A path/pathspec matching nothing in this checkout (e.g.
-                // frontend/test/ before any frontend tests exist) is not an
+                // apps/admin-web/src/ before any admin-web tests exist) is not an
                 // error — the other paths in the list may still have real
                 // changes to stage.
                 console.warn('git add ' + addPaths[j] + ' failed (path may not exist yet):', addErr);
@@ -538,8 +538,8 @@ function moveSkippedTcToStatus(tcKey, skippedStatus) {
 }
 
 // Test files in this project are flat, named by ticket key
-// (backend/test/{TCKEY}.e2e-spec.ts or a co-located
-// backend/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
+// (apps/api/test/{TCKEY}.e2e-spec.ts or a co-located
+// apps/api/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
 // <root>/tests/<TCKEY>/ directory layout. Build every plausible location a
 // Test Case's spec could live under any of the configured test roots, in
 // either the integration (*.e2e-spec.ts) or unit (*.spec.ts/*.test.ts(x))

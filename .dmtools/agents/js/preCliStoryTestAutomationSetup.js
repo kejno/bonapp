@@ -305,8 +305,8 @@ function writePrContext(storyKey, scm, pr) {
 }
 
 // Test files in this project are flat, named by ticket key
-// (backend/test/{TCKEY}.e2e-spec.ts or a co-located
-// backend/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
+// (apps/api/test/{TCKEY}.e2e-spec.ts or a co-located
+// apps/api/src/**/{TCKEY}*.spec.ts) — not the old framework-agnostic
 // <root>/tests/<TCKEY>/ directory layout. Build every plausible location a
 // Test Case's spec could live under any of the configured test roots.
 function getTestCasePaths(tcKey, testFilesPath) {

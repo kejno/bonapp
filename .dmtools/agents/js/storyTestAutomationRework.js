@@ -143,14 +143,14 @@ function commitAndPush(storyKey, config) {
     runInRepo('git config user.email "' + config.git.authorEmail + '"', workingDir);
 
     // testFilesGlob may be a single path (legacy) or an array — this
-    // project has test code under more than one root (backend/test/ +
-    // co-located backend/src/**/*.spec.ts, and the frontend/ equivalents
-    // once frontend tests exist). Staging only one silently drops real
-    // changes under the others: `git diff --cached --stat` comes back
-    // empty, this function logs "no changes" even though Claude Code's
-    // real fix is sitting on disk, and the rework is never actually
-    // committed. See .dmtools/README.md known bugs 6/6b.
-    var rawTestFilesGlob = (config.customParams && config.customParams.testFilesGlob) || 'backend/test/';
+    // project has test code under more than one root (apps/api/test/ +
+    // co-located apps/api/src/**/*.spec.ts, plus the equivalent
+    // apps/guest-web/ and apps/admin-web/ unit-test paths). Staging only
+    // one silently drops real changes under the others: `git diff --cached
+    // --stat` comes back empty, this function logs "no changes" even
+    // though Claude Code's real fix is sitting on disk, and the rework is
+    // never actually committed. See .dmtools/README.md known bugs 6/6b.
+    var rawTestFilesGlob = (config.customParams && config.customParams.testFilesGlob) || 'testing/';
     var testFilesPaths = Array.isArray(rawTestFilesGlob) ? rawTestFilesGlob : [rawTestFilesGlob];
     testFilesPaths.forEach(function(p) {
         try {

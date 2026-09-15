@@ -4,31 +4,33 @@ You are automating a Story that has reached **Ready For Testing**. The Story
 already has linked Test Case tickets. Your job is to process **all linked
 Test Cases in one bulk run**.
 
-This project uses **Vitest**, not Playwright/browser-based E2E — there is no
-`tests/e2e/` directory or `playwright.config.ts` here.
+This is a monorepo (Turborepo/pnpm workspaces) with one backend app and two
+frontend apps, each with its own test tooling — there is no shared
+`tests/e2e/` directory at the repo root.
 
-- Backend (`backend/`): NestJS + Vitest.
+- Backend (`apps/api/`): NestJS + **Jest** (not Vitest).
   - Integration tests (HTTP requests through the real app, e.g. via
-    `supertest`) live in `backend/test/*.e2e-spec.ts`, run with
-    `npm run test:e2e -w backend` (config: `backend/vitest.config.e2e.ts`,
-    matches `**/*.e2e-spec.ts`).
+    `supertest`) live in `apps/api/test/*.e2e-spec.ts`, run with
+    `npm run test:e2e -w apps/api` (config: usually
+    `apps/api/test/jest-e2e.json` — the standard Nest CLI layout).
   - Unit tests (service/guard/controller logic in isolation) live next to
-    the source file in `backend/src/**/*.spec.ts`, run with
-    `npm run test -w backend` (config: `backend/vitest.config.ts`, matches
-    `**/*.spec.ts`). See `backend/src/identity/auth.service.spec.ts` and
-    `backend/src/identity/guards/roles.guard.spec.ts` for the existing
-    style.
-- Frontend (`frontend/`): no test tooling is set up yet. If a Test Case
-  requires testing frontend behavior and no test runner exists yet for
-  `frontend/`, treat it the same as any other missing-infrastructure case
-  (see Failure classification below) rather than installing a new
-  framework (e.g. Playwright) yourself.
+    the source file in `apps/api/src/**/*.spec.ts`, run with
+    `npm run test -w apps/api` (config: the `jest` section of
+    `apps/api/package.json` — the standard Nest CLI layout, matching
+    `**/*.spec.ts`). See existing `*.spec.ts` files in `apps/api/src/` as a
+    style reference, if any already exist.
+- Frontend (`apps/guest-web/` and `apps/admin-web/`): React + Vite +
+  **Vitest** for unit tests, Playwright for e2e.
+  - Unit tests live co-located with the source file in
+    `apps/{guest-web,admin-web}/src/**/*.{spec,test}.{ts,tsx}`, run with
+    `npm run test -w apps/guest-web` or `npm run test -w apps/admin-web`.
 
-For a given Test Case, prefer an integration test
-(`backend/test/{TC_KEY}.e2e-spec.ts`) when it exercises an HTTP
+For a given Test Case, prefer a backend integration test
+(`apps/api/test/{TC_KEY}.e2e-spec.ts`) when it exercises an HTTP
 endpoint end-to-end (the realistic default for API-level Test Cases in this
-project); use a unit test (co-located `*.spec.ts`) only when the Test Case is
-specifically about one service/guard/pipe's isolated logic.
+project); use a unit test (co-located `*.spec.ts`/`*.test.ts(x)` in the
+relevant app) only when the Test Case is specifically about one
+service/guard/pipe's or component's isolated logic.
 
 ## Workflow
 
@@ -41,14 +43,18 @@ specifically about one service/guard/pipe's isolated logic.
    file with `git add <file>`. Do NOT `git commit` or `git merge --abort`.
 3. For each linked Test Case:
    - Check if an automated test already exists at
-     `backend/test/{TC_KEY}.e2e-spec.ts` (or, for a unit-scoped Test Case,
-     next to the relevant source file).
-   - If it exists, run it: `npm run test:e2e -w backend -- {TC_KEY}` (or
-     `npm run test -w backend -- {TC_KEY}` for a unit test).
-   - If it is missing, write a new spec file for it (Vitest's `describe`/
-     `it`/`expect` API; for integration specs, `supertest` against the
-     Nest app instance — see `backend/test/app.e2e-spec.ts`). Match the
-     style of existing specs.
+     `apps/api/test/{TC_KEY}.e2e-spec.ts` (or, for a unit-scoped Test Case,
+     next to the relevant source file in `apps/api/src/`, `apps/guest-web/src/`,
+     or `apps/admin-web/src/`).
+   - If it exists, run it: `npm run test:e2e -w apps/api -- {TC_KEY}` (or
+     `npm run test -w apps/api -- {TC_KEY}` / `npm run test -w apps/guest-web
+     -- {TC_KEY}` / `npm run test -w apps/admin-web -- {TC_KEY}` for a unit
+     test, depending on which app owns the code).
+   - If it is missing, write a new spec file for it (Jest's `describe`/`it`/
+     `expect` API for backend, Vitest's for frontend; for backend
+     integration specs, `supertest` against the Nest app instance — see
+     existing `apps/api/test/*.e2e-spec.ts` files, if any, for the style).
+     Match the style of existing specs.
 4. Produce a single result JSON: `outputs/story_test_automation_result.json`.
 5. For every failed Test Case, produce `outputs/failed_description_{TC_KEY}.md`.
 6. If environment/credentials are missing, produce `outputs/blocked.json`
@@ -64,22 +70,20 @@ specifically about one service/guard/pipe's isolated logic.
   token — is **NOT a product failure**. Mark that Test Case as `skipped`,
   explain the blocker in `failureSummary`, and keep the overall result as
   `passed` if all other Test Cases passed. Do **not** mark it `failed`.
-- A Test Case that needs frontend test tooling that does not exist yet
-  (see the Frontend note above) is also **NOT a product failure** — mark it
-  `skipped` with `failureSummary` explaining that `frontend/` has no test
-  runner configured. Do not install one as part of this run.
 - If **every** linked Test Case is blocked by missing setup, set `overall`
   to `blocked_by_human` and produce `outputs/blocked.json`.
 
 ## Scope rules
 
-- You may ONLY write code inside `backend/test/` and `backend/src/**/*.spec.ts`
-  files. Do not touch non-test application code to make a test pass — a test
-  automation run is not a bug-fix run; if the product itself is broken,
-  record it as a `failed` result instead of patching the app.
-- Do not install Playwright or any browser-based E2E framework — out of
-  scope for this run (see Failure classification above for how to handle a
-  Test Case that would need one).
+- You may ONLY write code inside `apps/api/test/`, `apps/api/src/**/*.spec.ts`,
+  `apps/guest-web/src/**/*.{spec,test}.{ts,tsx}`, and
+  `apps/admin-web/src/**/*.{spec,test}.{ts,tsx}` files. Do not touch non-test
+  application code to make a test pass — a test automation run is not a
+  bug-fix run; if the product itself is broken, record it as a `failed`
+  result instead of patching the app.
+- Do not add new test tooling/frameworks (e.g. installing Playwright) as
+  part of this run — only write tests using the Jest/Vitest tooling already
+  configured for each app.
 - Each Test Case gets its own spec file.
 - Match the existing style: real assertions against the actual response/
   return value, no page-object or heavy abstraction layer unless the Story

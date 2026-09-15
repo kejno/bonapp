@@ -43,14 +43,14 @@ jobs:
       group: ai-teammate-agent-${{ inputs.concurrency_key || inputs.config_file }}
       cancel-in-progress: false
 
-    # backend/test/*.e2e-spec.ts bootstraps the real Nest app with a live
-    # TypeORM connection (see backend/src/database/database.module.ts) —
+    # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
+    # TypeORM connection (see apps/api/src/database/database.module.ts) —
     # it does not mock the database. Without this service, every
     # integration test run (story_test_automation, bug_test_automation,
     # bug_development's TDD reproduction step, and any manual `npm run
-    # test:e2e -w backend` the agent tries) fails or hangs on a connection
+    # test:e2e -w apps/api` the agent tries) fails or hangs on a connection
     # that never comes up. Host/port/credentials match
-    # backend/.env.example's defaults, which database.module.ts also
+    # apps/api/.env.example's defaults, which database.module.ts also
     # falls back to when DB_* env vars are unset.
     services:
       postgres:
