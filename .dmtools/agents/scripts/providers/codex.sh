@@ -183,7 +183,7 @@ run_codex() {
   usage_file="outputs/${usage_name}_usage.json"
   rm -f "${usage_file}" 2>/dev/null || true
   usage_exit_code=0
-  python3 "${provider_script_dir}/codex_usage.py" "${codex_log}" "${usage_file}" || usage_exit_code=$?
+  python3 "${provider_script_dir}/codex_usage.py" "${codex_log}" "${usage_file}" --sessions-dir "${CODEX_HOME}/sessions" || usage_exit_code=$?
   if [ "${usage_exit_code}" -eq 0 ]; then
     manifest_exit_code=0
     record_usage_file "${usage_file}" || manifest_exit_code=$?

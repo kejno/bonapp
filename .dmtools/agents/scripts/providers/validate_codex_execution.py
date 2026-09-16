@@ -27,6 +27,41 @@ def terminal_event(transcript: Path) -> dict[str, Any] | None:
     return terminal
 
 
+def thread_id(transcript: Path) -> str | None:
+    """Return the Codex thread id announced by the CLI transcript."""
+    with transcript.open("r", encoding="utf-8") as source:
+        for line in source:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(event, dict)
+                and event.get("type") == "thread.started"
+                and isinstance(event.get("thread_id"), str)
+            ):
+                return event["thread_id"]
+    return None
+
+
+def session_model(sessions_dir: Path, codex_thread_id: str) -> str | None:
+    """Read the effective model from the matching private rollout file."""
+    model: str | None = None
+    for rollout in sessions_dir.rglob(f"*{codex_thread_id}*.jsonl"):
+        with rollout.open("r", encoding="utf-8") as source:
+            for line in source:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict) or event.get("type") != "turn_context":
+                    continue
+                payload = event.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("model"), str):
+                    model = payload["model"]
+    return model
+
+
 def error_message(event: dict[str, Any]) -> str:
     error = event.get("error")
     if isinstance(error, dict) and isinstance(error.get("message"), str):
@@ -39,6 +74,7 @@ def error_message(event: dict[str, Any]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
+    parser.add_argument("--sessions-dir", type=Path)
     args = parser.parse_args()
 
     try:
@@ -57,6 +93,16 @@ def main() -> int:
         print(error_message(event), file=sys.stderr)
         return 1
 
+    effective_model: str | None = None
+    if args.sessions_dir is not None:
+        try:
+            codex_thread_id = thread_id(args.transcript)
+            if codex_thread_id is not None:
+                effective_model = session_model(args.sessions_dir, codex_thread_id)
+        except OSError as exc:
+            print(f"Codex model lookup failed: {exc}", file=sys.stderr)
+
+    print(f"Codex effective model: {effective_model or 'unavailable'}")
     print("Codex transcript ends with turn.completed")
     return 0
 

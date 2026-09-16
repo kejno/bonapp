@@ -45,10 +45,11 @@ def _looks_like_usage(candidate: dict[str, Any]) -> bool:
     return "input_tokens" in candidate and "output_tokens" in candidate
 
 
-def find_last_usage(lines: list[str]) -> tuple[dict[str, Any], str | None]:
+def find_last_usage(lines: list[str]) -> tuple[dict[str, Any], str | None, str | None]:
     """Return the last cumulative usage payload and the model that produced it."""
     usage: dict[str, Any] | None = None
     model: str | None = None
+    thread_id: str | None = None
 
     for line in lines:
         try:
@@ -57,6 +58,9 @@ def find_last_usage(lines: list[str]) -> tuple[dict[str, Any], str | None]:
             continue
         if not isinstance(event, dict):
             continue
+
+        if event.get("type") == "thread.started" and isinstance(event.get("thread_id"), str):
+            thread_id = event["thread_id"]
 
         for node in _walk(event):
             candidate = node.get("total_token_usage")
@@ -71,7 +75,25 @@ def find_last_usage(lines: list[str]) -> tuple[dict[str, Any], str | None]:
 
     if usage is None:
         raise UsageNotFoundError("no token_count event with token totals was found")
-    return usage, model
+    return usage, model, thread_id
+
+
+def session_model(sessions_dir: Path, codex_thread_id: str) -> str | None:
+    """Read the effective model from the matching private rollout file."""
+    model: str | None = None
+    for rollout in sessions_dir.rglob(f"*{codex_thread_id}*.jsonl"):
+        with rollout.open("r", encoding="utf-8") as source:
+            for line in source:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict) or event.get("type") != "turn_context":
+                    continue
+                payload = event.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("model"), str):
+                    model = payload["model"]
+    return model
 
 
 def normalize_usage(usage: dict[str, Any], model: str | None) -> dict[str, Any]:
@@ -100,9 +122,11 @@ def normalize_usage(usage: dict[str, Any], model: str | None) -> dict[str, Any]:
     }
 
 
-def extract_usage(transcript_path: Path) -> dict[str, Any]:
+def extract_usage(transcript_path: Path, sessions_dir: Path | None = None) -> dict[str, Any]:
     with transcript_path.open("r", encoding="utf-8") as transcript:
-        usage, model = find_last_usage(list(transcript))
+        usage, model, codex_thread_id = find_last_usage(list(transcript))
+    if model is None and sessions_dir is not None and codex_thread_id is not None:
+        model = session_model(sessions_dir, codex_thread_id)
     return normalize_usage(usage, model)
 
 
@@ -117,10 +141,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--sessions-dir", type=Path)
     args = parser.parse_args()
 
     try:
-        usage = extract_usage(args.transcript)
+        usage = extract_usage(args.transcript, args.sessions_dir)
     except (OSError, UsageNotFoundError) as error:
         print(f"Codex token usage unavailable: {error}", file=sys.stderr)
         return 2

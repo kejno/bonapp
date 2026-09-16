@@ -277,7 +277,8 @@ jobs:
             echo "::error::No Codex transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
             exit 1
           fi
-          if ! python3 agents/scripts/providers/validate_codex_execution.py "${latest_log}"; then
+          sessions_dir="${CODEX_HOME:-$HOME/.codex}/sessions"
+          if ! python3 agents/scripts/providers/validate_codex_execution.py "${latest_log}" --sessions-dir "${sessions_dir}"; then
             echo "::error::Codex execution failed or did not finish cleanly (see ${latest_log} in the agent-cli-logs artifact)." >&2
             exit 1
           fi

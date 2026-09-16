@@ -79,6 +79,38 @@ class ExtractUsageTest(unittest.TestCase):
         self.assertEqual(usage["total_tokens"], 10)
         self.assertEqual(usage["models"], [])
 
+    def test_reads_model_from_matching_rollout_when_transcript_omits_it(self) -> None:
+        codex_thread_id = "thread-123"
+        transcript = _transcript(
+            {"type": "thread.started", "thread_id": codex_thread_id},
+            {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "output_tokens": 3,
+                    },
+                },
+            },
+        )
+        sessions_dir = transcript.parent / "sessions" / "2026" / "09" / "16"
+        sessions_dir.mkdir(parents=True)
+        rollout = sessions_dir / f"rollout-{codex_thread_id}.jsonl"
+        rollout.write_text(
+            json.dumps(
+                {
+                    "type": "turn_context",
+                    "payload": {"model": "gpt-5.3-codex"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        usage = codex_usage.extract_usage(transcript, transcript.parent / "sessions")
+        self.assertEqual(usage["models"], ["gpt-5.3-codex"])
+
     def test_ignores_non_json_and_unrelated_lines(self) -> None:
         path = _transcript(
             {"type": "item.completed", "item": {"text": "hello"}},
