@@ -356,13 +356,23 @@ function defaultProviderList() {
     // runner) — and String(...) to force the Java String result through JS
     // interop into a real JS string before calling .trim()/.split() on it.
     var envValue = null;
+    var getenvThrew = null;
     try {
         envValue = java.lang.System.getenv('AI_AGENT_PROVIDER');
     } catch (e) {
         // Not running in a GraalJS environment.
+        getenvThrew = String(e);
     }
+    // TEMP DEBUG — remove once the live "codex never picked" investigation is
+    // resolved. typeof/String() both shown because GraalJS interop can hand
+    // back a foreign Java String object that behaves oddly under naive
+    // truthiness/String() coercion depending on engine version.
+    console.log('  [debug defaultProviderList] typeof envValue=' + typeof envValue +
+        ' String(envValue)=' + JSON.stringify(String(envValue)) +
+        ' threw=' + JSON.stringify(getenvThrew));
     var raw = String(envValue || 'claude-code').trim();
     var list = raw.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+    console.log('  [debug defaultProviderList] raw=' + JSON.stringify(raw) + ' list=' + JSON.stringify(list));
     return list.length ? list : ['claude-code'];
 }
 
