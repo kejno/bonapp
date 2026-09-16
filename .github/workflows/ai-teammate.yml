@@ -3,7 +3,14 @@ name: AI Teammate
 # Without this the run list is 840 identically-titled "AI Teammate" rows.
 # GitHub's expression syntax has no replace/split, so config_file keeps its
 # "agents/*.json" shape here rather than being trimmed to the bare agent name.
-run-name: AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})
+#
+# The leading `[provider]` tag is not just cosmetic: smAgent.js's per-provider
+# workflow budget (see workflowBudgetsByProvider in smAgent.js) has no other
+# way to tell a codex run from a claude-code run when it lists active runs via
+# the GitHub API — workflow_dispatch inputs are not queryable on a run list,
+# only `name`/`display_title` are. Keep the exact `[provider]` bracket shape
+# in sync with the regex in smAgent.js's parseProviderFromRunName().
+run-name: "[${{ inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code' }}] AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})"
 
 on:
   workflow_dispatch:
@@ -25,6 +32,9 @@ on:
         required: false
       project_key:
         description: 'Jira project key (set by SM agent)'
+        required: false
+      provider:
+        description: 'AI CLI provider for this run (claude-code | codex). Empty falls back to the AI_AGENT_PROVIDER repo variable — lets different agent rules run on different providers concurrently instead of one global switch for every dispatch.'
         required: false
 
 permissions:
@@ -52,11 +62,21 @@ jobs:
     # once means both refresh it, both write the secret, and whichever loses
     # leaves a dead `refresh_token already used` credential behind — recovery
     # is a manual `codex login`. So under codex, every run serializes into a
-    # single repo-wide group regardless of ticket. Keep sm.json's
-    # maxTriggeredWorkflows at 1 to match; otherwise the extra dispatches just
-    # queue up behind this group anyway.
+    # single repo-wide group regardless of ticket, no matter which OTHER
+    # provider's runs are in flight at the same time — a claude-code run and
+    # a codex run for different tickets are free to overlap (see the
+    # `provider` input above and its per-rule use in sm.json), but two codex
+    # runs never do.
+    #
+    # `inputs.provider` (set per sm.json rule, see smAgent.js) takes priority
+    # over the repo-wide AI_AGENT_PROVIDER variable so a manual dispatch or a
+    # rule with no explicit provider still falls back to the old default. The
+    # same `inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'`
+    # expression is repeated at every other AI_AGENT_PROVIDER check below
+    # (job.concurrency and job.if cannot read job-level `env:`, so there is
+    # no single place to define it once).
     concurrency:
-      group: ${{ vars.AI_AGENT_PROVIDER == 'codex' && 'ai-teammate-agent-codex-auth' || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
+      group: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex' && 'ai-teammate-agent-codex-auth' || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
       cancel-in-progress: false
 
     # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
@@ -100,11 +120,11 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
-        if: vars.AI_AGENT_PROVIDER != 'codex'
+        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') != 'codex'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Install Codex CLI
-        if: vars.AI_AGENT_PROVIDER == 'codex'
+        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
         run: npm install -g @openai/codex
 
       # ChatGPT subscription auth only (CODEX_AUTH_JSON). With an API key
@@ -117,7 +137,7 @@ jobs:
       # the credential on disk, the persist step re-uploads the STALE copy,
       # and the next run starts with a refresh token that was already spent.
       - name: Restore Codex auth
-        if: vars.AI_AGENT_PROVIDER == 'codex'
+        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -185,7 +205,7 @@ jobs:
           # job's CLI install, auth round-trip and concurrency group above.
           # Only the selected provider's credentials are read; the other's
           # vars stay unset and its provider function is never called.
-          AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER || 'claude-code' }}
+          AI_AGENT_PROVIDER: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}
 
           # claude-code (see .dmtools/agents/scripts/providers/claude.sh)
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -237,7 +257,7 @@ jobs:
       # `permissions:` value grants that (there is no `secrets: write` scope,
       # despite what plenty of blog posts claim).
       - name: Persist rotated Codex auth
-        if: always() && vars.AI_AGENT_PROVIDER == 'codex'
+        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
         env:
           GH_TOKEN: ${{ secrets.CODEX_SECRETS_ADMIN_PAT }}
           # env.CODEX_HOME is empty unless "Restore Codex auth" set it (i.e.
@@ -269,7 +289,7 @@ jobs:
       # explicitly if it shows a rate-limit/usage-limit signal, so a run that
       # accomplished nothing shows red instead of a misleadingly green one.
       - name: Validate Codex execution
-        if: always() && vars.AI_AGENT_PROVIDER == 'codex'
+        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
         working-directory: .dmtools
         run: |
           latest_log="$(ls -t .dmtools-logs/cli/agent/codex-*.log 2>/dev/null | head -1)"
@@ -285,7 +305,7 @@ jobs:
           echo "✅ Latest Codex call completed successfully."
 
       - name: Validate Claude Code execution
-        if: always() && vars.AI_AGENT_PROVIDER != 'codex'
+        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') != 'codex'
         working-directory: .dmtools
         run: |
           latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"

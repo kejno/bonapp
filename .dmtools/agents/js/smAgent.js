@@ -103,6 +103,17 @@ function parseWorkflowRuns(raw) {
     return [];
 }
 
+// Extracts the "[provider]" tag ai-teammate.yml's run-name prefixes every
+// dispatch with (see its comment for why: workflow_dispatch inputs are not
+// queryable on a listed run, only name/display_title are). Falls back to
+// 'claude-code' for any run predating this tag, or one whose name we cannot
+// parse — matching ai-teammate.yml's own `... || 'claude-code'` default.
+function parseProviderFromRunName(run) {
+    var title = (run && (run.name || run.display_title || '')) || '';
+    var match = /^\[([^\]]+)\]/.exec(title);
+    return (match && match[1]) || 'claude-code';
+}
+
 function labelList(value) {
     if (!value) return [];
     return Array.isArray(value) ? value : [value];
@@ -190,7 +201,11 @@ function formatWorkflowRunSummary(run, fallbackStatus) {
     return title + ' [' + status + ', age ' + (age || '?') + ', id ' + id + ']' + (url ? ' ' + url : '');
 }
 
-function collectActiveWorkflowRuns(scm, workflowFile) {
+// providerFilter (optional): only count/summarize runs whose run-name
+// "[provider]" tag matches this value — lets the per-provider workflow
+// budget (see workflowBudgetsByProvider) count claude-code and codex runs
+// separately instead of sharing one global active-run count.
+function collectActiveWorkflowRuns(scm, workflowFile, providerFilter) {
     if (!scm || typeof scm.listWorkflowRuns !== 'function') return { count: 0, summaries: [] };
 
     var statuses = ['queued', 'in_progress', 'waiting', 'pending'];
@@ -210,6 +225,7 @@ function collectActiveWorkflowRuns(scm, workflowFile) {
         for (var j = 0; j < runs.length; j++) {
             var run = runs[j] || {};
             if (isStaleNonRunningWorkflowRun(run, statuses[i])) continue;
+            if (providerFilter && parseProviderFromRunName(run) !== providerFilter) continue;
             var id = run.id || run.databaseId || run.run_number || ((run.name || run.display_title || '') + ':' + j + ':' + statuses[i]);
             if (!seen[id]) {
                 seen[id] = true;
@@ -240,32 +256,104 @@ function logBlockingWorkflowRuns(workflowBudget, workflowFile) {
     }
 }
 
-function ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile) {
-    if (!workflowBudget) return;
-    if (!workflowBudget.activeCountsByWorkflow) workflowBudget.activeCountsByWorkflow = {};
-    if (workflowBudget.activeCountsByWorkflow[workflowFile]) return;
-    if (!workflowBudget.activeRunSummariesByWorkflow) workflowBudget.activeRunSummariesByWorkflow = {};
+// workflowBudget shape: { initial, remaining, perProviderCaps: bool,
+//   byProvider: { <provider>: { initial, remaining,
+//     activeCountsByWorkflow, activeRunSummariesByWorkflow } } }.
+//
+// `perProviderCaps` (set once in buildWorkflowBudget, from whether
+// sm.json's maxTriggeredWorkflows was an object or a plain number) decides
+// what a per-provider bucket even means:
+//   - true  → sm.json gave each provider its OWN cap (e.g. {"codex": 1}).
+//             Each provider's bucket is independent, so a maxed-out codex
+//             does not block claude-code and vice versa.
+//   - false → there is only ONE combined number. Every provider must draw
+//             from that SAME pool, not get its own full copy of it — two
+//             independent copies of "2 remaining" would silently let 4
+//             concurrent runs through a config that asked for 2. So in this
+//             case a provider's bucket IS the top-level workflowBudget
+//             object itself (aliased, not copied): decrementing one
+//             decrements the other, matching pre-per-provider-budget
+//             behavior exactly.
+function providerBudgetBucket(workflowBudget, provider) {
+    if (!workflowBudget) return null;
+    if (!workflowBudget.perProviderCaps) return workflowBudget;
+    if (!workflowBudget.byProvider) workflowBudget.byProvider = {};
+    if (!workflowBudget.byProvider[provider]) {
+        // A provider with no explicit entry in sm.json's per-provider map
+        // (e.g. AI_AGENT_PROVIDER lists a provider that maxTriggeredWorkflows
+        // never mentions) has no cap of its own — treat as unlimited rather
+        // than silently reusing another provider's number.
+        workflowBudget.byProvider[provider] = { initial: Infinity, remaining: Infinity };
+    }
+    return workflowBudget.byProvider[provider];
+}
 
-    var active = collectActiveWorkflowRuns(scm, workflowFile);
+function ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, provider) {
+    if (!workflowBudget) return;
+    var bucket = providerBudgetBucket(workflowBudget, provider);
+    if (!bucket.activeCountsByWorkflow) bucket.activeCountsByWorkflow = {};
+    if (bucket.activeCountsByWorkflow[workflowFile]) return;
+    if (!bucket.activeRunSummariesByWorkflow) bucket.activeRunSummariesByWorkflow = {};
+
+    var active = collectActiveWorkflowRuns(scm, workflowFile, provider);
     var activeCount = active.count;
-    workflowBudget.activeCount = (workflowBudget.activeCount || 0) + activeCount;
-    workflowBudget.remaining = Math.max(0, workflowBudget.remaining - activeCount);
-    workflowBudget.activeCountsByWorkflow[workflowFile] = true;
-    workflowBudget.activeRunSummariesByWorkflow[workflowFile] = active.summaries;
+    bucket.activeCount = (bucket.activeCount || 0) + activeCount;
+    bucket.remaining = Math.max(0, bucket.remaining - activeCount);
+    bucket.activeCountsByWorkflow[workflowFile] = true;
+    bucket.activeRunSummariesByWorkflow[workflowFile] = active.summaries;
 
     if (activeCount > 0) {
-        console.log('  Active workflow cap accounting: ' + activeCount + ' active, ' + workflowBudget.remaining + ' dispatch slot(s) left');
-        logBlockingWorkflowRuns(workflowBudget, workflowFile);
+        console.log('  [' + provider + '] Active workflow cap accounting: ' + activeCount + ' active, ' + bucket.remaining + ' dispatch slot(s) left');
+        logBlockingWorkflowRuns(bucket, workflowFile);
     }
+}
+
+// Resolves which provider a rule dispatches on, for budget-accounting
+// purposes — mirrors ai-teammate.yml's own
+// `inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'` fallback so
+// the count this function bills against is the provider the run will
+// actually tag itself with in its run-name.
+//
+// AI_AGENT_PROVIDER may itself be a comma-separated list (e.g.
+// "claude-code,codex") when the caller wants smAgent to pick whichever
+// provider still has budget rather than pinning every unlabelled rule to
+// one provider — see pickProviderWithBudget().
+function resolveRuleProvider(rule, workflowBudget) {
+    if (rule.provider) return rule.provider;
+    var envProviders = defaultProviderList();
+    if (envProviders.length <= 1) return envProviders[0] || 'claude-code';
+    return pickProviderWithBudget(envProviders, workflowBudget) || envProviders[0];
+}
+
+function defaultProviderList() {
+    var raw = (process.env.AI_AGENT_PROVIDER || 'claude-code').trim();
+    var list = raw.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+    return list.length ? list : ['claude-code'];
+}
+
+// Picks the first provider (in AI_AGENT_PROVIDER's listed order) that still
+// has remaining budget, without mutating any bucket — actually consuming
+// budget happens where a run is really dispatched (ensureWorkflowBudgetActiveCount
+// / the workflowBudget.remaining -= 1 in processRule). A provider whose
+// budget was never checked yet (no bucket present) is treated as available so
+// the very first dispatch of a run always goes to the first listed provider.
+function pickProviderWithBudget(providers, workflowBudget) {
+    if (!workflowBudget) return providers[0];
+    for (var i = 0; i < providers.length; i++) {
+        var bucket = workflowBudget.byProvider && workflowBudget.byProvider[providers[i]];
+        if (!bucket || bucket.remaining > 0) return providers[i];
+    }
+    return null; // every listed provider is exhausted
 }
 
 function isWorkflowBudgetExhausted(rule, effectiveConfig, workflowBudget) {
     if (!workflowBudget) return false;
 
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
+    var provider = resolveRuleProvider(rule, workflowBudget);
     var scm = scmModule.createScm(effectiveConfig);
-    ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile);
-    return workflowBudget.remaining <= 0;
+    ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, provider);
+    return providerBudgetBucket(workflowBudget, provider).remaining <= 0;
 }
 
 function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBudget) {
@@ -273,6 +361,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
     var workflowRef  = rule.workflowRef  || 'main';
     var resolvedCf   = buildEncodedConfigModule.resolveConfigFile(rule, effectiveConfig);
     var concurrencyKey = rule.concurrencyKey || ticketKey;
+    var resolvedProvider = resolveRuleProvider(rule, workflowBudget);
 
     // Resolve project_key: explicit rule field takes priority, then auto-derive from configPath
     // e.g. ".dmtools/configs/myproject.js" → "myproject", ".dmtools/configs/bice.js" → "bice"
@@ -285,27 +374,49 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
 
     try {
         var scm = scmModule.createScm(effectiveConfig);
-        ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile);
-        if (workflowBudget && workflowBudget.remaining <= 0) {
-            console.log('  ⏭️  ' + ticketKey + ' skipped (global workflow cap reached: ' + workflowBudget.initial + ')');
-            logBlockingWorkflowRuns(workflowBudget, workflowFile);
+        ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, resolvedProvider);
+        var bucket = providerBudgetBucket(workflowBudget, resolvedProvider);
+        if (bucket && bucket.remaining <= 0) {
+            console.log('  ⏭️  ' + ticketKey + ' skipped (' + resolvedProvider + ' workflow cap reached: ' + bucket.initial + ')');
+            logBlockingWorkflowRuns(bucket, workflowFile);
             return false;
         }
         if (hasActiveTargetWorkflowRun(scm, workflowFile, resolvedCf, concurrencyKey)) {
             return false;
         }
+        // resolvedProvider ('claude-code' | 'codex') — from rule.provider when
+        // the rule sets it explicitly, otherwise smAgent's own pick across
+        // AI_AGENT_PROVIDER's list (see resolveRuleProvider /
+        // pickProviderWithBudget) — lets different rules, or even different
+        // tickets under the SAME rule, run on different AI CLI providers
+        // concurrently. Codex runs still serialize into one repo-wide
+        // concurrency group (see ai-teammate.yml's job.concurrency comment)
+        // because its subscription refresh token is single-use, but a
+        // claude-code run and a codex run for different tickets now overlap
+        // freely instead of both being pinned to one global switch.
+        //
+        // Always sent explicitly (never left to the workflow's own
+        // vars.AI_AGENT_PROVIDER fallback) — that repo variable can itself be
+        // the same comma-separated list smAgent just picked from, and the
+        // workflow's `run-agent.sh` has no such list-splitting logic; passing
+        // the resolved single value here is what keeps the workflow-side
+        // fallback expression (`inputs.provider || vars.AI_AGENT_PROVIDER ||
+        // 'claude-code'`) resolving to one concrete provider every time.
+        var dispatchPayload = {
+            concurrency_key: concurrencyKey,
+            display_key:     ticketKey,
+            input_jql:       'key = ' + ticketKey,
+            config_file:     resolvedCf,
+            encoded_config:  buildEncodedConfigModule.buildEncodedConfig(ticketKey, rule, effectiveConfig),
+            project_key:     projectKey,
+            provider:        resolvedProvider
+        };
+
         scm.triggerWorkflow(
             repoInfo.owner,
             repoInfo.repo,
             workflowFile,
-            JSON.stringify({
-                concurrency_key: concurrencyKey,
-                display_key:     ticketKey,
-                input_jql:       'key = ' + ticketKey,
-                config_file:     resolvedCf,
-                encoded_config:  buildEncodedConfigModule.buildEncodedConfig(ticketKey, rule, effectiveConfig),
-                project_key:     projectKey
-            }),
+            JSON.stringify(dispatchPayload),
             workflowRef
         );
         console.log('  ✅ Triggered ' + workflowFile + '@' + workflowRef + ' for ' + ticketKey +
@@ -766,7 +877,26 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
 
         if (triggered) {
             processedKeys.push(key);
-            if (!rule.localTeammate && workflowBudget) workflowBudget.remaining -= 1;
+            if (!rule.localTeammate && workflowBudget) {
+                // Always decrement the combined top-level counter — it backs
+                // the pre-existing "Global workflow cap reached" checks
+                // elsewhere in this function regardless of whether
+                // per-provider caps are configured.
+                workflowBudget.remaining -= 1;
+                // With per-provider caps, ALSO decrement the specific
+                // provider's own bucket — triggerWorkflow() already resolved
+                // and dispatched on this provider, so it is what actually
+                // consumed a slot. Without per-provider caps,
+                // providerBudgetBucket() returns workflowBudget itself
+                // (aliased, see its comment), so doing this unconditionally
+                // would double-decrement the same counter; skip it in that
+                // case since the line above already accounted for it.
+                if (workflowBudget.perProviderCaps) {
+                    var triggeredProvider = resolveRuleProvider(rule, workflowBudget);
+                    var triggeredBucket = providerBudgetBucket(workflowBudget, triggeredProvider);
+                    triggeredBucket.remaining = Math.max(0, triggeredBucket.remaining - 1);
+                }
+            }
         }
     }
 
@@ -784,6 +914,45 @@ function resolveWorkflowCap(jsonCap, projectCfg) {
     return normalizePositiveInt(jsonCap);
 }
 
+// maxTriggeredWorkflows (or maxWorkflowsPerRun) accepts either a plain number
+// (one combined budget shared by every provider, unchanged from before
+// per-provider budgets existed) or an object keyed by provider name, e.g.
+// `{"claude-code": 5, "codex": 1}` — Codex's own concurrency group in
+// ai-teammate.yml already hard-serializes it to 1 run at a time regardless of
+// this value, so a higher number here just means more Codex dispatches queue
+// up in GitHub rather than actually running concurrently; setting it to 1
+// avoids sending dispatches smAgent already knows won't start immediately.
+// Returns { initial, remaining, byProvider: { <provider>: {initial, remaining} } }
+// or null if nothing configured. The combined initial/remaining stay derived
+// as the SUM across providers so the pre-existing "Global workflow cap
+// reached" log lines and effectiveLimit math elsewhere keep working for a
+// caller that never opted into the per-provider shape.
+function buildWorkflowBudget(jsonCap, projectCfg) {
+    if (jsonCap && typeof jsonCap === 'object' && !Array.isArray(jsonCap)) {
+        var byProvider = {};
+        var totalInitial = 0;
+        Object.keys(jsonCap).forEach(function(providerName) {
+            var n = normalizePositiveInt(jsonCap[providerName]);
+            if (!n) return;
+            byProvider[providerName] = { initial: n, remaining: n };
+            totalInitial += n;
+        });
+        if (totalInitial === 0) return null;
+        console.log('  Workflow cap (per provider): ' + Object.keys(byProvider)
+            .map(function(k) { return k + '=' + byProvider[k].initial; }).join(', '));
+        // initial/remaining at the top level still track the SUM across
+        // providers, purely so pre-existing combined-cap call sites
+        // (processRule's "Global workflow cap reached" log, effectiveLimit)
+        // report a sane number — they are never the pool actually drawn from
+        // once perProviderCaps is true; providerBudgetBucket() always routes
+        // to the per-provider entry in that case.
+        return { initial: totalInitial, remaining: totalInitial, perProviderCaps: true, byProvider: byProvider };
+    }
+
+    var cap = resolveWorkflowCap(jsonCap, projectCfg);
+    return cap ? { initial: cap, remaining: cap } : null;
+}
+
 function action(params) {
     var p     = params.jobParams || params;
     var rules = p.rules;
@@ -791,11 +960,10 @@ function action(params) {
     // Load global project configuration (used as default when rules have no configPath)
     projectConfig = configLoader.loadProjectConfig(p);
 
-    var configuredWorkflowCap = resolveWorkflowCap(
+    var workflowBudget = buildWorkflowBudget(
         typeof p.maxTriggeredWorkflows !== 'undefined' ? p.maxTriggeredWorkflows : p.maxWorkflowsPerRun,
         projectConfig
     );
-    var workflowBudget = configuredWorkflowCap ? { initial: configuredWorkflowCap, remaining: configuredWorkflowCap } : null;
 
     // Use smRules from config if provided (full override)
     if (projectConfig.smRules && Array.isArray(projectConfig.smRules) && projectConfig.smRules.length > 0) {
