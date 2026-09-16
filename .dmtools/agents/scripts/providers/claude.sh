@@ -138,6 +138,21 @@ run_claude_code() {
 
   record_codegraph_usage "${claude_code_log}"
 
+  # Tell the postJSAction whether this was a real run — see
+  # record_agent_failure() in _common.sh. Claude Code exits non-zero on a
+  # usage limit, but its stream-json result event also flags the failure
+  # explicitly, and the two do not always coincide.
+  clear_agent_failure
+  local claude_failure_reason=""
+  if [ "${claude_code_exit_code}" -ne 0 ]; then
+    claude_failure_reason="Claude Code CLI exited ${claude_code_exit_code}"
+  elif grep -Eqi 'usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"' "${claude_code_log}"; then
+    claude_failure_reason="Claude Code hit an Anthropic-side rate or usage limit"
+  fi
+  if [ -n "${claude_failure_reason}" ]; then
+    record_agent_failure "claude-code" "${claude_code_exit_code}" "${claude_failure_reason}"
+  fi
+
   # Claude Code's stream-json output carries aggregate usage in the final
   # result.modelUsage object. Normalize it to the same provider-neutral JSON
   # schema used by the Jira token-usage comment helper. Reporting is strictly

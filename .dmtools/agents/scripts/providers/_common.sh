@@ -21,6 +21,57 @@ agent_full_log_dir() {
   echo "${DMTOOLS_CLI_LOG_DIR:-.dmtools-logs/cli}/agent"
 }
 
+# Path of the marker file a provider writes when its CLI did NOT complete a
+# real run (rate/usage limit, dead credential, crash). See
+# record_agent_failure() below for why this exists.
+agent_failure_marker_path() {
+  echo "outputs/agent_failure.json"
+}
+
+# Records that the agent CLI failed, so the job's postJSAction can refuse to
+# advance the ticket.
+#
+# Why a file and not the exit code: dmtools' Java core does not propagate
+# run-agent.sh's exit status as a process exception for
+# skipAIProcessing/outputType:none jobs (see README "Известные баги", bug 8),
+# so a provider that died on a usage limit still reaches postJSAction, which
+# then sees an empty outputs/*.json and cannot tell "the agent decided there
+# was nothing to write" from "the agent never ran". Those two cases need
+# opposite handling — the first should move the ticket forward, the second
+# must leave it exactly as it was — and only the provider knows which one
+# happened. Failing the workflow step afterwards does not help: postJSAction
+# has already written to Jira by then.
+#
+# $1: provider label (e.g. "codex"); $2: exit code; $3: one-line reason.
+record_agent_failure() {
+  local provider="$1"
+  local exit_code="$2"
+  local reason="$3"
+  local marker
+  marker="$(agent_failure_marker_path)"
+  mkdir -p "$(dirname "${marker}")"
+  python3 - "${marker}" "${provider}" "${exit_code}" "${reason}" << 'PYEOF'
+import json
+import sys
+
+marker, provider, exit_code, reason = sys.argv[1:5]
+with open(marker, "w", encoding="utf-8") as handle:
+    json.dump(
+        {"provider": provider, "exit_code": exit_code, "reason": reason},
+        handle,
+        indent=2,
+    )
+    handle.write("\n")
+PYEOF
+  echo "🚫 Recorded agent failure to ${marker}: ${reason}"
+}
+
+# Clears any marker left behind by a previous run in the same workspace, so a
+# successful run is never mistaken for a failed one.
+clear_agent_failure() {
+  rm -f "$(agent_failure_marker_path)" 2>/dev/null || true
+}
+
 # When a provider resumes a previously cached CLI session (Claude Code
 # --resume, Copilot --resume, Cursor --resume, Kimi --session), the model
 # carries over its full prior conversation history/memory, including

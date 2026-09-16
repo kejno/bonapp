@@ -16,9 +16,8 @@
 #   3. OPENAI_API_KEY   - API key billed through the OpenAI platform account.
 #                         No rotation, safe under concurrency.
 # Optional (either auth mode):
-#   CODEX_MODEL         - Optional model slug. When unset, Codex CLI selects
-#                         the default model available to the authenticated
-#                         account.
+#   CODEX_MODEL         - Model slug (default: gpt-5.6-terra). Set this to
+#                         override the repo's stable CI default.
 #   CODEX_SANDBOX       - Sandbox mode (default: danger-full-access; the agent
 #                         must be able to write the repo and outputs/)
 #   CODEX_HOME          - Codex state dir (default: $HOME/.codex). Exported so
@@ -45,11 +44,9 @@ run_codex() {
     return 1
   fi
 
-  local codex_model="${CODEX_MODEL:-}"
+  local codex_model="${CODEX_MODEL:-gpt-5.6-terra}"
   local codex_model_args=()
-  if [ -n "${codex_model}" ]; then
-    codex_model_args=(--model "${codex_model}")
-  fi
+  codex_model_args=(--model "${codex_model}")
   local codex_sandbox="${CODEX_SANDBOX:-danger-full-access}"
 
   if ! command -v codex >/dev/null 2>&1; then
@@ -78,7 +75,7 @@ run_codex() {
 
   echo "Codex Configuration:"
   echo "  Auth mode:   ${codex_auth_mode}"
-  echo "  Model:       ${codex_model:-<Codex CLI default>}"
+  echo "  Model:       ${codex_model}"
   echo "  Sandbox:     ${codex_sandbox}"
   echo "  CODEX_HOME:  ${CODEX_HOME}"
   echo "Working directory: $(pwd)"
@@ -173,6 +170,60 @@ run_codex() {
   set -e
 
   record_codegraph_usage "${codex_log}"
+
+  # Tell the postJSAction whether this was a real run. A Codex turn that dies
+  # on a usage limit still exits through the same path as a successful one and
+  # leaves an empty outputs/ behind, which a postJSAction would otherwise read
+  # as "the agent had nothing to write" and act on — moving the ticket and
+  # stamping labels for work that never happened. See record_agent_failure().
+  clear_agent_failure
+  local codex_failure_reason=""
+  if [ "${codex_exit_code}" -ne 0 ]; then
+    codex_failure_reason="Codex CLI exited ${codex_exit_code}"
+  else
+    # The CLI can report a failed turn while still exiting 0, so the
+    # transcript's own terminal event is the authoritative signal.
+    local codex_turn_error
+    codex_turn_error="$(python3 - "${codex_log}" << 'PYEOF'
+import json
+import sys
+
+terminal = None
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as transcript:
+        for line in transcript:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") in {"turn.completed", "turn.failed"}:
+                terminal = event
+            elif event.get("type") == "error" and terminal is None:
+                terminal = event
+except OSError:
+    sys.exit(0)
+
+if terminal is None:
+    print("Codex produced no terminal turn event (the run did not finish)")
+elif terminal.get("type") != "turn.completed":
+    error = terminal.get("error")
+    message = ""
+    if isinstance(error, dict):
+        message = str(error.get("message") or "")
+    if not message:
+        message = str(terminal.get("message") or "")
+    print(message.strip() or "Codex turn did not complete")
+PYEOF
+)"
+    if [ -n "${codex_turn_error}" ]; then
+      codex_failure_reason="${codex_turn_error}"
+    fi
+  fi
+  if [ -n "${codex_failure_reason}" ]; then
+    record_agent_failure "codex" "${codex_exit_code}" "${codex_failure_reason}"
+  fi
 
   # Codex's --json stream carries cumulative token counts on token_count
   # events. Normalize to the same provider-neutral schema the Jira token-usage

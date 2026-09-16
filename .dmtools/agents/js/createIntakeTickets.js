@@ -9,6 +9,7 @@ const { buildSummary } = require('./common/aiResponseParser.js');
 const { ISSUE_TYPES, LABELS, STATUSES } = require('./config.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
 const outputFiles = require('./common/outputFiles.js');
+const agentFailure = require('./common/agentFailure.js');
 
 /**
  * Read and parse outputs/stories.json (falls back to outputs/<ticketKey>/stories.json —
@@ -295,6 +296,18 @@ function buildFinalComment(results, aiComment) {
 function action(params) {
     try {
         var ticketKey = params.ticket.key;
+
+        // An empty stories.json reads as "the Epic decomposed into nothing",
+        // which still labels the Epic and moves it on — permanently, since
+        // the intake rule's JQL then skips it. That is the wrong call when
+        // the agent simply died before writing anything; leave the Epic
+        // untouched so the next SM cycle retries it. See
+        // common/agentFailure.js.
+        var aborted = agentFailure.abortIfAgentFailed(ticketKey, 'intake');
+        if (aborted) {
+            return aborted;
+        }
+
         var projectKey = ticketKey.split('-')[0];
         var initiatorId = params.initiator;
         var wipLabel = params.metadata && params.metadata.contextId

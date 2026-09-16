@@ -133,4 +133,56 @@ BINEOF
 run_resume_notice_case "resume-gets-notice" "yes" "yes"
 run_resume_notice_case "first-run-no-notice" "no" "no"
 
+# A run that never really happened must leave outputs/agent_failure.json
+# behind so the postJSAction refuses to advance the ticket — an empty outputs/
+# folder alone is indistinguishable from "the agent had nothing to write".
+run_failure_marker_case() {
+  local case_name="$1"
+  local fake_exit_code="$2"
+  local fake_output="$3"
+  local expect_marker="$4"
+  local expect_reason="$5"
+  local case_dir="${TEST_ROOT}/${case_name}"
+  local fake_bin="${case_dir}/bin"
+  mkdir -p "${fake_bin}" "${case_dir}/outputs"
+
+  printf '#!/bin/bash\nprintf "%%s\\n" "$FAKE_CLAUDE_OUTPUT"\nexit "$FAKE_CLAUDE_EXIT_CODE"\n' > "${fake_bin}/claude"
+  chmod +x "${fake_bin}/claude"
+
+  (
+    cd "${case_dir}"
+    export PATH="${fake_bin}:${PATH}"
+    export FAKE_CLAUDE_OUTPUT="${fake_output}"
+    export FAKE_CLAUDE_EXIT_CODE="${fake_exit_code}"
+    export CLAUDE_CODE_API_KEY="test-key"
+    export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
+    PROMPT_ARG="test prompt"
+    PROMPT="test prompt"
+    PROMPT_BYTES=11
+    PASS_ARGS=()
+
+    # A marker left by an earlier run must never be mistaken for this run's.
+    echo '{"provider":"stale"}' > outputs/agent_failure.json
+
+    run_claude_code >/dev/null 2>&1 || true
+
+    if [ "${expect_marker}" = "yes" ]; then
+      test -f outputs/agent_failure.json \
+        || { echo "[${case_name}] expected outputs/agent_failure.json" >&2; exit 1; }
+      grep -q "${expect_reason}" outputs/agent_failure.json \
+        || { echo "[${case_name}] marker reason did not match '${expect_reason}': $(cat outputs/agent_failure.json)" >&2; exit 1; }
+    else
+      test ! -e outputs/agent_failure.json \
+        || { echo "[${case_name}] a successful run must leave no failure marker, found: $(cat outputs/agent_failure.json)" >&2; exit 1; }
+    fi
+  )
+}
+
+CLAUDE_OK_RESULT='{"type":"result","total_cost_usd":0.1,"modelUsage":{"m":{"inputTokens":1,"outputTokens":1,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.1}}}'
+CLAUDE_LIMIT_RESULT='{"type":"result","subtype":"error_during_execution","result":"Claude usage limit reached. Your limit will reset at 3pm."}'
+
+run_failure_marker_case "marker-on-nonzero-exit" 1 "${CLAUDE_OK_RESULT}" yes "exited 1"
+run_failure_marker_case "marker-on-usage-limit" 0 "${CLAUDE_LIMIT_RESULT}" yes "rate or usage limit"
+run_failure_marker_case "no-marker-on-success" 0 "${CLAUDE_OK_RESULT}" no ""
+
 echo "Claude provider integration tests passed"

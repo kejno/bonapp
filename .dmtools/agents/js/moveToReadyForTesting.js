@@ -4,6 +4,7 @@
  */
 
 const configLoader = require('./configLoader.js');
+const agentFailure = require('./common/agentFailure.js');
 
 function action(params) {
     try {
@@ -11,6 +12,15 @@ function action(params) {
         if (!ticketKey) {
             return { success: false, error: 'No ticket key found in params' };
         }
+
+        // Nothing here inspects what the generator produced, so without this
+        // guard a CLI that died on a usage limit still moves the ticket on to
+        // testing. See common/agentFailure.js.
+        const aborted = agentFailure.abortIfAgentFailed(ticketKey, 'test_cases_generator');
+        if (aborted) {
+            return aborted;
+        }
+
         const projectConfig = configLoader.loadProjectConfig(params.jobParams || params);
         const jiraConfig = projectConfig.jira;
 

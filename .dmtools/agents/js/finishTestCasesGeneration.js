@@ -18,12 +18,23 @@
 
 const configLoader = require('./configLoader.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
+const agentFailure = require('./common/agentFailure.js');
 
 function action(params) {
     const ticketKey = params.ticket && params.ticket.key;
     if (!ticketKey) {
         return { success: false, error: 'No ticket key found in params' };
     }
+
+    // The Test Case tickets are created by the generator itself, so there is
+    // no output artifact here to fall back on: an agent that died before
+    // creating any would still have its ticket advanced to Ready For Testing
+    // and its guard label dropped, handing zero test cases to automation.
+    const aborted = agentFailure.abortIfAgentFailed(ticketKey, 'test_cases_generator');
+    if (aborted) {
+        return aborted;
+    }
+
     const projectConfig = configLoader.loadProjectConfig(params.jobParams || params);
     const jiraConfig = projectConfig.jira;
 

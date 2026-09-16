@@ -136,10 +136,10 @@ BINEOF
     fi
     test "$(cat "${CODEX_HOME}/observed-api-key")" = "<unset>" \
       || { echo "[existing-auth-file] API key should remain unset" >&2; exit 1; }
-    if grep -qx -- '--model' "${CODEX_HOME}/observed-args"; then
-      echo "[existing-auth-file] --model must be omitted when CODEX_MODEL is unset" >&2
-      exit 1
-    fi
+    grep -qx -- '--model' "${CODEX_HOME}/observed-args" \
+      || { echo "[existing-auth-file] expected default --model argument" >&2; exit 1; }
+    grep -qx -- 'gpt-5.6-terra' "${CODEX_HOME}/observed-args" \
+      || { echo "[existing-auth-file] default model was not passed to Codex CLI" >&2; exit 1; }
   )
 }
 run_existing_auth_file_case
@@ -236,5 +236,68 @@ BINEOF
   )
 }
 run_stale_session_case
+
+# A run that never really happened must leave outputs/agent_failure.json
+# behind, so the postJSAction can refuse to advance the ticket — an empty
+# outputs/ folder alone is indistinguishable from "the agent had nothing to
+# write". A genuine run must leave no marker.
+run_failure_marker_case() {
+  local case_name="$1"
+  local fake_exit_code="$2"
+  local fake_output="$3"
+  local expect_marker="$4"
+  local expect_reason="$5"
+  local case_dir="${TEST_ROOT}/${case_name}"
+  local fake_bin="${case_dir}/bin"
+  mkdir -p "${fake_bin}" "${case_dir}/outputs"
+
+  printf '#!/bin/bash\nprintf "%%s\\n" "$FAKE_CODEX_OUTPUT"\nexit "$FAKE_CODEX_EXIT_CODE"\n' > "${fake_bin}/codex"
+  chmod +x "${fake_bin}/codex"
+
+  (
+    cd "${case_dir}"
+    export PATH="${fake_bin}:${PATH}"
+    export FAKE_CODEX_OUTPUT="${fake_output}"
+    export FAKE_CODEX_EXIT_CODE="${fake_exit_code}"
+    export OPENAI_API_KEY="test-key"
+    export CODEX_HOME="${case_dir}/.codex"
+    export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
+    PROMPT_ARG="test prompt"
+    PROMPT="test prompt"
+    PROMPT_BYTES=11
+    PASS_ARGS=()
+
+    # A marker left by an earlier run must never be mistaken for this run's.
+    echo '{"provider":"stale"}' > outputs/agent_failure.json
+
+    run_codex >/dev/null 2>&1 || true
+
+    if [ "${expect_marker}" = "yes" ]; then
+      test -f outputs/agent_failure.json \
+        || { echo "[${case_name}] expected outputs/agent_failure.json" >&2; exit 1; }
+      grep -q "${expect_reason}" outputs/agent_failure.json \
+        || { echo "[${case_name}] marker reason did not match '${expect_reason}': $(cat outputs/agent_failure.json)" >&2; exit 1; }
+      grep -q '"provider": "codex"' outputs/agent_failure.json \
+        || { echo "[${case_name}] marker did not record the provider" >&2; exit 1; }
+    else
+      test ! -e outputs/agent_failure.json \
+        || { echo "[${case_name}] a successful run must leave no failure marker, found: $(cat outputs/agent_failure.json)" >&2; exit 1; }
+    fi
+  )
+}
+
+COMPLETED_TURN='{"type":"thread.started","thread_id":"t-1"}
+{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":1}}'
+
+# The exact shape Codex emitted on BNP-158: exit 0, but the turn failed on a
+# subscription usage limit.
+USAGE_LIMIT_TURN='{"type":"thread.started","thread_id":"t-1"}
+{"type":"error","message":"You'"'"'ve hit your usage limit. Upgrade to Pro"}
+{"type":"turn.failed","error":{"message":"You'"'"'ve hit your usage limit. Upgrade to Pro"}}'
+
+run_failure_marker_case "marker-on-usage-limit" 0 "${USAGE_LIMIT_TURN}" yes "usage limit"
+run_failure_marker_case "marker-on-nonzero-exit" 3 "${COMPLETED_TURN}" yes "exited 3"
+run_failure_marker_case "marker-on-no-terminal-event" 0 '{"type":"thread.started","thread_id":"t-1"}' yes "did not finish"
+run_failure_marker_case "no-marker-on-success" 0 "${COMPLETED_TURN}" no ""
 
 echo "Codex provider integration tests passed"

@@ -21,6 +21,7 @@ const scmModule = require('./common/scm.js');
 const autoStart = require('./common/autoStart.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
 const outputFiles = require('./common/outputFiles.js');
+const agentFailure = require('./common/agentFailure.js');
 
 /**
  * Ensure summary starts with [Q] prefix
@@ -164,6 +165,16 @@ function createQuestion(entry, parentKey, projectKey, jiraConfig, priorityMap) {
 function action(params) {
     try {
         var ticketKey = params.ticket.key;
+
+        // An agent that died on a usage limit leaves outputs/ empty, which
+        // step 1 below would read as "no clarifying questions needed" and act
+        // on — moving the story to PO Review for analysis that never ran.
+        // Bail out before touching Jira at all; see common/agentFailure.js.
+        var aborted = agentFailure.abortIfAgentFailed(ticketKey, 'story_questions');
+        if (aborted) {
+            return aborted;
+        }
+
         var projectKey = ticketKey.split('-')[0];
         var initiatorId = params.initiator;
         var wipLabel = params.metadata && params.metadata.contextId

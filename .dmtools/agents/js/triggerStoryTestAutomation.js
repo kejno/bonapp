@@ -6,10 +6,22 @@
 
 var autoStart = require('./common/autoStart.js');
 var tokenUsageComment = require('./common/tokenUsageComment.js');
+var agentFailure = require('./common/agentFailure.js');
 
 function action(params) {
     try {
         const storyKey = params.ticket.key;
+
+        // This action reads nothing the generator wrote, so a CLI that died
+        // on a usage limit would still drop the guard label and kick off
+        // story_test_automation against zero test cases — and the dropped
+        // label makes the next SM cycle skip regeneration too. See
+        // common/agentFailure.js.
+        const aborted = agentFailure.abortIfAgentFailed(storyKey, 'test_cases_generator');
+        if (aborted) {
+            return aborted;
+        }
+
         const config = params.jobParams && params.jobParams.config
             ? params.jobParams.config
             : (params.config || {});

@@ -9,6 +9,7 @@ var prHelper = require('./common/pullRequest.js');
 const { LABELS } = require('./config.js');
 var tokenUsageComment = require('./common/tokenUsageComment.js');
 var outputFiles = require('./common/outputFiles.js');
+var agentFailure = require('./common/agentFailure.js');
 
 function smLabelForContext(contextId) {
     if (!contextId) return null;
@@ -240,6 +241,18 @@ function findStoryPR(scm, storyKey) {
 function action(params) {
     const actualParams = params.ticket ? params : (params.jobParams || params);
     const storyKey = actualParams.ticket.key;
+
+    // This action only warns when review_replies.json is missing and carries
+    // on to commit, push, and clear test_pr_rework_needed from both Jira and
+    // the GitHub PR. If the agent died before reworking anything, that erases
+    // the very marker saying the PR still needs work — on both sides. Bail
+    // out first, leaving the labels in place for a retry. See
+    // common/agentFailure.js.
+    const aborted = agentFailure.abortIfAgentFailed(storyKey, 'test_automation_rework');
+    if (aborted) {
+        return aborted;
+    }
+
     const config = configLoader.loadProjectConfig(params.jobParams || params);
     const jiraConfig = config.jira;
     const scm = configLoader.createScm(config);

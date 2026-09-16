@@ -7,10 +7,21 @@
 const { LABELS } = require('./config.js');
 const configLoader = require('./configLoader.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
+const agentFailure = require('./common/agentFailure.js');
 
 function action(params) {
     try {
         var ticketKey = params.ticket.key;
+
+        // The answer itself is written by the outputType:field handler, so
+        // this action has nothing of its own to inspect — an agent that died
+        // on a usage limit would still get its question closed as Done with
+        // an empty Answer field. See common/agentFailure.js.
+        var aborted = agentFailure.abortIfAgentFailed(ticketKey, 'po_refinement');
+        if (aborted) {
+            return aborted;
+        }
+
         var projectConfig = configLoader.loadProjectConfig(params.jobParams || params);
         var jiraConfig = projectConfig.jira;
         var wipLabel = params.metadata && params.metadata.contextId
