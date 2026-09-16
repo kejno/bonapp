@@ -135,13 +135,7 @@ Operation value must be an Atlassian Document`; dmtools сериализует A
 | `Answer` | Paragraph | Subtask | `po_refinement` (`outputType: field`) | ✅ создано, подключено |
 | `Solution` | Paragraph | Story | `writeSolutionAndDiagrams.js` (`story_solution`) | ✅ уже было (customfield_10075) |
 | `Diagrams` | Paragraph | Story | `writeSolutionAndDiagrams.js` (`story_solution`) | ✅ уже было (customfield_10076) |
-| `Failed Reason` | Paragraph | Test Case | `postStoryTestAutomationResults.js`, `postBulkBugsCreation.js` | ⚠️ отсутствует — не создавали, т.к. в BNP пока нет ни одного Test Case (стадия test-automation не запускалась) |
-
-`Failed Reason` создавать сейчас смысла нет — заведите его тем же способом
-(создать → Space settings → Fields → Add → Work types → Test Case), когда
-пайплайн дойдёт до `test_cases_generator`/`story_test_automation` и в
-проекте появится первый Test Case. Иначе рискуете подключить поле не к тому
-экрану и потом гадать, почему `editmeta` его не видит.
+| `Failed Reason` | Paragraph | Test Case | `postStoryTestAutomationResults.js`, `postBulkBugsCreation.js` | ✅ создано и подключено (customfield_10177), проверено через `createmeta` — Test Case тикетов в BNP пока нет, но экран уже принимает поле |
 
 ### Как создать поле (REST, если Space settings → Fields → Add — не ваш стиль)
 
