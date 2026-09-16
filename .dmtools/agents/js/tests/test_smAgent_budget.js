@@ -114,6 +114,42 @@ console.log('=== pickProviderWithBudget ===');
   check('no budget object at all → first provider (unbounded)', t.pickProviderWithBudget(['codex', 'claude-code'], null) === 'codex');
 }
 
+console.log('=== fair-share dispatch across one SM pass (the actual user-facing requirement) ===');
+{
+  // The scenario that motivated fair-share picking: with 3+ eligible tickets
+  // in ONE pass and {claude-code: 2, codex: 1}, codex must get its dispatch
+  // in THIS pass — not sit idle until claude-code's larger budget drains
+  // first (which a plain "first provider with any room" rule would do,
+  // since claude-code always has room until its very last slot).
+  //
+  // Mirrors processRule's real per-ticket loop: pick → dispatch (assumed to
+  // succeed) → decrement that provider's bucket, then repeat for the next
+  // ticket — exercising pickProviderWithBudget() the exact way
+  // resolveRuleProvider() and the processRule decrement block call it.
+  const budget = t.buildWorkflowBudget({ 'claude-code': 2, codex: 1 }, {});
+  const providers = ['claude-code', 'codex'];
+  const assignments = [];
+  for (let i = 0; i < 3; i++) {
+    const chosen = t.pickProviderWithBudget(providers, budget);
+    assignments.push(chosen);
+    if (chosen) {
+      const bucket = t.providerBudgetBucket(budget, chosen);
+      bucket.remaining -= 1;
+    }
+  }
+  check('3 tickets against {claude-code:2, codex:1} → codex used within this SAME pass, not after claude-code exhausts',
+    assignments.includes('codex'));
+  check('exact fair-share assignment order is [claude-code, codex, claude-code]',
+    JSON.stringify(assignments) === JSON.stringify(['claude-code', 'codex', 'claude-code']));
+  check('both budgets fully (and only) consumed after 3 tickets',
+    t.providerBudgetBucket(budget, 'claude-code').remaining === 0 &&
+    t.providerBudgetBucket(budget, 'codex').remaining === 0);
+
+  // A 4th ticket in the same pass: both exhausted → no provider left to pick.
+  check('a 4th ticket with both exhausted → null (nothing left to assign)',
+    t.pickProviderWithBudget(providers, budget) === null);
+}
+
 console.log('=== resolveRuleProvider ===');
 {
   const budget = t.buildWorkflowBudget({ 'claude-code': 5, codex: 1 }, {});

@@ -353,13 +353,43 @@ function defaultProviderList() {
 // / the workflowBudget.remaining -= 1 in processRule). A provider whose
 // budget was never checked yet (no bucket present) is treated as available so
 // the very first dispatch of a run always goes to the first listed provider.
+// Picks by REMAINING SHARE (remaining / initial), not by list order — so
+// with e.g. {claude-code: 2, codex: 1} and 3+ eligible tickets in the same
+// SM pass, dispatch alternates and fills BOTH providers to their own limit
+// in that one pass instead of draining claude-code's larger number first and
+// only reaching codex once claude-code is exhausted. Concretely for that
+// config: ticket 1 → claude-code (both at 100% share, list order breaks the
+// tie) → claude-code now at 1/2 = 50%; ticket 2 → codex (100% > 50%) → codex
+// now at 0/1 = 0%; ticket 3 → claude-code (50% > 0%) → claude-code now at
+// 0/2 = 0%. Both end up fully used in one pass rather than codex sitting
+// idle until claude-code's budget runs out first.
+//
+// A provider absent from byProvider (unlimited — see providerBudgetBucket)
+// has an infinite share and therefore always outranks any capped provider
+// that still has budget, same as the old "first one with room" rule did for
+// the unlimited case.
+function providerRemainingShare(workflowBudget, provider) {
+    var bucket = workflowBudget.byProvider && workflowBudget.byProvider[provider];
+    if (!bucket) return Infinity; // no cap configured for this provider at all
+    if (!bucket.initial || bucket.initial === Infinity) return Infinity;
+    return bucket.remaining / bucket.initial;
+}
+
 function pickProviderWithBudget(providers, workflowBudget) {
     if (!workflowBudget) return providers[0];
+    var best = null;
+    var bestShare = -1;
     for (var i = 0; i < providers.length; i++) {
         var bucket = workflowBudget.byProvider && workflowBudget.byProvider[providers[i]];
-        if (!bucket || bucket.remaining > 0) return providers[i];
+        var hasBudget = !bucket || bucket.remaining > 0;
+        if (!hasBudget) continue;
+        var share = providerRemainingShare(workflowBudget, providers[i]);
+        if (share > bestShare) {
+            bestShare = share;
+            best = providers[i];
+        }
     }
-    return null; // every listed provider is exhausted
+    return best; // null if every listed provider is exhausted
 }
 
 function isWorkflowBudgetExhausted(rule, effectiveConfig, workflowBudget) {
