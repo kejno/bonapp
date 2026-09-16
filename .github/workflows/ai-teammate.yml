@@ -8,9 +8,14 @@ name: AI Teammate
 # workflow budget (see workflowBudgetsByProvider in smAgent.js) has no other
 # way to tell a codex run from a claude-code run when it lists active runs via
 # the GitHub API — workflow_dispatch inputs are not queryable on a run list,
-# only `name`/`display_title` are. Keep the exact `[provider]` bracket shape
-# in sync with the regex in smAgent.js's parseProviderFromRunName().
-run-name: "[${{ inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code' }}] AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})"
+# only `name`/`display_title` are.
+#
+# The tag shows the shortened "claude" for readability in the Actions run
+# list, but the ACTUAL provider value everywhere else (AI_AGENT_PROVIDER,
+# run-agent.sh's case branches, sm.json's maxTriggeredWorkflows keys) stays
+# "claude-code" — smAgent.js's parseProviderFromRunName() maps the display
+# label back to it. If you change the label here, update that mapping too.
+run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})"
 
 on:
   workflow_dispatch:

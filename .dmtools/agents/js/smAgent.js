@@ -108,10 +108,21 @@ function parseWorkflowRuns(raw) {
 // queryable on a listed run, only name/display_title are). Falls back to
 // 'claude-code' for any run predating this tag, or one whose name we cannot
 // parse — matching ai-teammate.yml's own `... || 'claude-code'` default.
+// ai-teammate.yml's run-name shows the shortened "claude" tag for readability
+// in the Actions run list, but every actual provider value elsewhere
+// (AI_AGENT_PROVIDER, run-agent.sh's case branches, sm.json's
+// maxTriggeredWorkflows keys) is "claude-code" — map the display label back
+// so a provider-budget bucket lookup (providerBudgetBucket(budget,
+// 'claude-code')) finds the right one. Keep in sync with ai-teammate.yml's
+// run-name expression if the label changes.
+var RUN_NAME_PROVIDER_LABEL_ALIASES = { claude: 'claude-code' };
+
 function parseProviderFromRunName(run) {
     var title = (run && (run.name || run.display_title || '')) || '';
     var match = /^\[([^\]]+)\]/.exec(title);
-    return (match && match[1]) || 'claude-code';
+    var label = match && match[1];
+    if (!label) return 'claude-code';
+    return RUN_NAME_PROVIDER_LABEL_ALIASES[label] || label;
 }
 
 function labelList(value) {

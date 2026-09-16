@@ -202,8 +202,20 @@ console.log('=== parseProviderFromRunName ===');
   check('tagged run name', t.parseProviderFromRunName({ name: '[codex] AI Teammate (agents/po_refinement.json)' }) === 'codex');
   check('untagged legacy run name falls back to claude-code',
     t.parseProviderFromRunName({ name: 'AI Teammate (agents/po_refinement.json)' }) === 'claude-code');
+  // Current ai-teammate.yml run-name shows the shortened "claude" label
+  // (readability in the Actions run list) but the real provider value used
+  // for budget lookups everywhere else is "claude-code" — the parser must
+  // map it back, or providerBudgetBucket(budget, 'claude') would silently
+  // miss the 'claude-code' bucket sm.json's maxTriggeredWorkflows configures.
+  check('current "claude" display label maps back to the real provider value "claude-code"',
+    t.parseProviderFromRunName({ name: '[claude] AI Teammate (x)' }) === 'claude-code');
   check('display_title used when name absent',
-    t.parseProviderFromRunName({ display_title: '[claude-code] AI Teammate (x)' }) === 'claude-code');
+    t.parseProviderFromRunName({ display_title: '[claude] AI Teammate (x)' }) === 'claude-code');
+  // A run dispatched before this label change still has the old literal
+  // "claude-code" tag baked into its already-created run-name (GitHub does
+  // not retroactively rewrite it) — must keep resolving correctly too.
+  check('old literal "claude-code" tag (pre-label-change runs) still resolves correctly',
+    t.parseProviderFromRunName({ name: '[claude-code] AI Teammate (x)' }) === 'claude-code');
 }
 
 console.log();
