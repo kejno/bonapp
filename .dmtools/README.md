@@ -135,7 +135,7 @@ variables → Actions → Variables). Локально — `AI_AGENT_PROVIDER=co
 | Что | Значение |
 |---|---|
 | Переменная `AI_AGENT_PROVIDER` | `codex` |
-| Переменная `CODEX_MODEL` | опционально, по умолчанию `gpt-5-codex` |
+| Переменная `CODEX_MODEL` | опционально; если не задана, используется модель по умолчанию, выбранная Codex CLI для авторизованного аккаунта |
 | Секрет `CODEX_AUTH_JSON` | содержимое `~/.codex/auth.json` после `codex login` |
 | Секрет `CODEX_SECRETS_ADMIN_PAT` | fine-grained PAT, **только на `kejno/bonapp`**, право `Secrets: Read and write` — нужен чтобы записать ротированный токен обратно; `GITHUB_TOKEN` так не умеет, и никакой `permissions:`-скоуп этого не даёт |
 | Секрет `OPENAI_API_KEY` | альтернатива `CODEX_AUTH_JSON` (без ротации) |

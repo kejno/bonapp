@@ -110,6 +110,7 @@ run_existing_auth_file_case() {
   cat > "${fake_bin}/codex" << 'BINEOF'
 #!/bin/bash
 printf '%s' "${OPENAI_API_KEY-<unset>}" > "${CODEX_HOME}/observed-api-key"
+printf '%s\n' "$@" > "${CODEX_HOME}/observed-args"
 echo '{"type":"token_count","info":{"model":"gpt-5-codex","total_token_usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}'
 exit 0
 BINEOF
@@ -122,7 +123,7 @@ BINEOF
     export CODEX_HOME="${case_dir}/.codex"
     export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
     export AI_AGENT_USAGE_NAME="existing_auth_file"
-    unset CODEX_AUTH_JSON OPENAI_API_KEY
+    unset CODEX_AUTH_JSON OPENAI_API_KEY CODEX_MODEL
     PROMPT_ARG="test prompt"
     PROMPT="test prompt"
     PROMPT_BYTES=11
@@ -135,6 +136,10 @@ BINEOF
     fi
     test "$(cat "${CODEX_HOME}/observed-api-key")" = "<unset>" \
       || { echo "[existing-auth-file] API key should remain unset" >&2; exit 1; }
+    if grep -qx -- '--model' "${CODEX_HOME}/observed-args"; then
+      echo "[existing-auth-file] --model must be omitted when CODEX_MODEL is unset" >&2
+      exit 1
+    fi
   )
 }
 run_existing_auth_file_case
@@ -150,6 +155,7 @@ run_oauth_restore_case() {
   cat > "${fake_bin}/codex" << 'BINEOF'
 #!/bin/bash
 printf '%s' "${OPENAI_API_KEY-<unset>}" > "${CODEX_HOME}/observed-api-key"
+printf '%s\n' "$@" > "${CODEX_HOME}/observed-args"
 echo '{"type":"token_count","info":{"total_token_usage":{"input_tokens":1,"output_tokens":1}}}'
 exit 0
 BINEOF
@@ -162,6 +168,7 @@ BINEOF
     export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
     export CODEX_AUTH_JSON='{"tokens":{"refresh_token":"rt-1"}}'
     export OPENAI_API_KEY="should-be-ignored"
+    export CODEX_MODEL="test-codex-model"
     PROMPT_ARG="test prompt"
     PROMPT="test prompt"
     PROMPT_BYTES=11
@@ -185,6 +192,10 @@ BINEOF
       echo "[oauth-restore] OPENAI_API_KEY must be unset in OAuth mode, saw '${observed}'" >&2
       exit 1
     fi
+    grep -qx -- '--model' "${CODEX_HOME}/observed-args" \
+      || { echo "[oauth-restore] expected explicit --model argument" >&2; exit 1; }
+    grep -qx -- 'test-codex-model' "${CODEX_HOME}/observed-args" \
+      || { echo "[oauth-restore] configured model was not passed to Codex CLI" >&2; exit 1; }
   )
 }
 run_oauth_restore_case

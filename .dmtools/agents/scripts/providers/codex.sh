@@ -16,7 +16,9 @@
 #   3. OPENAI_API_KEY   - API key billed through the OpenAI platform account.
 #                         No rotation, safe under concurrency.
 # Optional (either auth mode):
-#   CODEX_MODEL         - Model slug (default: gpt-5-codex)
+#   CODEX_MODEL         - Optional model slug. When unset, Codex CLI selects
+#                         the default model available to the authenticated
+#                         account.
 #   CODEX_SANDBOX       - Sandbox mode (default: danger-full-access; the agent
 #                         must be able to write the repo and outputs/)
 #   CODEX_HOME          - Codex state dir (default: $HOME/.codex). Exported so
@@ -43,7 +45,11 @@ run_codex() {
     return 1
   fi
 
-  local codex_model="${CODEX_MODEL:-gpt-5-codex}"
+  local codex_model="${CODEX_MODEL:-}"
+  local codex_model_args=()
+  if [ -n "${codex_model}" ]; then
+    codex_model_args=(--model "${codex_model}")
+  fi
   local codex_sandbox="${CODEX_SANDBOX:-danger-full-access}"
 
   if ! command -v codex >/dev/null 2>&1; then
@@ -72,7 +78,7 @@ run_codex() {
 
   echo "Codex Configuration:"
   echo "  Auth mode:   ${codex_auth_mode}"
-  echo "  Model:       ${codex_model}"
+  echo "  Model:       ${codex_model:-<Codex CLI default>}"
   echo "  Sandbox:     ${codex_sandbox}"
   echo "  CODEX_HOME:  ${CODEX_HOME}"
   echo "Working directory: $(pwd)"
@@ -116,12 +122,12 @@ run_codex() {
     local codex_prompt_stdin_file
     codex_prompt_stdin_file="$(mktemp)"
     resumed_session_reread_pointer_notice "${codex_prompt_file}" > "${codex_prompt_stdin_file}"
-    echo "Running: codex exec resume --json --model ${codex_model} --sandbox ${codex_sandbox} - (resumed session: pointer to ${codex_prompt_file})"
+    echo "Running: codex exec resume --json${codex_model:+ --model ${codex_model}} --sandbox ${codex_sandbox} - (resumed session: pointer to ${codex_prompt_file})"
     echo ""
     codex exec \
       ${codex_resume_args[@]+"${codex_resume_args[@]}"} \
       --json \
-      --model "${codex_model}" \
+      ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
       ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
@@ -133,11 +139,11 @@ run_codex() {
       rm -f "${codex_prompt_file}"
     fi
   elif [ -f "${PROMPT_ARG}" ]; then
-    echo "Running: codex exec --json --model ${codex_model} --sandbox ${codex_sandbox} - (prompt: ${PROMPT_BYTES} bytes via stdin)"
+    echo "Running: codex exec --json${codex_model:+ --model ${codex_model}} --sandbox ${codex_sandbox} - (prompt: ${PROMPT_BYTES} bytes via stdin)"
     echo ""
     codex exec \
       --json \
-      --model "${codex_model}" \
+      ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
       ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
@@ -145,7 +151,7 @@ run_codex() {
       2>&1 | tee "${codex_log}"
     codex_exit_code=${PIPESTATUS[0]}
   else
-    echo "Running: codex exec --json --model ${codex_model} --sandbox ${codex_sandbox} - (inline prompt: ${PROMPT_BYTES} bytes via stdin)"
+    echo "Running: codex exec --json${codex_model:+ --model ${codex_model}} --sandbox ${codex_sandbox} - (inline prompt: ${PROMPT_BYTES} bytes via stdin)"
     echo ""
     # Materialize the prompt and redirect it in, rather than piping it: with a
     # `printf ... | codex ... | tee` pipeline, PIPESTATUS[0] is printf's exit
@@ -155,7 +161,7 @@ run_codex() {
     printf '%s' "${PROMPT}" > "${codex_inline_prompt_file}"
     codex exec \
       --json \
-      --model "${codex_model}" \
+      ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
       ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
