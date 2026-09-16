@@ -129,6 +129,19 @@ jobs:
           SOURCE_GITHUB_WORKSPACE: kejno
           SOURCE_GITHUB_REPOSITORY: bonapp
           DMTOOLS_INTEGRATIONS: 'jira,github,cli,file'
+          # smAgent.js's resolveRuleProvider() reads this via
+          # java.lang.System.getenv('AI_AGENT_PROVIDER') (see its own comment
+          # for why not process.env) to pick a provider per ticket when a rule
+          # has no explicit "provider" and AI_AGENT_PROVIDER is a
+          # comma-separated list (e.g. "claude-code,codex") — WITHOUT this
+          # line, that getenv call always returns null regardless of what the
+          # repo variable is set to, so every dispatch silently fell back to
+          # 'claude-code' and codex was never actually picked even with a
+          # free budget (confirmed live: every ai-teammate.yml run tagged
+          # itself [claude-code], none ever [codex], despite
+          # AI_AGENT_PROVIDER=claude-code,codex and codex's budget never
+          # being touched).
+          AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
         run: |
           dmtools run agents/sm.json --ciRunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             | tee sm-output.log
