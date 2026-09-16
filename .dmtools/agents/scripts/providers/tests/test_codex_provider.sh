@@ -99,6 +99,46 @@ run_missing_auth_case() {
 }
 run_missing_auth_case
 
+# A pre-restored auth.json must be sufficient by itself. This is how the
+# workflow invokes the provider: it restores the secret to CODEX_HOME once,
+# then deliberately does not pass CODEX_AUTH_JSON to avoid overwriting a token
+# rotated by the CLI.
+run_existing_auth_file_case() {
+  local case_dir="${TEST_ROOT}/existing-auth-file"
+  local fake_bin="${case_dir}/bin"
+  mkdir -p "${fake_bin}" "${case_dir}/outputs" "${case_dir}/.codex"
+  cat > "${fake_bin}/codex" << 'BINEOF'
+#!/bin/bash
+printf '%s' "${OPENAI_API_KEY-<unset>}" > "${CODEX_HOME}/observed-api-key"
+echo '{"type":"token_count","info":{"model":"gpt-5-codex","total_token_usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}'
+exit 0
+BINEOF
+  chmod +x "${fake_bin}/codex"
+  printf '%s' '{"tokens":{"refresh_token":"rt-existing"}}' > "${case_dir}/.codex/auth.json"
+
+  (
+    cd "${case_dir}"
+    export PATH="${fake_bin}:${PATH}"
+    export CODEX_HOME="${case_dir}/.codex"
+    export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
+    export AI_AGENT_USAGE_NAME="existing_auth_file"
+    unset CODEX_AUTH_JSON OPENAI_API_KEY
+    PROMPT_ARG="test prompt"
+    PROMPT="test prompt"
+    PROMPT_BYTES=11
+    PASS_ARGS=()
+
+    if ! run_codex > provider-output.log 2>&1; then
+      cat provider-output.log >&2
+      echo "[existing-auth-file] provider rejected a valid pre-restored auth.json" >&2
+      exit 1
+    fi
+    test "$(cat "${CODEX_HOME}/observed-api-key")" = "<unset>" \
+      || { echo "[existing-auth-file] API key should remain unset" >&2; exit 1; }
+  )
+}
+run_existing_auth_file_case
+
 # OAuth mode must materialize auth.json inside CODEX_HOME (the path the CI
 # persist step reads back) with owner-only permissions, and must clear any
 # OPENAI_API_KEY so the CLI cannot silently prefer API billing over the

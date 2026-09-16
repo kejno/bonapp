@@ -120,8 +120,13 @@ jobs:
         if: vars.AI_AGENT_PROVIDER == 'codex'
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "${CODEX_AUTH_JSON}" ]; then
+            if [ -z "${OPENAI_API_KEY}" ]; then
+              echo "::error::Codex authentication is not configured. Set either the CODEX_AUTH_JSON or OPENAI_API_KEY repository secret." >&2
+              exit 1
+            fi
             echo "::notice::CODEX_AUTH_JSON is not set — falling back to OPENAI_API_KEY auth (no token rotation)."
             exit 0
           fi
@@ -261,7 +266,7 @@ jobs:
       # most recent CLI transcript this run just wrote and fail the job
       # explicitly if it shows a rate-limit/usage-limit signal, so a run that
       # accomplished nothing shows red instead of a misleadingly green one.
-      - name: Fail if the agent CLI hit a rate/usage limit
+      - name: Validate agent CLI execution
         if: always()
         working-directory: .dmtools
         env:
@@ -282,8 +287,8 @@ jobs:
 
           latest_log="$(ls -t ${log_glob} 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
-            echo "No ${PROVIDER} transcript found for this run — nothing to check."
-            exit 0
+            echo "::error::No ${PROVIDER} transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
+            exit 1
           fi
           if grep -Eqi "${pattern}" "${latest_log}"; then
             echo "::error::${PROVIDER} hit a provider-side rate/usage or auth limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. This is not a bug in this repo's code. ${hint} sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2

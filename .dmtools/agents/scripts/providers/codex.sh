@@ -11,7 +11,9 @@
 #                         refreshed, so CI must persist the rotated file back
 #                         (see ai-teammate.yml's "Persist rotated Codex auth"
 #                         step) or the next run's credentials are dead.
-#   2. OPENAI_API_KEY   - API key billed through the OpenAI platform account.
+#   2. Existing $CODEX_HOME/auth.json - subscription auth restored by CI or a
+#                         previous local `codex login`.
+#   3. OPENAI_API_KEY   - API key billed through the OpenAI platform account.
 #                         No rotation, safe under concurrency.
 # Optional (either auth mode):
 #   CODEX_MODEL         - Model slug (default: gpt-5-codex)
@@ -26,13 +28,18 @@
 # (subprocess scope), matching how claude.sh scopes ANTHROPIC_*.
 
 run_codex() {
+  export CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
+  mkdir -p "${CODEX_HOME}"
+
   local codex_auth_mode=""
   if [ -n "${CODEX_AUTH_JSON:-}" ]; then
-    codex_auth_mode="oauth"
+    codex_auth_mode="oauth-env"
+  elif [ -s "${CODEX_HOME}/auth.json" ]; then
+    codex_auth_mode="oauth-file"
   elif [ -n "${OPENAI_API_KEY:-}" ]; then
     codex_auth_mode="api-key"
   else
-    echo "Error: either CODEX_AUTH_JSON or OPENAI_API_KEY is required for codex provider" >&2
+    echo "Error: Codex authentication is required (CODEX_AUTH_JSON, ${CODEX_HOME}/auth.json, or OPENAI_API_KEY)" >&2
     return 1
   fi
 
@@ -44,10 +51,7 @@ run_codex() {
     return 1
   fi
 
-  export CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
-  mkdir -p "${CODEX_HOME}"
-
-  if [ "${codex_auth_mode}" = "oauth" ]; then
+  if [ "${codex_auth_mode}" = "oauth-env" ]; then
     # printf, not echo: auth.json is a single-line JSON blob and must land on
     # disk byte-identical to what `codex login` wrote — a trailing newline is
     # tolerated by the CLI but any shell mangling of the value is not.
@@ -55,6 +59,12 @@ run_codex() {
     chmod 600 "${CODEX_HOME}/auth.json"
     # An API key in the environment takes precedence inside the Codex CLI and
     # would silently bypass the subscription credentials we just restored.
+    unset OPENAI_API_KEY
+  elif [ "${codex_auth_mode}" = "oauth-file" ]; then
+    # The workflow has already restored auth.json. Do not rewrite it from an
+    # absent environment variable, and keep subscription auth ahead of an API
+    # key that may happen to exist in the runner environment.
+    chmod 600 "${CODEX_HOME}/auth.json"
     unset OPENAI_API_KEY
   else
     export OPENAI_API_KEY="${OPENAI_API_KEY}"
