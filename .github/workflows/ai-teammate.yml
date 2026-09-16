@@ -1,5 +1,10 @@
 name: AI Teammate
 
+# Without this the run list is 840 identically-titled "AI Teammate" rows.
+# GitHub's expression syntax has no replace/split, so config_file keeps its
+# "agents/*.json" shape here rather than being trimmed to the bare agent name.
+run-name: AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})
+
 on:
   workflow_dispatch:
     inputs:
