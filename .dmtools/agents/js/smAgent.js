@@ -332,8 +332,16 @@ function ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, prov
 function resolveRuleProvider(rule, workflowBudget) {
     if (rule.provider) return rule.provider;
     var envProviders = defaultProviderList();
+    // TEMP DEBUG — remove once the live "codex never picked" investigation is
+    // resolved. Traces exactly what defaultProviderList()/pickProviderWithBudget()
+    // see on a real GitHub Actions runner, since isolated vm-based unit tests
+    // pass but the real SM run still never selects codex.
+    console.log('  [debug resolveRuleProvider] envProviders=' + JSON.stringify(envProviders) +
+        ' byProvider=' + JSON.stringify(workflowBudget && workflowBudget.byProvider));
     if (envProviders.length <= 1) return envProviders[0] || 'claude-code';
-    return pickProviderWithBudget(envProviders, workflowBudget) || envProviders[0];
+    var picked = pickProviderWithBudget(envProviders, workflowBudget) || envProviders[0];
+    console.log('  [debug resolveRuleProvider] picked=' + picked);
+    return picked;
 }
 
 function defaultProviderList() {
