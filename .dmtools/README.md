@@ -97,6 +97,84 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | `package.json` / `npm ci` в `ai-teammate.yml` | npm workspaces (`backend/` NestJS + `frontend/` React) — скелет создан, `npm ci` теперь работает | ✅ |
 | `services.postgres` в `ai-teammate.yml` | `backend/test/*.e2e-spec.ts` бутстрапит реальный Nest-модуль с живым TypeORM-подключением (не мок) — без сервиса каждый integration-тест падает/висит на недоступном `localhost:5432` | ✅ |
 
+## Ручная настройка Jira-проекта (custom fields, экраны)
+
+`config.js` ожидает статусы, лейблы и **custom-поля** по имени — если их нет
+в проекте или они не подключены к экрану нужного типа тикета, запись
+проваливается тихо: `outputType: "field"` не бросает ошибку в лог, которую
+кто-то заметит, а `postJSAction` (например `closeQuestionTicket.js`) всё
+равно закрывает тикет как обработанный. Так 43 из 48 сабтасков-вопросов в
+BNP оказались закрыты в Done с пустым `Answer` — см. коммит с guard'ами
+(`outputs/agent_failure.json`) для защиты от смерти CLI, но **эта** дыра
+(поле есть в конфиге, но не в Jira) им не покрывается — агент отработал
+успешно, просто писать было некуда.
+
+**BNP — team-managed проект** (`style: next-gen`). Custom-поле там
+подключается в два шага, оба только через UI (Jira REST такое не умеет):
+1. Создать поле (см. `POST /rest/api/3/field` ниже, или Global settings →
+   Custom fields → Create field, тип **Paragraph** для многострочных полей)
+2. **Space settings → Fields → Add** — привязать поле к пространству BonApp
+3. **Work types → <тип тикета> → Fields** — перетащить поле на форму
+   нужного типа (Subtask / Story / Test Case)
+
+Шаг 2 легко пропустить: поле существует и находится через `/rest/api/3/field`,
+но `editmeta` конкретного тикета его не покажет, пока не сделаны шаги 2 и 3
+— значит запись в него будет падать, а `outputType: "field"`/`jira_update_field`
+это может не выбрасывать наверх как явную ошибку джоба.
+
+Team-managed rich-text поля (Paragraph/textarea) хранят значение как
+**Atlassian Document Format**, не как plain string — как и встроенный
+Description. Ручной `PUT` с обычной строкой в такое поле вернёт `400
+Operation value must be an Atlassian Document`; dmtools сериализует ADF сам,
+это подтверждено рабочей записью в `Answer` на реальном прогоне.
+
+### Что нужно на сегодня (BNP)
+
+| Поле | Тип | Нужно на | Кто использует | Статус |
+|---|---|---|---|---|
+| `Answer` | Paragraph | Subtask | `po_refinement` (`outputType: field`) | ✅ создано, подключено |
+| `Solution` | Paragraph | Story | `writeSolutionAndDiagrams.js` (`story_solution`) | ✅ уже было (customfield_10075) |
+| `Diagrams` | Paragraph | Story | `writeSolutionAndDiagrams.js` (`story_solution`) | ✅ уже было (customfield_10076) |
+| `Failed Reason` | Paragraph | Test Case | `postStoryTestAutomationResults.js`, `postBulkBugsCreation.js` | ⚠️ отсутствует — не создавали, т.к. в BNP пока нет ни одного Test Case (стадия test-automation не запускалась) |
+
+`Failed Reason` создавать сейчас смысла нет — заведите его тем же способом
+(создать → Space settings → Fields → Add → Work types → Test Case), когда
+пайплайн дойдёт до `test_cases_generator`/`story_test_automation` и в
+проекте появится первый Test Case. Иначе рискуете подключить поле не к тому
+экрану и потом гадать, почему `editmeta` его не видит.
+
+### Как создать поле (REST, если Space settings → Fields → Add — не ваш стиль)
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -X POST \
+  -H "Content-Type: application/json" \
+  "$JIRA_BASE_URL/rest/api/3/field" \
+  -d '{
+    "name": "Failed Reason",
+    "description": "...",
+    "type": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+    "searcherKey": "com.atlassian.jira.plugin.system.customfieldtypes:textsearcher"
+  }'
+```
+
+Возвращает `customfield_NNNNN`. REST создаёт поле, но **не** подключает его
+к пространству/экрану — шаги 2 и 3 выше всё равно нужны руками. Проверка,
+что поле действительно доступно для записи на конкретном тикете:
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+  "$JIRA_BASE_URL/rest/api/3/issue/<KEY>/editmeta" \
+  | jq '.fields | to_entries[] | select(.value.name=="Failed Reason")'
+```
+
+Пусто — поле не подключено к экрану этого типа тикета, идти делать шаги 2/3.
+
+### Статусы и лейблы
+
+Все статусы из `agents/js/config.js` (`STATUSES`) на сегодня присутствуют в
+BNP workflow — сверено через `/rest/api/3/status`. Лейблы (`LABELS` там же)
+Jira создаёт сама при первом использовании, руками заводить не нужно.
+
 ## Переключение провайдера на Codex
 
 По умолчанию пайплайн работает на Claude Code. Переключение на OpenAI Codex —
