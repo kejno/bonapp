@@ -75,8 +75,13 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
   `js/configLoader.js`
 - `.github/workflows/sm.yml` — SM-агент, крон каждые 20 мин, сканит Jira через
   JQL, диспатчит `ai-teammate.yml` (перенести/включить в bonapp отдельно)
+- `.dmtools/agents/scripts/providers/codex.sh` + `codex_usage.py` — провайдер
+  OpenAI Codex (`codex exec`), два режима авторизации: `CODEX_AUTH_JSON`
+  (подписка ChatGPT Plus/Pro, приоритетно) или `OPENAI_API_KEY` (fallback).
+  См. «Переключение провайдера на Codex» ниже
 - `.github/workflows/ai-teammate.yml` — выполняет один Teammate job
-  (`dmtools run <config>`) с `AI_AGENT_PROVIDER=claude-code`
+  (`dmtools run <config>`) с провайдером из переменной `AI_AGENT_PROVIDER`
+  (`claude-code` по умолчанию, либо `codex`)
 
 ## Настройка
 
@@ -91,6 +96,54 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 | `.github/workflows/{sm-agent,ai-teammate}.yml` | скопированы из resume, `runs-on` переключён на `ubuntu-latest` (в resume — `self-hosted`, отдельный runner не поднимали для bonapp) | ✅ |
 | `package.json` / `npm ci` в `ai-teammate.yml` | npm workspaces (`backend/` NestJS + `frontend/` React) — скелет создан, `npm ci` теперь работает | ✅ |
 | `services.postgres` в `ai-teammate.yml` | `backend/test/*.e2e-spec.ts` бутстрапит реальный Nest-модуль с живым TypeORM-подключением (не мок) — без сервиса каждый integration-тест падает/висит на недоступном `localhost:5432` | ✅ |
+
+## Переключение провайдера на Codex
+
+По умолчанию пайплайн работает на Claude Code. Переключение на OpenAI Codex —
+через переменную репозитория `AI_AGENT_PROVIDER=codex` (Settings → Secrets and
+variables → Actions → Variables). Локально — `AI_AGENT_PROVIDER=codex` в
+`dmtools.env`.
+
+### Почему Codex устроен сложнее Claude
+
+`claude setup-token` выдаёт долгоживущий статичный токен — положил в секрет и
+забыл. У Codex на подписке ChatGPT Plus/Pro такого нет: `codex login` пишет
+`~/.codex/auth.json`, refresh-токен внутри **одноразовый** и ротируется при
+каждом обновлении access-токена. Значит CI обязан после каждого прогона
+записать обновлённый `auth.json` обратно в секрет (round-trip), иначе
+следующий запуск умрёт на `refresh_token already used`.
+
+Отсюда два следствия, которых нет у Claude:
+
+1. **Строгая сериализация.** Под Codex `ai-teammate.yml` использует одну
+   общую concurrency-группу на весь репозиторий вместо пер-тикетной: два
+   параллельных job'а держали бы один `auth.json`, оба ротировали бы токен,
+   и проигравший оставил бы мёртвую учётку. Поэтому же `sm.json` должен
+   держать `maxTriggeredWorkflows: 1` — параллелизм пайплайна под Codex
+   теряется.
+2. **Остаточный риск.** Шаг «Persist rotated Codex auth» стоит с
+   `if: always()`, но job, убитый по cancel/timeout, не выполнит его вовсе —
+   токен сгорит. Восстановление только руками: `codex login` локально →
+   вставить новый `~/.codex/auth.json` в секрет `CODEX_AUTH_JSON`.
+
+Если параллелизм важнее подписки — `OPENAI_API_KEY` вместо `CODEX_AUTH_JSON`:
+ротации нет, пер-тикетная concurrency сохраняется, но оплата идёт по токенам
+через платформенный аккаунт OpenAI, а не по подписке.
+
+### Что настроить
+
+| Что | Значение |
+|---|---|
+| Переменная `AI_AGENT_PROVIDER` | `codex` |
+| Переменная `CODEX_MODEL` | опционально, по умолчанию `gpt-5-codex` |
+| Секрет `CODEX_AUTH_JSON` | содержимое `~/.codex/auth.json` после `codex login` |
+| Секрет `CODEX_SECRETS_ADMIN_PAT` | fine-grained PAT, **только на `kejno/bonapp`**, право `Secrets: Read and write` — нужен чтобы записать ротированный токен обратно; `GITHUB_TOKEN` так не умеет, и никакой `permissions:`-скоуп этого не даёт |
+| Секрет `OPENAI_API_KEY` | альтернатива `CODEX_AUTH_JSON` (без ротации) |
+| `sm.json` → `maxTriggeredWorkflows` | `1` |
+
+Безопасность: `CODEX_AUTH_JSON` — живые учётные данные вашей подписки
+ChatGPT. Любой, кто может запустить workflow в репозитории, получает к ней
+доступ. `CODEX_SECRETS_ADMIN_PAT` скоупить строго на один репозиторий.
 
 ## Крон / триггеры
 

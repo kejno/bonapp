@@ -33,6 +33,8 @@ source "${SCRIPT_DIR}/providers/_common.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/providers/claude.sh"
 # shellcheck source=/dev/null
+source "${SCRIPT_DIR}/providers/codex.sh"
+# shellcheck source=/dev/null
 source "${SCRIPT_DIR}/providers/codemie.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/providers/copilot.sh"
@@ -51,6 +53,7 @@ Provider is controlled by AI_AGENT_PROVIDER environment variable (default: curso
 Providers:
   cursor       - Uses cursor-agent (default)
   claude-code  - Uses Claude Code CLI via Bedrock proxy (ANTHROPIC_BASE_URL + ANTHROPIC_API_KEY)
+  codex        - Uses OpenAI Codex CLI (codex exec)
   codemie      - Uses codemie-claude
   copilot      - Uses GitHub Copilot CLI (npx @github/copilot)
   kimi         - Uses Kimi Code CLI (kimi)
@@ -63,6 +66,8 @@ Notes:
   - Extra arguments before the prompt are passed through to the agent (cursor and codemie)
   - Useful for resume: $(basename "$0") --continue "fix the push error"
     (do NOT combine with --resume: Copilot CLI rejects --continue + --resume together)
+  - For codex: requires CODEX_AUTH_JSON (ChatGPT subscription auth.json) or OPENAI_API_KEY;
+               optional CODEX_MODEL, CODEX_SANDBOX, CODEX_HOME
   - For codemie: requires CODEMIE_API_KEY and CODEMIE_BASE_URL environment variables
   - For copilot: requires COPILOT_GITHUB_TOKEN or GITHUB_TOKEN environment variable
   - For cursor: optional CURSOR_MODEL env var (default: auto)
@@ -170,6 +175,9 @@ exit_code=0
 case "$PROVIDER" in
   claude-code)
     run_claude_code || exit_code=$?
+    ;;
+  codex)
+    run_codex || exit_code=$?
     ;;
   codemie)
     run_codemie || exit_code=$?

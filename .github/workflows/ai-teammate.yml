@@ -44,8 +44,19 @@ jobs:
     # newer one in the same group, so BNP-25/26/27 review runs could cancel each
     # other out even though they're unrelated tickets. Fall back to config_file
     # only for the rare dispatch that omits concurrency_key.
+    #
+    # EXCEPTION — the codex provider on ChatGPT subscription auth: its
+    # refresh token is SINGLE-USE and rotates on every refresh, and the
+    # rotated auth.json has to round-trip through ONE repo secret (see the
+    # restore/persist steps below). Two jobs holding the same auth.json at
+    # once means both refresh it, both write the secret, and whichever loses
+    # leaves a dead `refresh_token already used` credential behind — recovery
+    # is a manual `codex login`. So under codex, every run serializes into a
+    # single repo-wide group regardless of ticket. Keep sm.json's
+    # maxTriggeredWorkflows at 1 to match; otherwise the extra dispatches just
+    # queue up behind this group anyway.
     concurrency:
-      group: ai-teammate-agent-${{ inputs.concurrency_key || inputs.config_file }}
+      group: ${{ vars.AI_AGENT_PROVIDER == 'codex' && 'ai-teammate-agent-codex-auth' || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
       cancel-in-progress: false
 
     # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
@@ -89,7 +100,38 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
+        if: vars.AI_AGENT_PROVIDER != 'codex'
         run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install Codex CLI
+        if: vars.AI_AGENT_PROVIDER == 'codex'
+        run: npm install -g @openai/codex
+
+      # ChatGPT subscription auth only (CODEX_AUTH_JSON). With an API key
+      # instead, this is a no-op and nothing rotates.
+      #
+      # CODEX_HOME is pinned to one absolute path and exported for every later
+      # step, so the CLI writes its rotated auth.json exactly where "Persist
+      # rotated Codex auth" reads it back. A mismatch between these two paths
+      # is the classic way to burn a single-use refresh token: the CLI rotates
+      # the credential on disk, the persist step re-uploads the STALE copy,
+      # and the next run starts with a refresh token that was already spent.
+      - name: Restore Codex auth
+        if: vars.AI_AGENT_PROVIDER == 'codex'
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          if [ -z "${CODEX_AUTH_JSON}" ]; then
+            echo "::notice::CODEX_AUTH_JSON is not set — falling back to OPENAI_API_KEY auth (no token rotation)."
+            exit 0
+          fi
+          echo "CODEX_HOME=$HOME/.codex" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.codex"
+          printf '%s' "${CODEX_AUTH_JSON}" > "$HOME/.codex/auth.json"
+          chmod 600 "$HOME/.codex/auth.json"
+          # Fingerprint only — never the token itself — so a "did the secret
+          # actually rotate?" question is answerable from the run logs.
+          echo "Restored auth.json (sha256: $(sha256sum "$HOME/.codex/auth.json" | cut -c1-12)…)"
 
       - name: Install project dependencies
         run: npm ci
@@ -133,11 +175,27 @@ jobs:
           SOURCE_GITHUB_REPOSITORY: bonapp
           GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
 
-          # Claude Code as the Teammate CLI agent (see .dmtools/agents/scripts/providers/claude.sh)
-          AI_AGENT_PROVIDER: claude-code
+          # Teammate CLI agent. Switch providers with the repo variable
+          # AI_AGENT_PROVIDER (claude-code | codex) — it also drives this
+          # job's CLI install, auth round-trip and concurrency group above.
+          # Only the selected provider's credentials are read; the other's
+          # vars stay unset and its provider function is never called.
+          AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER || 'claude-code' }}
+
+          # claude-code (see .dmtools/agents/scripts/providers/claude.sh)
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_MODEL: claude-sonnet-4-6
           CLAUDE_CODE_MAX_TURNS: '30'
+
+          # codex (see .dmtools/agents/scripts/providers/codex.sh). auth.json
+          # is already on disk from "Restore Codex auth" above and CODEX_HOME
+          # points at it via $GITHUB_ENV, so CODEX_AUTH_JSON is deliberately
+          # NOT re-passed here — re-writing the file at provider start would
+          # clobber a token the CLI may have already rotated this run.
+          # OPENAI_API_KEY is the no-rotation fallback when the subscription
+          # secret is absent.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5-codex' }}
 
           DMTOOLS_INTEGRATIONS: 'jira,github,ai,cli,file'
           ENCODED_CONFIG: ${{ inputs.encoded_config }}
@@ -152,6 +210,47 @@ jobs:
             dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi
 
+      # Codex's refresh token is single-use: the CLI rotates it in place during
+      # the run, which invalidates the copy currently held in CODEX_AUTH_JSON.
+      # Unless the rotated file is written back to that secret, the NEXT run
+      # starts with a spent credential and dies on "refresh_token already
+      # used" — recoverable only by running `codex login` locally and pasting
+      # a fresh auth.json in by hand.
+      #
+      # if: always() so a failed/among-other-things agent run still persists
+      # the credential. It is NOT a full guarantee: a cancelled or timed-out
+      # job can be killed before this step runs at all, which burns the token
+      # the same way. That residual risk is inherent to round-tripping a
+      # rotating credential through CI on a ChatGPT subscription; the recovery
+      # is the manual `codex login` above, and it is why the job serializes
+      # into one concurrency group.
+      #
+      # Needs a fine-grained PAT with Secrets: Read and write scoped to THIS
+      # repo — the default GITHUB_TOKEN cannot write secrets, and no
+      # `permissions:` value grants that (there is no `secrets: write` scope,
+      # despite what plenty of blog posts claim).
+      - name: Persist rotated Codex auth
+        if: always() && vars.AI_AGENT_PROVIDER == 'codex'
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_SECRETS_ADMIN_PAT }}
+          # env.CODEX_HOME is empty unless "Restore Codex auth" set it (i.e.
+          # API-key mode, or the job died before that step), in which case the
+          # fallback path simply will not exist and this step no-ops below.
+          AUTH_FILE: ${{ env.CODEX_HOME || format('{0}/.codex', env.HOME) }}/auth.json
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::CODEX_SECRETS_ADMIN_PAT is not set — the rotated Codex credential cannot be written back. If the CLI refreshed its token this run, the next run will fail with 'refresh_token already used' and will need a manual \`codex login\`."
+            exit 0
+          fi
+          if [ ! -f "${AUTH_FILE}" ]; then
+            echo "No auth.json at ${AUTH_FILE} (API-key mode, or the run never reached the CLI) — nothing to persist."
+            exit 0
+          fi
+          # stdin, not --body: auth.json is JSON and would otherwise be
+          # subject to shell quoting/expansion on its way through the CLI.
+          gh secret set CODEX_AUTH_JSON --repo "${{ github.repository }}" < "${AUTH_FILE}"
+          echo "Persisted auth.json to CODEX_AUTH_JSON (sha256: $(sha256sum "${AUTH_FILE}" | cut -c1-12)…)"
+
       # dmtools' Java core treats "the CLI subprocess produced no output" as a
       # soft failure for skipAIProcessing/outputType:none jobs — it writes
       # that into the Jira comment/result but does not propagate
@@ -162,20 +261,35 @@ jobs:
       # most recent CLI transcript this run just wrote and fail the job
       # explicitly if it shows a rate-limit/usage-limit signal, so a run that
       # accomplished nothing shows red instead of a misleadingly green one.
-      - name: Fail if Claude Code hit a rate/usage limit
+      - name: Fail if the agent CLI hit a rate/usage limit
         if: always()
         working-directory: .dmtools
+        env:
+          PROVIDER: ${{ vars.AI_AGENT_PROVIDER || 'claude-code' }}
         run: |
-          latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
+          if [ "${PROVIDER}" = "codex" ]; then
+            log_glob='.dmtools-logs/cli/agent/codex-*.log'
+            # Codex's own quota wording, plus the failure unique to
+            # round-tripping a single-use refresh token through CI: a burned
+            # credential makes the CLI exit early having done nothing.
+            pattern='usage limit|rate limit|rate_limit|"status":429|429 Too Many Requests|refresh token|refresh_token|invalid_grant|Please run `codex login`'
+            hint="The ChatGPT account behind CODEX_AUTH_JSON is either temporarily out of capacity, or its refresh token was invalidated (a run killed before 'Persist rotated Codex auth' burns it). For a quota limit, wait for the reset and re-run. For an auth failure, run \`codex login\` locally and paste the fresh ~/.codex/auth.json into the CODEX_AUTH_JSON secret."
+          else
+            log_glob='.dmtools-logs/cli/agent/claude-code-*.log'
+            pattern='usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"'
+            hint="The Claude account behind CLAUDE_CODE_OAUTH_TOKEN is temporarily out of capacity. Wait for the limit to reset (the transcript's 'resets ...' message says when) and re-run."
+          fi
+
+          latest_log="$(ls -t ${log_glob} 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
-            echo "No Claude Code transcript found for this run — nothing to check."
+            echo "No ${PROVIDER} transcript found for this run — nothing to check."
             exit 0
           fi
-          if grep -Eqi 'usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"' "${latest_log}"; then
-            echo "::error::Claude Code hit an Anthropic-side rate or usage limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. This is not a bug in this repo's code; it means the Claude account behind CLAUDE_CODE_OAUTH_TOKEN is temporarily out of capacity. Wait for the limit to reset (the transcript's 'resets ...' message says when) and re-run — sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2
+          if grep -Eqi "${pattern}" "${latest_log}"; then
+            echo "::error::${PROVIDER} hit a provider-side rate/usage or auth limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. This is not a bug in this repo's code. ${hint} sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2
             exit 1
           fi
-          echo "✅ Latest Claude Code call in this run did not hit a rate/usage limit."
+          echo "✅ Latest ${PROVIDER} call in this run did not hit a rate/usage limit."
 
       # The provider CLI's own transcript (the raw claude-code / codemie / copilot
       # output, including anything it printed before writing outputs/*.json) is

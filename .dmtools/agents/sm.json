@@ -6,7 +6,7 @@
       "CLI_ALLOWED_COMMANDS": "bash"
     },
     "jobParams": {
-      "maxTriggeredWorkflows": 2,
+      "maxTriggeredWorkflows": 1,
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
