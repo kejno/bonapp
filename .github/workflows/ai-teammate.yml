@@ -268,45 +268,36 @@ jobs:
       # most recent CLI transcript this run just wrote and fail the job
       # explicitly if it shows a rate-limit/usage-limit signal, so a run that
       # accomplished nothing shows red instead of a misleadingly green one.
-      - name: Validate agent CLI execution
-        if: always()
+      - name: Validate Codex execution
+        if: always() && vars.AI_AGENT_PROVIDER == 'codex'
         working-directory: .dmtools
-        env:
-          PROVIDER: ${{ vars.AI_AGENT_PROVIDER || 'claude-code' }}
         run: |
-          if [ "${PROVIDER}" = "codex" ]; then
-            log_glob='.dmtools-logs/cli/agent/codex-*.log'
-            # Codex's own quota wording, plus the failure unique to
-            # round-tripping a single-use refresh token through CI: a burned
-            # credential makes the CLI exit early having done nothing.
-            pattern='usage limit|rate limit|rate_limit|"status":429|429 Too Many Requests|refresh token|refresh_token|invalid_grant|Please run `codex login`'
-            hint="The ChatGPT account behind CODEX_AUTH_JSON is either temporarily out of capacity, or its refresh token was invalidated (a run killed before 'Persist rotated Codex auth' burns it). For a quota limit, wait for the reset and re-run. For an auth failure, run \`codex login\` locally and paste the fresh ~/.codex/auth.json into the CODEX_AUTH_JSON secret."
-          else
-            log_glob='.dmtools-logs/cli/agent/claude-code-*.log'
-            pattern='usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"'
-            hint="The Claude account behind CLAUDE_CODE_OAUTH_TOKEN is temporarily out of capacity. Wait for the limit to reset (the transcript's 'resets ...' message says when) and re-run."
-          fi
-
-          latest_log="$(ls -t ${log_glob} 2>/dev/null | head -1)"
+          latest_log="$(ls -t .dmtools-logs/cli/agent/codex-*.log 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
-            echo "::error::No ${PROVIDER} transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
+            echo "::error::No Codex transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
             exit 1
           fi
+          if ! python3 agents/scripts/providers/validate_codex_execution.py "${latest_log}"; then
+            echo "::error::Codex execution failed or did not finish cleanly (see ${latest_log} in the agent-cli-logs artifact)." >&2
+            exit 1
+          fi
+          echo "✅ Latest Codex call completed successfully."
+
+      - name: Validate Claude Code execution
+        if: always() && vars.AI_AGENT_PROVIDER != 'codex'
+        working-directory: .dmtools
+        run: |
+          latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
+          if [ -z "${latest_log}" ]; then
+            echo "::error::No Claude Code transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
+            exit 1
+          fi
+          pattern='usage limit reached|hit your session limit|"error":"rate_limit"|"api_error_status":429|"status":"rejected"'
           if grep -Eqi "${pattern}" "${latest_log}"; then
-            echo "::error::${PROVIDER} hit a provider-side rate/usage or auth limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. This is not a bug in this repo's code. ${hint} sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2
+            echo "::error::Claude Code hit a provider-side rate/usage limit during this run (see ${latest_log} in the agent-cli-logs artifact below) — the job did not accomplish anything real, even though the 'Run AI Teammate' step above may show green. The account behind CLAUDE_CODE_OAUTH_TOKEN is temporarily out of capacity. Wait for the limit to reset and re-run; sm-agent.yml's next cycle will also naturally retry this ticket on its own." >&2
             exit 1
           fi
-          if [ "${PROVIDER}" = "codex" ]; then
-            if grep -Eq '"type":"turn.failed"|"type": "turn.failed"' "${latest_log}"; then
-              echo "::error::Codex reported turn.failed (see ${latest_log} in the agent-cli-logs artifact)." >&2
-              exit 1
-            fi
-            if ! grep -Eq '"type":"turn.completed"|"type": "turn.completed"' "${latest_log}"; then
-              echo "::error::Codex transcript has no turn.completed event, so the agent invocation cannot be considered successful (see ${latest_log})." >&2
-              exit 1
-            fi
-          fi
-          echo "✅ Latest ${PROVIDER} call completed successfully."
+          echo "✅ Latest Claude Code call completed without a rate/usage-limit signal."
 
       # The provider CLI's own transcript (the raw claude-code / codemie / copilot
       # output, including anything it printed before writing outputs/*.json) is
