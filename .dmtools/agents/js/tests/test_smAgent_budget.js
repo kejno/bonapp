@@ -8,6 +8,15 @@ const path = require('path');
 const file = path.join(__dirname, '..', 'smAgent.js');
 const src = fs.readFileSync(file, 'utf8');
 
+// smAgent.js reads AI_AGENT_PROVIDER via java.lang.System.getenv (GraalJS
+// interop), not process.env — there is no `process` global in dmtools'
+// actual JSRunner engine (that mismatch is exactly the bug this test caught:
+// ReferenceError: process is not defined killed every SM rule after the
+// first one that called resolveRuleProvider() in a real run). Stub `java`
+// here so defaultProviderList()'s real code path — including its
+// try/catch around the getenv call — is what gets exercised, with
+// fakeJavaEnv as the mutable backing store the test cases below write to.
+const fakeJavaEnv = {};
 const ctx = {
   require: (m) => {
     // Stub out real dependencies smAgent.js requires at module scope —
@@ -17,6 +26,13 @@ const ctx = {
   module: { exports: {} },
   console,
   process,
+  java: {
+    lang: {
+      System: {
+        getenv: (name) => (name in fakeJavaEnv ? fakeJavaEnv[name] : null),
+      },
+    },
+  },
 };
 vm.createContext(ctx);
 // Expose every top-level function to the test by appending a return block —
@@ -104,12 +120,11 @@ console.log('=== resolveRuleProvider ===');
   check('rule.provider takes priority over env list',
     t.resolveRuleProvider({ provider: 'codex' }, budget) === 'codex');
 
-  const oldEnv = process.env.AI_AGENT_PROVIDER;
-  process.env.AI_AGENT_PROVIDER = 'claude-code';
+  fakeJavaEnv.AI_AGENT_PROVIDER = 'claude-code';
   check('single-value env, no rule.provider → that single value',
     t.resolveRuleProvider({}, budget) === 'claude-code');
 
-  process.env.AI_AGENT_PROVIDER = 'codex,claude-code';
+  fakeJavaEnv.AI_AGENT_PROVIDER = 'codex,claude-code';
   check('comma list, budget has room on first entry → first entry',
     t.resolveRuleProvider({}, t.buildWorkflowBudget({ 'claude-code': 5, codex: 5 }, {})) === 'codex');
 
@@ -120,7 +135,30 @@ console.log('=== resolveRuleProvider ===');
   check('a 0 cap is dropped, not treated as "always exhausted"',
     t.resolveRuleProvider({}, tightBudget) === 'codex');
 
-  process.env.AI_AGENT_PROVIDER = oldEnv;
+  delete fakeJavaEnv.AI_AGENT_PROVIDER;
+}
+
+console.log('=== defaultProviderList (java.lang.System.getenv interop) ===');
+{
+  // This is the exact bug a live SM run hit: smAgent.js used `process.env`,
+  // which does not exist under dmtools' GraalJS JSRunner — every rule after
+  // the first one to call resolveRuleProvider() failed with "process is not
+  // defined" and the whole cycle stopped dispatching. Assert the real
+  // interop path (java.lang.System.getenv, wrapped in try/catch, coerced
+  // through String()) end to end rather than only the pure list-math.
+  delete fakeJavaEnv.AI_AGENT_PROVIDER;
+  check('getenv returns null (unset) → default single-item list',
+    JSON.stringify(t.defaultProviderList()) === JSON.stringify(['claude-code']));
+
+  fakeJavaEnv.AI_AGENT_PROVIDER = 'codex';
+  check('getenv returns a plain value → single-item list',
+    JSON.stringify(t.defaultProviderList()) === JSON.stringify(['codex']));
+
+  fakeJavaEnv.AI_AGENT_PROVIDER = 'claude-code, codex';
+  check('getenv returns a comma list (with spaces) → trimmed multi-item list',
+    JSON.stringify(t.defaultProviderList()) === JSON.stringify(['claude-code', 'codex']));
+
+  delete fakeJavaEnv.AI_AGENT_PROVIDER;
 }
 
 console.log('=== parseProviderFromRunName ===');

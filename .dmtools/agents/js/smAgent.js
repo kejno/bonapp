@@ -326,7 +326,23 @@ function resolveRuleProvider(rule, workflowBudget) {
 }
 
 function defaultProviderList() {
-    var raw = (process.env.AI_AGENT_PROVIDER || 'claude-code').trim();
+    // This runs inside dmtools' GraalVM JS engine (JSRunner), not Node — no
+    // `process` global exists there (ReferenceError: process is not defined,
+    // which took down every rule after this one in a real SM run since
+    // resolveRuleProvider() calls this unconditionally). configLoader.js's
+    // DEFAULT_TRACKER lookup already established the pattern for reaching an
+    // environment variable in this runtime — java.lang.System.getenv,
+    // wrapped in try/catch because `java` itself is only defined when
+    // actually running under GraalJS (not e.g. under a plain Node test
+    // runner) — and String(...) to force the Java String result through JS
+    // interop into a real JS string before calling .trim()/.split() on it.
+    var envValue = null;
+    try {
+        envValue = java.lang.System.getenv('AI_AGENT_PROVIDER');
+    } catch (e) {
+        // Not running in a GraalJS environment.
+    }
+    var raw = String(envValue || 'claude-code').trim();
     var list = raw.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
     return list.length ? list : ['claude-code'];
 }
