@@ -76,6 +76,11 @@ var buildEncodedConfigModule = require('./common/buildEncodedConfig.js');
 var projectConfig = null;
 var STALE_NON_RUNNING_WORKFLOW_MS = 6 * 60 * 60 * 1000;
 
+// AI_AGENT_PROVIDER's parsed provider list, set once in action() from
+// jobParams.aiAgentProvider — see defaultProviderList() for why this is NOT
+// read from the OS environment on every call.
+var configuredProviderList = null;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -332,48 +337,39 @@ function ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, prov
 function resolveRuleProvider(rule, workflowBudget) {
     if (rule.provider) return rule.provider;
     var envProviders = defaultProviderList();
-    // TEMP DEBUG — remove once the live "codex never picked" investigation is
-    // resolved. Traces exactly what defaultProviderList()/pickProviderWithBudget()
-    // see on a real GitHub Actions runner, since isolated vm-based unit tests
-    // pass but the real SM run still never selects codex.
-    console.log('  [debug resolveRuleProvider] envProviders=' + JSON.stringify(envProviders) +
-        ' byProvider=' + JSON.stringify(workflowBudget && workflowBudget.byProvider));
     if (envProviders.length <= 1) return envProviders[0] || 'claude-code';
-    var picked = pickProviderWithBudget(envProviders, workflowBudget) || envProviders[0];
-    console.log('  [debug resolveRuleProvider] picked=' + picked);
-    return picked;
+    return pickProviderWithBudget(envProviders, workflowBudget) || envProviders[0];
 }
 
+// Parses AI_AGENT_PROVIDER's comma-separated provider list.
+//
+// NOT read from the OS environment: an earlier version of this used
+// java.lang.System.getenv('AI_AGENT_PROVIDER') — the same pattern
+// configLoader.js's DEFAULT_TRACKER lookup uses — but confirmed via a live
+// SM run that `java` itself is not defined in dmtools' JSRunner GraalJS
+// context (`ReferenceError: java is not defined`, silently swallowed by the
+// try/catch, same failure class as `process is not defined` before it).
+// configLoader.js's own getenv call has the identical bug, just masked by
+// its fallback to config.defaultTracker/'jira'.
+//
+// Reads jobParams.aiAgentProvider instead, set once into
+// configuredProviderList by action() — sm-agent.yml already forwards the
+// AI_AGENT_PROVIDER repo variable into ai-teammate.yml (both workflows read
+// the SAME repo variable independently); to reach this JS agent, sm.json
+// needs the value threaded through jobParams (see README's "Параллельный
+// запуск" section for how to wire this up), matching the pattern every
+// other cross-cutting setting in this file already uses
+// (customParams.*, rule.provider, etc.) rather than an OS environment
+// lookup this runtime cannot actually perform.
 function defaultProviderList() {
-    // This runs inside dmtools' GraalVM JS engine (JSRunner), not Node — no
-    // `process` global exists there (ReferenceError: process is not defined,
-    // which took down every rule after this one in a real SM run since
-    // resolveRuleProvider() calls this unconditionally). configLoader.js's
-    // DEFAULT_TRACKER lookup already established the pattern for reaching an
-    // environment variable in this runtime — java.lang.System.getenv,
-    // wrapped in try/catch because `java` itself is only defined when
-    // actually running under GraalJS (not e.g. under a plain Node test
-    // runner) — and String(...) to force the Java String result through JS
-    // interop into a real JS string before calling .trim()/.split() on it.
-    var envValue = null;
-    var getenvThrew = null;
-    try {
-        envValue = java.lang.System.getenv('AI_AGENT_PROVIDER');
-    } catch (e) {
-        // Not running in a GraalJS environment.
-        getenvThrew = String(e);
-    }
-    // TEMP DEBUG — remove once the live "codex never picked" investigation is
-    // resolved. typeof/String() both shown because GraalJS interop can hand
-    // back a foreign Java String object that behaves oddly under naive
-    // truthiness/String() coercion depending on engine version.
-    console.log('  [debug defaultProviderList] typeof envValue=' + typeof envValue +
-        ' String(envValue)=' + JSON.stringify(String(envValue)) +
-        ' threw=' + JSON.stringify(getenvThrew));
-    var raw = String(envValue || 'claude-code').trim();
-    var list = raw.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
-    console.log('  [debug defaultProviderList] raw=' + JSON.stringify(raw) + ' list=' + JSON.stringify(list));
-    return list.length ? list : ['claude-code'];
+    if (configuredProviderList) return configuredProviderList;
+    return ['claude-code'];
+}
+
+function parseProviderListValue(raw) {
+    if (!raw) return null;
+    var list = String(raw).trim().split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+    return list.length ? list : null;
 }
 
 // Picks the first provider (in AI_AGENT_PROVIDER's listed order) that still
@@ -1034,6 +1030,14 @@ function action(params) {
 
     // Load global project configuration (used as default when rules have no configPath)
     projectConfig = configLoader.loadProjectConfig(p);
+
+    // See defaultProviderList()'s comment for why this is a jobParams field
+    // and not an OS environment lookup. sm.json:
+    //   "jobParams": { "aiAgentProvider": "claude-code,codex", ... }
+    configuredProviderList = parseProviderListValue(p.aiAgentProvider) || ['claude-code'];
+    if (configuredProviderList.length > 1) {
+        console.log('  AI_AGENT_PROVIDER list: ' + configuredProviderList.join(', '));
+    }
 
     var workflowBudget = buildWorkflowBudget(
         typeof p.maxTriggeredWorkflows !== 'undefined' ? p.maxTriggeredWorkflows : p.maxWorkflowsPerRun,
