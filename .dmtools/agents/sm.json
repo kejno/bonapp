@@ -9,7 +9,7 @@
       "_comment_aiAgentProvider": "smAgent.js CANNOT read the AI_AGENT_PROVIDER repo variable from the OS environment — confirmed live that dmtools' JSRunner GraalJS context has no `java` global (java.lang.System.getenv throws ReferenceError, same failure class as process.env before it). Set the identical value here as the ai-teammate.yml/AI_AGENT_PROVIDER repo variable so smAgent.js's fair-share provider picking (see maxTriggeredWorkflows below) actually sees the list — keep both in sync by hand. See .dmtools/README.md's 'Параллельный запуск Claude + Codex' section.",
       "aiAgentProvider": "claude-code,codex",
       "_comment_maxTriggeredWorkflows": "codex capped at 1: its subscription refresh token is single-use and ai-teammate.yml already serializes every codex run into one repo-wide concurrency group, so a higher number here would just queue extra dispatches in GitHub without any real added parallelism — see .dmtools/README.md's 'Бюджет на провайдера' section.",
-      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1 },
+      "maxTriggeredWorkflows": { "claude-code": 0, "codex": 1 },
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
