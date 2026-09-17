@@ -273,11 +273,12 @@ refresh-токена), так что Codex — это не второй пара
 когда `run-agent.sh` сам не умеет несколько в одном job'е (взаимоисключающие
 ветки CLI).
 
-Держите `sm.json`'s `jobParams.aiAgentProvider` синхронным с тем, что стоит
-в repo variable `AI_AGENT_PROVIDER` — они управляют разными сторонами одного
-и того же пайплайна (какой провайдер выбирает SM vs что видит
-`ai-teammate.yml` при ручном dispatch/fallback), рассинхрон не сломает
-ничего технически, но собьёт с толку при чтении логов.
+В GitHub Actions `sm-agent.yml` передаёт repo variable `AI_AGENT_PROVIDER` в
+`jobParams.aiAgentProvider` через JSON override команды `dmtools run`, поэтому
+repo variable является единым источником выбора провайдера. Значение в
+`sm.json` остаётся локальным значением по умолчанию. Если repo variable равна
+`claude-code` или `codex`, SM выбирает только этот провайдер; список
+`claude-code,codex` включает fair-share распределение между обоими.
 
 #### Бюджет на провайдера (`maxTriggeredWorkflows`)
 

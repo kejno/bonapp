@@ -353,12 +353,10 @@ function resolveRuleProvider(rule, workflowBudget) {
 // its fallback to config.defaultTracker/'jira'.
 //
 // Reads jobParams.aiAgentProvider instead, set once into
-// configuredProviderList by action() — sm-agent.yml already forwards the
-// AI_AGENT_PROVIDER repo variable into ai-teammate.yml (both workflows read
-// the SAME repo variable independently); to reach this JS agent, sm.json
-// needs the value threaded through jobParams (see README's "Параллельный
-// запуск" section for how to wire this up), matching the pattern every
-// other cross-cutting setting in this file already uses
+// configuredProviderList by action(). In GitHub Actions, sm-agent.yml threads
+// the AI_AGENT_PROVIDER repo variable into this field through a dmtools JSON
+// override; sm.json supplies the local/default value. This matches the pattern
+// every other cross-cutting setting in this file already uses
 // (customParams.*, rule.provider, etc.) rather than an OS environment
 // lookup this runtime cannot actually perform.
 function defaultProviderList() {
