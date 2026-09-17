@@ -346,15 +346,17 @@ per-provider бакетов, выбор провайдера с оставшим
 
 ## Крон / триггеры
 
-`sm-agent.yml` не на фиксированном расписании — триггерится `workflow_run`
-сразу после завершения `ai-teammate.yml` (событийно, без опроса), плюс
-`workflow_dispatch` для ручных прогонов. Значит первый цикл нужно запустить
-руками (`gh workflow run sm-agent.yml` или Actions → Run workflow) — без хотя
-бы одного ручного старта цепочка никогда не начнётся сама. SM сам сканит весь
-Jira-бэклог и диспатчит `ai-teammate.yml` под каждый подходящий тикет — с
-созданной Epic/Story идеи владелец дальше не трогает пайплайн руками до
-готового PR. Оба workflow используют `runs-on: ubuntu-latest`
-(GitHub-hosted), не self-hosted, как в resume.
+`sm-agent.yml` имеет только `workflow_dispatch`. При
+`SM_AGENT_TRIGGER_MODE=after_all` финальный coordinator-job внутри
+`ai-teammate.yml` ждёт завершения остальных AI Teammate runs и диспатчит SM
+ровно один раз. Более старые coordinator-jobs уступают самому новому run ID;
+поэтому в Actions не создаются отдельные skipped SM runs. При значении
+`manual` (включая отсутствующую переменную) coordinator-job пропускается и SM
+запускается только вручную. Первый цикл в любом случае нужно запустить руками
+(`gh workflow run sm-agent.yml` или Actions → Run workflow), потому что до
+первого SM dispatch нет AI Teammate run, который мог бы продолжить цепочку.
+Оба workflow используют `runs-on: ubuntu-latest` (GitHub-hosted), не
+self-hosted, как в resume.
 
 ## Известные баги upstream-кода (найдены и исправлены при отладке в resume)
 
@@ -487,10 +489,10 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
 - **`ai-teammate.yml`'s `npm ci` шаг упадёт до первого Node-коммита** —
   bonapp пока docs-only (нет `package.json`); как только появится
   React/NestJS-скелет, шаг заработает сам, без правок workflow.
-- **Первый цикл нужно запустить вручную** — `sm-agent.yml` триггерится
-  `workflow_run` от `ai-teammate.yml`, у которого своих триггеров кроме
-  `workflow_dispatch` нет; без ручного `gh workflow run sm-agent.yml`
-  (Actions → Run workflow) цепочка не стартует сама первый раз.
+- **Первый цикл нужно запустить вручную** — автоматический coordinator
+  находится в `ai-teammate.yml`, а AI Teammate до первого SM-dispatch ещё не
+  запущен; без ручного `gh workflow run sm-agent.yml` (Actions → Run workflow)
+  цепочка не стартует сама первый раз.
 - **Ничего из пайплайна ещё не прогонялось на bonapp** — весь раздел «Известные
   баги upstream-кода» выше основан на опыте resume; стоит быть готовым, что
   в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4

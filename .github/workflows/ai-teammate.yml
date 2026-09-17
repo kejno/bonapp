@@ -345,3 +345,61 @@ jobs:
           path: .dmtools/.dmtools-logs/cli/**
           if-no-files-found: ignore
           retention-days: 14
+
+  dispatch-sm-after-all:
+    name: Dispatch SM Agent after all AI Teammates
+    needs: ai-teammate-agent
+    if: always() && vars.SM_AGENT_TRIGGER_MODE == 'after_all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch SM Agent when this is the last AI run
+        env:
+          GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # Preserve the previous full-stop behaviour for an exhausted Claude
+          # account: a manual SM run remains the explicit resume mechanism.
+          validation_result=$(gh api \
+            "repos/${{ github.repository }}/actions/runs/${CURRENT_RUN_ID}/jobs" \
+            --jq '[.jobs[].steps[] | select(.name == "Validate Claude Code execution") | .conclusion] | first // ""')
+          if [ "${validation_result}" = "failure" ]; then
+            echo "Claude validation failed — not dispatching SM automatically."
+            exit 0
+          fi
+
+          for attempt in $(seq 1 180); do
+            latest_known_run=$(gh api \
+              "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?per_page=100" \
+              --jq '[.workflow_runs[].id] | max // 0')
+
+            if [ "${latest_known_run}" -gt "${CURRENT_RUN_ID}" ]; then
+              echo "Newer AI Teammate run ${latest_known_run} will coordinate the SM dispatch."
+              exit 0
+            fi
+
+            other_open_runs=$(gh api \
+              "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select((.status == \"queued\" or .status == \"in_progress\") and .id != ${CURRENT_RUN_ID})] | length")
+
+            if [ "${other_open_runs}" -eq 0 ]; then
+              # Recheck immediately before dispatch to narrow the race with a
+              # newly queued AI run.
+              sleep 2
+              other_open_runs=$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ai-teammate.yml/runs?per_page=100" \
+                --jq "[.workflow_runs[] | select((.status == \"queued\" or .status == \"in_progress\") and .id != ${CURRENT_RUN_ID})] | length")
+              if [ "${other_open_runs}" -eq 0 ]; then
+                gh workflow run sm-agent.yml --repo "${{ github.repository }}"
+                echo "All AI Teammate runs completed — dispatched SM Agent."
+                exit 0
+              fi
+            fi
+
+            echo "Waiting for ${other_open_runs} other AI Teammate run(s) (attempt ${attempt}/180)."
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for all AI Teammate runs to complete."
+          exit 1
