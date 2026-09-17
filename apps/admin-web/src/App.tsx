@@ -1,15 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Dashboard } from './pages/Dashboard'
 
 const queryClient = new QueryClient()
+const tenantId = import.meta.env.VITE_TENANT_ID ?? 'demo'
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <main className="flex min-h-svh items-center justify-center bg-bonapp-bg">
-        <h1 className="text-2xl font-semibold text-bonapp-accent">
-          Bonapp — Admin
-        </h1>
-      </main>
+      <Dashboard tenantId={tenantId} />
     </QueryClientProvider>
   )
 }
