@@ -7,12 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum StaffRole {
+  WAITER
+  CASHIER
+  MANAGER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  READY
+  PAID
+  CANCELLED
+}
+
 model Tenant {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users        User[]
+  staffMembers StaffMember[]
+  shifts       Shift[]
 }
 
 model User {
@@ -23,4 +40,50 @@ model User {
   role     String
 
   @@index([tenantId])
+}
+
+model StaffMember {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+  name               String
+  role               StaffRole
+  phone              String
+  isActive           Boolean   @default(true)
+  lastLoginAt        DateTime?
+  passwordHash       String
+  mustChangePassword Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  openedShifts Shift[]
+
+  @@index([tenantId])
+}
+
+model Shift {
+  id        String      @id @default(uuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  openedAt  DateTime    @default(now())
+  closedAt  DateTime?
+  cashierId String
+  cashier   StaffMember @relation(fields: [cashierId], references: [id])
+  orders    Order[]
+
+  @@index([tenantId])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  tenantId    String
+  shiftId     String?
+  status      OrderStatus @default(PENDING)
+  totalAmount Decimal     @default(0)
+  createdAt   DateTime    @default(now())
+
+  shift Shift? @relation(fields: [shiftId], references: [id])
+
+  @@index([tenantId])
+  @@index([shiftId])
 }
