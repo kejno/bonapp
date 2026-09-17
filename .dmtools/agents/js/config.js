@@ -68,7 +68,8 @@ const LABELS = {
     TEST_PR_MERGED: 'test_pr_merged',       // Added when a test-automation PR is already merged but not yet finalized
     TEST_PR_FINALIZED: 'test_pr_finalized', // Added after merge finalization so review agents never re-enter the loop
     AI_TESTS_GENERATED: 'ai_tests_generated', // Added after TestCasesGenerator runs — guards against re-generation on re-approval
-    BUG_FIX_BATCH: 'bug_fix_batch' // Bugs grouped into a bug-fix batch Epic; excluded from individual bug_development
+    BUG_FIX_BATCH: 'bug_fix_batch', // Bugs grouped into a bug-fix batch Epic; excluded from individual bug_development
+    CONTENT_BLOCKER: 'ai_content_blocker' // Explicit BLOCKER marker requires human-provided input
 };
 
 // Git Configuration
@@ -178,4 +179,3 @@ module.exports = {
     DEFAULT_FORMATS,
     resolveStatuses
 };
-

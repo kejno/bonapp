@@ -15,6 +15,7 @@
 
 var configLoader = require('./configLoader.js');
 var gh = require('./common/githubHelpers.js');
+var blockerGuard = require('./common/blockerGuard.js');
 
 function action(params) {
     try {
@@ -66,8 +67,30 @@ function action(params) {
         
         console.log('✅ Ticket ' + ticketKey + ' does not have WIP label "' + wipLabel + '" - continuing with processing');
 
-        // Optional: verify an open PR exists for review/rework agents.
         var customParams = (params.jobParams && params.jobParams.customParams) || params.customParams || {};
+
+        // Solution generation must not consume CI or advance a story whose
+        // Acceptance Criteria explicitly says required human input is missing.
+        if (customParams.blockOnAcceptanceCriteriaMarker) {
+            try {
+                var freshTicket = jira_get_ticket({ key: ticketKey, fields: ['Acceptance Criteria'] });
+                var freshFields = freshTicket && freshTicket.fields ? freshTicket.fields : freshTicket;
+                var acceptanceCriteria = freshFields && freshFields['Acceptance Criteria'];
+                if (blockerGuard.containsBlockerMarker(acceptanceCriteria)) {
+                    blockerGuard.blockTicket(ticketKey, {
+                        wipLabel: wipLabel,
+                        retryLabel: 'sm_story_acceptance_criteria_triggered',
+                        content: acceptanceCriteria
+                    });
+                    console.log('checkWipLabel result: stop processing (Acceptance Criteria blocker)');
+                    return false;
+                }
+            } catch (blockerError) {
+                console.warn('Failed to inspect Acceptance Criteria blocker (non-fatal):', blockerError);
+            }
+        }
+
+        // Optional: verify an open PR exists for review/rework agents.
         if (customParams.checkOpenPR) {
             try {
                 var config = configLoader.loadProjectConfig(params.jobParams || params);

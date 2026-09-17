@@ -46,6 +46,7 @@
         "target": "jira_field",
         "field": "Acceptance Criteria",
         "operationType": "replace",
+        "blockOnMarker": true,
         "reviewStatus": "Solution Architecture"
       }
     },

@@ -29,6 +29,7 @@ const autoStart = require('./common/autoStart.js');
 const outputFiles = require('./common/outputFiles.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
 const contentOutput = require('./common/contentOutput.js');
+const blockerGuard = require('./common/blockerGuard.js');
 
 // Sections appended by this module when publishing to Confluence (target
 // 'confluence'/'both'). On reruns the model iterates over the previous page content
@@ -271,12 +272,38 @@ function action(params) {
             console.warn('Failed to assign ticket:', e);
         }
 
-        // 7. Move to Ready For Development
-        try {
-            jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.READY_FOR_DEVELOPMENT });
-            console.log('Moved ' + ticketKey + ' to Ready For Development');
-        } catch (e) {
-            console.warn('Failed to move to Ready For Development:', e);
+        // 7. Move to Ready For Development unless the Acceptance Criteria
+        // declares missing human input. This is a defensive second check:
+        // checkWipLabel normally stops story_solution before the CLI runs,
+        // but a manual/misconfigured dispatch must not bypass the guard.
+        var blockedByAcceptanceCriteria = false;
+        if (customParams.blockOnAcceptanceCriteriaMarker) {
+            try {
+                var blockerTicket = jira_get_ticket({ key: ticketKey, fields: ['Acceptance Criteria'] });
+                var blockerFields = blockerTicket && blockerTicket.fields ? blockerTicket.fields : blockerTicket;
+                var acceptanceCriteria = blockerFields && blockerFields['Acceptance Criteria'];
+                blockedByAcceptanceCriteria = blockerGuard.containsBlockerMarker(acceptanceCriteria);
+            } catch (e) {
+                console.warn('Failed to inspect Acceptance Criteria blocker (non-fatal):', e);
+            }
+        }
+
+        if (blockedByAcceptanceCriteria) {
+            blockerGuard.blockTicket(ticketKey, {
+                initiatorId: initiatorId,
+                wipLabel: wipLabel,
+                statusName: jiraConfig.statuses.BLOCKED,
+                resumeStatus: jiraConfig.statuses.BA_ANALYSIS,
+                retryLabel: 'sm_story_acceptance_criteria_triggered',
+                content: acceptanceCriteria
+            });
+        } else {
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.READY_FOR_DEVELOPMENT });
+                console.log('Moved ' + ticketKey + ' to Ready For Development');
+            } catch (e) {
+                console.warn('Failed to move to Ready For Development:', e);
+            }
         }
 
         // 8. Add ai_generated label
@@ -338,7 +365,9 @@ function action(params) {
             console.warn('Failed to post token usage comments:', e);
         }
 
-        return { success: true, message: ticketKey + ' solution written, moved to Ready For Development' };
+        return blockedByAcceptanceCriteria
+            ? { success: true, blocked: true, message: ticketKey + ' solution written, kept Blocked by Acceptance Criteria marker' }
+            : { success: true, message: ticketKey + ' solution written, moved to Ready For Development' };
 
     } catch (error) {
         console.error('Error in writeSolutionAndDiagrams:', error);

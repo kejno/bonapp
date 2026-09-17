@@ -30,6 +30,7 @@ var contentOutput = require('./common/contentOutput.js');
 var outputFiles = require('./common/outputFiles.js');
 var jiraHelpers = require('./common/jiraHelpers.js');
 var tokenUsageComment = require('./common/tokenUsageComment.js');
+var blockerGuard = require('./common/blockerGuard.js');
 var config = require('./config.js');
 
 function action(params) {
@@ -125,8 +126,32 @@ function action(params) {
         }
     }
 
-    // 3. Follow-up action: chained script or built-in assign-for-review
-    if (cfg.thenAction) {
+    // 3. Stop the state machine when this content type treats an explicit
+    // BLOCKER marker as authoritative. The content is deliberately written
+    // first so the human can see what input is missing.
+    var blockedByContent = cfg.blockOnMarker === true && blockerGuard.containsBlockerMarker(content);
+    if (blockedByContent) {
+        var blockedResult = blockerGuard.blockTicket(ticketKey, {
+            initiatorId: initiatorId,
+            wipLabel: wipLabel,
+            statusName: projectConfig && projectConfig.jira && projectConfig.jira.statuses && projectConfig.jira.statuses.BLOCKED,
+            resumeStatus: projectConfig && projectConfig.jira && projectConfig.jira.statuses && projectConfig.jira.statuses.BA_ANALYSIS,
+            retryLabel: 'sm_story_acceptance_criteria_triggered',
+            content: content
+        });
+        result.blocked = true;
+        result.blocker = blockedResult;
+    } else if (cfg.blockOnMarker === true && ticket.fields &&
+            Array.isArray(ticket.fields.labels) &&
+            ticket.fields.labels.indexOf(config.LABELS.CONTENT_BLOCKER) !== -1) {
+        // A manually rerun AC job with the missing input now present clears
+        // the persistent guard before advancing to Solution Architecture.
+        blockerGuard.clearBlockerLabel(ticketKey);
+    }
+
+    // 4. Follow-up action: chained script or built-in assign-for-review.
+    // Never advance a ticket whose generated content declared a blocker.
+    if (!blockedByContent && cfg.thenAction) {
         try {
             var normalized = String(cfg.thenAction)
                 .replace(/^agents\//, '')
@@ -143,7 +168,7 @@ function action(params) {
             console.error('thenAction "' + cfg.thenAction + '" failed:', e);
             return { success: false, error: 'thenAction failed: ' + e.toString() };
         }
-    } else if (cfg.assignForReview !== false) {
+    } else if (!blockedByContent && cfg.assignForReview !== false) {
         try {
             jiraHelpers.assignForReview(ticketKey, initiatorId, wipLabel, cfg.reviewStatus || config.STATUSES.IN_REVIEW);
         } catch (e) {
@@ -151,7 +176,7 @@ function action(params) {
         }
     }
 
-    // 4. Token usage comments
+    // 5. Token usage comments
     try {
         tokenUsageComment.postTokenUsageComments(ticketKey, { initiator: initiatorId });
     } catch (e) {

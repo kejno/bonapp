@@ -93,7 +93,7 @@
         },
         {
           "description": "Blocked Stories & Bugs with all resolved dependencies → move to Backlog",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('Blocked') ORDER BY updated ASC",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('Blocked') AND (labels is EMPTY OR labels NOT IN ('ai_content_blocker')) ORDER BY updated ASC",
           "configFile": "agents/unblock_resolved_dependencies.json",
           "localExecution": true,
           "enabled": true
