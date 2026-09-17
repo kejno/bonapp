@@ -22,6 +22,7 @@
   "dependencies": {
     "@bonapp/shared-types": "*",
     "@nestjs/common": "^11.0.1",
+    "bcryptjs": "^2.4.3",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
@@ -33,6 +34,7 @@
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
