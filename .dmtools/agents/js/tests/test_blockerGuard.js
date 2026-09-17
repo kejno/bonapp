@@ -15,8 +15,8 @@ assert.strictEqual(guard.containsBlockerMarker({
 }), false);
 
 assert.strictEqual(
-    guard.extractBlockerReason('*⚠ BLOCKER:* Макет SCREEN_20 и ссылка на Figma не предоставлены.'),
-    'Макет SCREEN_20 и ссылка на Figma не предоставлены.'
+    guard.extractBlockerReason('*⚠ BLOCKER:* The SCREEN_20 mockup and Figma link are missing.'),
+    'The SCREEN_20 mockup and Figma link are missing.'
 );
 assert.strictEqual(
     guard.extractBlockerReason({
@@ -25,11 +25,11 @@ assert.strictEqual(
             type: 'paragraph',
             content: [
                 { type: 'text', text: '⚠ BLOCKER:' },
-                { type: 'text', text: ' Требуется макет из Figma.' }
+                { type: 'text', text: ' A Figma mockup is required.' }
             ]
         }]
     }),
-    'Требуется макет из Figma.'
+    'A Figma mockup is required.'
 );
 
 console.log('All blocker guard checks passed');
