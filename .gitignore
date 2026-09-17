@@ -10,3 +10,7 @@ coverage/
 playwright-report/
 test-results/
 .vite/
+
+# dmtools pipeline artifacts
+.dmtools/outputs/
+.claude-session-id
