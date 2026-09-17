@@ -39,7 +39,7 @@ on:
         description: 'Jira project key (set by SM agent)'
         required: false
       provider:
-        description: 'AI CLI provider for this run (claude-code | codex). Empty falls back to the AI_AGENT_PROVIDER repo variable — lets different agent rules run on different providers concurrently instead of one global switch for every dispatch.'
+        description: 'AI CLI provider (claude-code | codex | codex-1 | codex-2). codex aliases account 1.'
         required: false
 
 permissions:
@@ -60,18 +60,15 @@ jobs:
     # other out even though they're unrelated tickets. Fall back to config_file
     # only for the rare dispatch that omits concurrency_key.
     #
-    # EXCEPTION — the codex provider on ChatGPT subscription auth: its
+    # EXCEPTION — each Codex account on ChatGPT subscription auth has a
     # refresh token is SINGLE-USE and rotates on every refresh, and the
     # rotated auth.json has to round-trip through ONE repo secret (see the
     # restore/persist steps below). Two jobs holding the same auth.json at
     # once means both refresh it, both write the secret, and whichever loses
     # leaves a dead `refresh_token already used` credential behind — recovery
-    # is a manual `codex login`. So under codex, every run serializes into a
-    # single repo-wide group regardless of ticket, no matter which OTHER
-    # provider's runs are in flight at the same time — a claude-code run and
-    # a codex run for different tickets are free to overlap (see the
-    # `provider` input above and its per-rule use in sm.json), but two codex
-    # runs never do.
+    # is a manual `codex login`. Runs therefore serialize per account while
+    # codex-1 and codex-2 can execute in parallel. Legacy `codex` shares the
+    # codex-1 group and secret.
     #
     # `inputs.provider` (set per sm.json rule, see smAgent.js) takes priority
     # over the repo-wide AI_AGENT_PROVIDER variable so a manual dispatch or a
@@ -81,7 +78,7 @@ jobs:
     # (job.concurrency and job.if cannot read job-level `env:`, so there is
     # no single place to define it once).
     concurrency:
-      group: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex' && 'ai-teammate-agent-codex-auth' || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
+      group: ${{ startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') && format('ai-teammate-agent-{0}-auth', (inputs.provider || vars.AI_AGENT_PROVIDER || 'codex') == 'codex-2' && 'codex-2' || 'codex-1') || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
       cancel-in-progress: false
 
     # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
@@ -125,11 +122,11 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
-        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') != 'codex'
+        if: ${{ !startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Install Codex CLI
-        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
+        if: ${{ startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         run: npm install -g @openai/codex
 
       # ChatGPT subscription auth only (CODEX_AUTH_JSON). With an API key
@@ -142,26 +139,40 @@ jobs:
       # the credential on disk, the persist step re-uploads the STALE copy,
       # and the next run starts with a refresh token that was already spent.
       - name: Restore Codex auth
-        if: (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
+        if: ${{ startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         env:
-          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          CODEX_AUTH_JSON_1: ${{ secrets.CODEX_AUTH_JSON }}
+          CODEX_AUTH_JSON_2: ${{ secrets.CODEX_AUTH_JSON_2 }}
+          CODEX_AUTH_SLOT: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'codex') == 'codex-2' && '2' || '1' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          if [ "${CODEX_AUTH_SLOT}" = "2" ]; then
+            CODEX_AUTH_JSON="${CODEX_AUTH_JSON_2}"
+          else
+            CODEX_AUTH_JSON="${CODEX_AUTH_JSON_1}"
+          fi
+
           if [ -z "${CODEX_AUTH_JSON}" ]; then
             if [ -z "${OPENAI_API_KEY}" ]; then
-              echo "::error::Codex authentication is not configured. Set either the CODEX_AUTH_JSON or OPENAI_API_KEY repository secret." >&2
+              if [ "${CODEX_AUTH_SLOT}" = "2" ]; then
+                required_secret="CODEX_AUTH_JSON_2"
+              else
+                required_secret="CODEX_AUTH_JSON"
+              fi
+              echo "::error::Codex account ${CODEX_AUTH_SLOT} is not configured. Set ${required_secret} or OPENAI_API_KEY." >&2
               exit 1
             fi
-            echo "::notice::CODEX_AUTH_JSON is not set — falling back to OPENAI_API_KEY auth (no token rotation)."
+            echo "::notice::Codex account ${CODEX_AUTH_SLOT} subscription auth is not set — falling back to OPENAI_API_KEY auth (no token rotation)."
             exit 0
           fi
-          echo "CODEX_HOME=$HOME/.codex" >> "$GITHUB_ENV"
-          mkdir -p "$HOME/.codex"
-          printf '%s' "${CODEX_AUTH_JSON}" > "$HOME/.codex/auth.json"
-          chmod 600 "$HOME/.codex/auth.json"
+          codex_home="$HOME/.codex-${CODEX_AUTH_SLOT}"
+          echo "CODEX_HOME=${codex_home}" >> "$GITHUB_ENV"
+          mkdir -p "${codex_home}"
+          printf '%s' "${CODEX_AUTH_JSON}" > "${codex_home}/auth.json"
+          chmod 600 "${codex_home}/auth.json"
           # Fingerprint only — never the token itself — so a "did the secret
           # actually rotate?" question is answerable from the run logs.
-          echo "Restored auth.json (sha256: $(sha256sum "$HOME/.codex/auth.json" | cut -c1-12)…)"
+          echo "Restored Codex account ${CODEX_AUTH_SLOT} auth.json (sha256: $(sha256sum "${codex_home}/auth.json" | cut -c1-12)…)"
 
       - name: Install project dependencies
         run: npm ci
@@ -211,11 +222,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
 
           # Teammate CLI agent. Switch providers with the repo variable
-          # AI_AGENT_PROVIDER (claude-code | codex) — it also drives this
+          # Slot providers codex-1/codex-2 both use the codex CLI implementation;
+          # the slot identity is needed only for auth selection and scheduling.
           # job's CLI install, auth round-trip and concurrency group above.
           # Only the selected provider's credentials are read; the other's
           # vars stay unset and its provider function is never called.
-          AI_AGENT_PROVIDER: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}
+          AI_AGENT_PROVIDER: ${{ startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') && 'codex' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}
 
           # claude-code (see .dmtools/agents/scripts/providers/claude.sh)
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -267,9 +279,10 @@ jobs:
       # `permissions:` value grants that (there is no `secrets: write` scope,
       # despite what plenty of blog posts claim).
       - name: Persist rotated Codex auth
-        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
+        if: ${{ always() && startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         env:
           GH_TOKEN: ${{ secrets.CODEX_SECRETS_ADMIN_PAT }}
+          CODEX_AUTH_SECRET_NAME: ${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'codex') == 'codex-2' && 'CODEX_AUTH_JSON_2' || 'CODEX_AUTH_JSON' }}
           # env.CODEX_HOME is empty unless "Restore Codex auth" set it (i.e.
           # API-key mode, or the job died before that step), in which case the
           # fallback path simply will not exist and this step no-ops below.
@@ -285,8 +298,8 @@ jobs:
           fi
           # stdin, not --body: auth.json is JSON and would otherwise be
           # subject to shell quoting/expansion on its way through the CLI.
-          gh secret set CODEX_AUTH_JSON --repo "${{ github.repository }}" < "${AUTH_FILE}"
-          echo "Persisted auth.json to CODEX_AUTH_JSON (sha256: $(sha256sum "${AUTH_FILE}" | cut -c1-12)…)"
+          gh secret set "${CODEX_AUTH_SECRET_NAME}" --repo "${{ github.repository }}" < "${AUTH_FILE}"
+          echo "Persisted auth.json to ${CODEX_AUTH_SECRET_NAME} (sha256: $(sha256sum "${AUTH_FILE}" | cut -c1-12)…)"
 
       # dmtools' Java core treats "the CLI subprocess produced no output" as a
       # soft failure for skipAIProcessing/outputType:none jobs — it writes
@@ -299,7 +312,7 @@ jobs:
       # explicitly if it shows a rate-limit/usage-limit signal, so a run that
       # accomplished nothing shows red instead of a misleadingly green one.
       - name: Validate Codex execution
-        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'codex'
+        if: ${{ always() && startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
           latest_log="$(ls -t .dmtools-logs/cli/agent/codex-*.log 2>/dev/null | head -1)"
@@ -315,7 +328,7 @@ jobs:
           echo "✅ Latest Codex call completed successfully."
 
       - name: Validate Claude Code execution
-        if: always() && (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') != 'codex'
+        if: ${{ always() && !startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
           latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"

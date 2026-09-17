@@ -453,16 +453,15 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
         if (hasActiveTargetWorkflowRun(scm, workflowFile, resolvedCf, concurrencyKey)) {
             return false;
         }
-        // resolvedProvider ('claude-code' | 'codex') — from rule.provider when
+        // resolvedProvider ('claude-code' | 'codex' | 'codex-1' | 'codex-2')
+        // — from rule.provider when
         // the rule sets it explicitly, otherwise smAgent's own pick across
         // AI_AGENT_PROVIDER's list (see resolveRuleProvider /
         // pickProviderWithBudget) — lets different rules, or even different
         // tickets under the SAME rule, run on different AI CLI providers
-        // concurrently. Codex runs still serialize into one repo-wide
-        // concurrency group (see ai-teammate.yml's job.concurrency comment)
-        // because its subscription refresh token is single-use, but a
-        // claude-code run and a codex run for different tickets now overlap
-        // freely instead of both being pinned to one global switch.
+        // concurrently. Codex runs serialize per account because each
+        // subscription refresh token is single-use; codex-1 and codex-2 have
+        // independent secrets and concurrency groups and can overlap.
         //
         // Always sent explicitly (never left to the workflow's own
         // vars.AI_AGENT_PROVIDER fallback) — that repo variable can itself be
