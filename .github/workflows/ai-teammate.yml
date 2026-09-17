@@ -198,6 +198,11 @@ jobs:
           # on every Jira Cloud call when it's set to basic or bearer, even
           # with a curl-verified working token. Leaving it unset works.
 
+          # Figma design access. Repository secrets are not exposed to a job
+          # automatically, so pass the token explicitly to DMTools here.
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          FIGMA_BASE_PATH: https://api.figma.com
+
           # GitHub auth for branch/commit/PR operations (needs `repo` scope;
           # a PAT, not the default GITHUB_TOKEN — see .dmtools/README.md)
           SOURCE_GITHUB_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
@@ -229,7 +234,7 @@ jobs:
           # for the authenticated ChatGPT account.
           CODEX_MODEL: ${{ vars.CODEX_MODEL }}
 
-          DMTOOLS_INTEGRATIONS: 'jira,github,ai,cli,file'
+          DMTOOLS_INTEGRATIONS: 'jira,github,figma,ai,cli,file'
           ENCODED_CONFIG: ${{ inputs.encoded_config }}
         run: |
           echo "Using configuration: ${{ inputs.config_file }}"
