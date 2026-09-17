@@ -7,20 +7,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
+enum SubscriptionPlan {
+  TRIAL
+  STANDARD
+  PRO
+  ENTERPRISE
+}
 
-  users User[]
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  STAFF
+}
+
+model Tenant {
+  id               String           @id @default(uuid())
+  name             String
+  slug             String           @unique
+  subscriptionPlan SubscriptionPlan @default(TRIAL) @map("subscription_plan")
+  isActive         Boolean          @default(true) @map("is_active")
+  trialEndsAt      DateTime?        @map("trial_ends_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  users  User[]
+  orders Order[]
+
+  @@map("tenants")
 }
 
 model User {
-  id       String @id @default(uuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-  email    String @unique
-  role     String
+  id        String   @id @default(uuid())
+  tenantId  String?  @map("tenant_id")
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  email     String   @unique
+  password  String
+  role      UserRole
 
   @@index([tenantId])
+  @@map("users")
+}
+
+model Order {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("orders")
 }
