@@ -8,11 +8,81 @@ datasource db {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
+  id               String   @id @default(uuid())
+  name             String
+  dailyOrderNumber Int      @default(0)
+  createdAt        DateTime @default(now())
 
-  users User[]
+  users  User[]
+  staff  Staff[]
+  shifts Shift[]
+}
+
+enum StaffRole {
+  CASHIER
+  WAITER
+  MANAGER
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model Staff {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  fullName  String
+  email     String
+  phone     String
+  role      StaffRole
+  pinHash   String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  shifts    Shift[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model Shift {
+  id        String      @id @default(uuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  cashierId String
+  cashier   Staff       @relation(fields: [cashierId], references: [id])
+  status    ShiftStatus @default(OPEN)
+  openedAt  DateTime    @default(now())
+  closedAt  DateTime?
+  report    ShiftReport?
+  orders    Order[]
+
+  @@index([tenantId, status])
+}
+
+model ShiftReport {
+  id          String   @id @default(uuid())
+  shiftId     String   @unique
+  shift       Shift    @relation(fields: [shiftId], references: [id])
+  totalAmount Decimal  @db.Decimal(12, 2)
+  orderCount  Int
+  cashierId   String
+  openedAt    DateTime
+  closedAt    DateTime
+  createdAt   DateTime @default(now())
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  tenantId    String
+  shiftId     String?
+  shift       Shift?   @relation(fields: [shiftId], references: [id])
+  totalAmount Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, shiftId])
 }
 
 model User {
