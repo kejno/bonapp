@@ -83,6 +83,11 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
   (`dmtools run <config>`) с провайдером из переменной `AI_AGENT_PROVIDER`
   (`claude-code` по умолчанию, либо `codex`)
 
+Режим запуска SM Agent управляется repo variable `SM_AGENT_TRIGGER_MODE`:
+`after_all` запускает его после завершения всех активных/ожидающих AI Teammate
+jobs, а отсутствие переменной (или любое другое значение) оставляет режим
+`manual`. Ручной `workflow_dispatch` доступен в обоих режимах.
+
 ## Настройка
 
 | Что | Значение | Статус |

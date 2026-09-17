@@ -2,13 +2,9 @@ name: SM Agent
 
 on:
   workflow_dispatch: {}
-  # TEMPORARILY DISABLED (2026-09-10, manual-only mode by request): auto-firing
-  # on every AI Teammate completion was queuing up new tickets faster than
-  # they could be reviewed/triaged. Re-enable by uncommenting once ready to
-  # go back to fully automatic cycling.
-  # workflow_run:
-  #   workflows: ["AI Teammate"]
-  #   types: [completed]
+  workflow_run:
+    workflows: ["AI Teammate"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -25,6 +21,11 @@ concurrency:
 
 jobs:
   sm-agent:
+    # GitHub variables cannot conditionally enable entries in `on`, so both
+    # triggers stay declared and the automatic path is gated here. An unset
+    # or unknown SM_AGENT_TRIGGER_MODE behaves as `manual`; workflow_dispatch
+    # remains available in every mode as an operational override.
+    if: github.event_name == 'workflow_dispatch' || vars.SM_AGENT_TRIGGER_MODE == 'after_all'
     runs-on: ubuntu-latest
     steps:
       - name: Check no other AI Teammate run is active
