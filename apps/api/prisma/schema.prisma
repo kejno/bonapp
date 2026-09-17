@@ -7,12 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum PosProvider {
+  IIKO
+  RKEEPER
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  UNAVAILABLE
+}
+
 model Tenant {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users           User[]
+  posIntegrations PosIntegrationConfig[]
+  menuCategories  MenuCategory[]
+  menuItems       MenuItem[]
+  posSyncJobs     PosSyncJob[]
 }
 
 model User {
@@ -23,4 +40,67 @@ model User {
   role     String
 
   @@index([tenantId])
+}
+
+model PosIntegrationConfig {
+  id        String      @id @default(uuid())
+  tenantId  String
+  provider  PosProvider
+  config    Json
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+}
+
+model MenuCategory {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  posCategoryId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  menuItems MenuItem[]
+
+  @@unique([tenantId, posCategoryId])
+  @@index([tenantId])
+}
+
+model MenuItem {
+  id         String   @id @default(uuid())
+  tenantId   String
+  categoryId String?
+  name       String
+  price      Decimal  @db.Decimal(10, 2)
+  imageUrl   String?
+  posItemId  String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  category MenuCategory? @relation(fields: [categoryId], references: [id])
+
+  @@unique([tenantId, posItemId])
+  @@index([tenantId])
+}
+
+model PosSyncJob {
+  id          String      @id @default(uuid())
+  tenantId    String
+  provider    PosProvider
+  status      SyncStatus
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+  createdAt   DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, provider])
 }
