@@ -102,6 +102,27 @@ run_claude_code() {
       -p < "${claude_prompt_stdin_file}" \
       2>&1 | tee "${claude_code_log}"
     claude_code_exit_code=${PIPESTATUS[0]}
+
+    # Resumed session IDs don't survive across CI runs — each GitHub Actions
+    # job is a fresh VM, so `~/.claude`'s session store from the run that
+    # wrote .claude-session-id is gone. `--resume` then fails instantly
+    # (num_turns: 0, exit 1) with "No conversation found with session ID",
+    # silently discarding the whole run. Detect that specific failure and
+    # retry once as a brand-new session (no --resume) instead of giving up.
+    if [ "${claude_code_exit_code}" -ne 0 ] && grep -q 'No conversation found with session ID' "${claude_code_log}"; then
+      echo "⚠️  Resume target session not found on this runner — retrying as a new session."
+      : > "${claude_code_log}"
+      claude --permission-mode bypassPermissions \
+        --output-format stream-json \
+        --verbose \
+        --model "${claude_code_model}" \
+        --max-turns "${claude_code_max_turns}" \
+        ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
+        -p < "${claude_prompt_file}" \
+        2>&1 | tee "${claude_code_log}"
+      claude_code_exit_code=${PIPESTATUS[0]}
+    fi
+
     rm -f "${claude_prompt_stdin_file}"
     if [ "${claude_cleanup_prompt_file}" = "true" ]; then
       rm -f "${claude_prompt_file}"
