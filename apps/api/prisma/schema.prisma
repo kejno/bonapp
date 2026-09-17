@@ -12,7 +12,10 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users    User[]
+  shifts   Shift[]
+  orders   Order[]
+  payments Payment[]
 }
 
 model User {
@@ -22,5 +25,56 @@ model User {
   email    String @unique
   role     String
 
+  waiterOrders Order[] @relation("WaiterOrders")
+
   @@index([tenantId])
+}
+
+model Shift {
+  id        String    @id @default(uuid())
+  tenantId  String
+  openedAt  DateTime  @default(now())
+  closedAt  DateTime?
+  openedBy  String
+  closedBy  String?
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  orders    Order[]
+
+  @@index([tenantId])
+}
+
+model Order {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tableId   String
+  waiterId  String?
+  shiftId   String?
+  status    String    @default("OPEN")
+  total     Decimal   @db.Decimal(10, 2)
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  shift     Shift?    @relation(fields: [shiftId], references: [id])
+  waiter    User?     @relation("WaiterOrders", fields: [waiterId], references: [id])
+  payments  Payment[]
+
+  @@index([tenantId])
+  @@index([shiftId])
+  @@index([waiterId])
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  orderId   String
+  method    String
+  amount    Decimal  @db.Decimal(10, 2)
+  tipAmount Decimal  @db.Decimal(10, 2) @default(0)
+  refunded  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId])
+  @@index([orderId])
 }
