@@ -15,6 +15,7 @@
   "dependencies": {
     "@bonapp/shared-types": "*",
     "@tanstack/react-query": "^5.62.7",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.2"
@@ -25,6 +26,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^24.13.3",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
