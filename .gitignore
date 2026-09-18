@@ -12,5 +12,6 @@ test-results/
 .vite/
 
 # dmtools pipeline artifacts
+.dmtools/input/
 .dmtools/outputs/
 .claude-session-id
