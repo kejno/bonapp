@@ -13,6 +13,51 @@ model Tenant {
   createdAt DateTime @default(now())
 
   users User[]
+  menuItems MenuItem[]
+}
+
+model MenuItem {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  name         String
+  isInStopList Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  modifierGroups ModifierGroup[]
+
+  @@index([tenantId])
+}
+
+model ModifierGroup {
+  id          String   @id @default(uuid())
+  itemId      String
+  item        MenuItem @relation(fields: [itemId], references: [id])
+  name        String
+  minSelected Int      @default(0)
+  maxSelected Int      @default(1)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  options ModifierOption[]
+
+  @@index([itemId, isActive])
+}
+
+model ModifierOption {
+  id            String        @id @default(uuid())
+  groupId       String
+  group         ModifierGroup @relation(fields: [groupId], references: [id])
+  name          String
+  extraPriceByn Decimal       @db.Decimal(10, 2)
+  isDefault     Boolean       @default(false)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([groupId, isActive])
 }
 
 model User {
