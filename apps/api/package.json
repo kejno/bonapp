@@ -25,6 +25,8 @@
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.2.5",
+    "@nestjs/websockets": "^11.2.5",
     "@prisma/client": "^6.1.0",
     "bullmq": "^5.34.4",
     "ioredis": "^5.4.2",
