@@ -12,7 +12,66 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users  User[]
+  areas  Area[]
+  tables Table[]
+  orders Order[]
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  BILL_REQUESTED
+}
+
+model Area {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tables Table[]
+
+  @@index([tenantId])
+  @@map("areas")
+}
+
+model Table {
+  id          String      @id @default(uuid())
+  tenantId    String
+  areaId      String
+  tableNumber Int
+  label       String?
+  seatsCount  Int
+  qrToken     String      @unique
+  status      TableStatus @default(FREE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  area   Area   @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  orders Order[]
+
+  @@unique([areaId, tableNumber])
+  @@index([tenantId])
+  @@map("tables")
+}
+
+model Order {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tableId   String?
+  status    String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  table  Table? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, tableId, status])
+  @@map("orders")
 }
 
 model User {
