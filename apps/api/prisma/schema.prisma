@@ -10,9 +10,82 @@ datasource db {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
+  qrToken   String   @unique
+  timezone  String   @default("Europe/Minsk")
   createdAt DateTime @default(now())
 
-  users User[]
+  users     User[]
+  menuItems MenuItem[]
+  orders    Order[]
+  dailyOrderCounters DailyOrderCounter[]
+}
+
+model DailyOrderCounter {
+  tenantId       String
+  localOrderDate DateTime @db.Date
+  lastNumber     Int      @default(0)
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, localOrderDate])
+}
+
+model MenuItem {
+  id             String          @id @default(uuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  name           String
+  priceByn       Decimal         @db.Decimal(10, 2)
+  isAvailable    Boolean         @default(true)
+  modifierGroups ModifierGroup[]
+  orderItems     OrderItem[]
+
+  @@index([tenantId, isAvailable])
+}
+
+model ModifierGroup {
+  id          String           @id @default(uuid())
+  menuItemId  String
+  menuItem    MenuItem         @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  name        String
+  isRequired  Boolean          @default(false)
+  options     ModifierOption[]
+}
+
+model ModifierOption {
+  id              String        @id @default(uuid())
+  modifierGroupId String
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  name            String
+  priceByn        Decimal       @db.Decimal(10, 2)
+  isAvailable     Boolean       @default(true)
+}
+
+model Order {
+  id                 String      @id @default(uuid())
+  tenantId           String
+  tenant             Tenant      @relation(fields: [tenantId], references: [id])
+  dailyOrderNumber   Int
+  localOrderDate     DateTime    @db.Date
+  status             String      @default("NEW")
+  totalAmountByn     Decimal     @db.Decimal(10, 2)
+  comment            String?     @db.VarChar(255)
+  estimatedReadyTime DateTime
+  createdAt          DateTime    @default(now())
+  items              OrderItem[]
+
+  @@unique([tenantId, localOrderDate, dailyOrderNumber])
+  @@index([tenantId, localOrderDate])
+}
+
+model OrderItem {
+  id                  String   @id @default(uuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId          String
+  menuItem            MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity            Int
+  unitPriceByn        Decimal  @db.Decimal(10, 2)
+  selectedModifierIds String[]
 }
 
 model User {

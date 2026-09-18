@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('App', () => {
-  it('renders the guest heading', () => {
+  it('renders the checkout heading', () => {
     render(<App />)
-    expect(screen.getByText('Bonapp — Guest')).toBeInTheDocument()
+    expect(screen.getByText('Оформление заказа')).toBeInTheDocument()
   })
 })
