@@ -13,6 +13,90 @@ model Tenant {
   createdAt DateTime @default(now())
 
   users User[]
+  menuCategories MenuCategory[]
+  menuItems MenuItem[]
+  modifierGroups ModifierGroup[]
+  modifiers Modifier[]
+  stopListItems StopListItem[]
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  items     MenuItem[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, sortOrder])
+}
+
+model MenuItem {
+  id             String                 @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
+  categoryId     String
+  category       MenuCategory           @relation(fields: [categoryId], references: [id])
+  name           String
+  price          Decimal                @db.Decimal(10, 2)
+  sortOrder      Int                    @default(0)
+  isActive       Boolean                @default(true)
+  modifierGroups MenuItemModifierGroup[]
+  stopListItem   StopListItem?
+
+  @@unique([id, tenantId])
+  @@index([tenantId, categoryId, sortOrder])
+}
+
+model ModifierGroup {
+  id        String                 @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int                    @default(0)
+  modifiers Modifier[]
+  menuItems MenuItemModifierGroup[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, sortOrder])
+}
+
+model Modifier {
+  id              String        @id @default(uuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  modifierGroupId String
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+  name            String
+  price           Decimal       @db.Decimal(10, 2)
+  sortOrder       Int           @default(0)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, modifierGroupId, sortOrder])
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String
+  modifierGroupId String
+  sortOrder       Int           @default(0)
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+
+  @@id([menuItemId, modifierGroupId])
+}
+
+model StopListItem {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  menuItemId String   @unique
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  isStopped  Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 model User {
