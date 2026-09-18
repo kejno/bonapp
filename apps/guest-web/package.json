@@ -16,6 +16,7 @@
     "@bonapp/shared-types": "*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "vite-plugin-pwa": "^1.3.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
