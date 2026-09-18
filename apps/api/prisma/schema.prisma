@@ -12,7 +12,129 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users     User[]
+  guests    Guest[]
+  tables    RestaurantTable[]
+  kitchens  Kitchen[]
+  menuItems MenuItem[]
+  orders    Order[]
+}
+
+enum OrderStatus {
+  NEW
+  COOKING
+  READY
+  SERVED
+  PAID
+  CANCELLED
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+}
+
+model Guest {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  phone     String
+  createdAt DateTime @default(now())
+  orders    Order[]
+
+  @@unique([tenantId, phone])
+}
+
+model RestaurantTable {
+  id       String      @id @default(uuid())
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  status   TableStatus @default(FREE)
+  orders   Order[]
+
+  @@index([tenantId])
+}
+
+model Kitchen {
+  id         String      @id @default(uuid())
+  tenantId   String
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  name       String
+  menuItems  MenuItem[]
+  orderItems OrderItem[]
+
+  @@index([tenantId])
+}
+
+model MenuItem {
+  id         String      @id @default(uuid())
+  tenantId   String
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  kitchenId  String
+  kitchen    Kitchen     @relation(fields: [kitchenId], references: [id])
+  name       String
+  price      Decimal
+  orderItems OrderItem[]
+
+  @@index([tenantId])
+  @@index([kitchenId])
+}
+
+model Order {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  guestId   String
+  guest     Guest            @relation(fields: [guestId], references: [id])
+  tableId   String?
+  table     RestaurantTable? @relation(fields: [tableId], references: [id])
+  status    OrderStatus      @default(NEW)
+  createdAt DateTime         @default(now())
+  items     OrderItem[]
+  payments  Payment[]
+
+  @@index([tenantId, status])
+  @@index([guestId])
+  @@index([tableId])
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  kitchenId  String
+  kitchen    Kitchen  @relation(fields: [kitchenId], references: [id])
+  name       String
+  quantity   Int
+  unitPrice  Decimal
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([orderId])
+  @@index([kitchenId])
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  orderId   String
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method    PaymentMethod
+  status    PaymentStatus
+  amount    Decimal
+  createdAt DateTime      @default(now())
+
+  @@index([orderId])
 }
 
 model User {
