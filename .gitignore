@@ -13,4 +13,5 @@ test-results/
 
 # dmtools pipeline artifacts
 .dmtools/outputs/
+.dmtools/input/
 .claude-session-id

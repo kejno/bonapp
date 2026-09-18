@@ -13,6 +13,8 @@ model Tenant {
   createdAt DateTime @default(now())
 
   users User[]
+  zones Zone[]
+  tables Table[]
 }
 
 model User {
@@ -23,4 +25,32 @@ model User {
   role     String
 
   @@index([tenantId])
+}
+
+model Zone {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  tables    Table[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Table {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  zoneId    String
+  zone      Zone     @relation(fields: [zoneId], references: [id])
+  number    Int
+  seats     Int
+  qrToken   String   @unique
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([zoneId])
 }
