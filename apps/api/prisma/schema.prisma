@@ -13,6 +13,47 @@ model Tenant {
   createdAt DateTime @default(now())
 
   users User[]
+  tables Table[]
+  orders Order[]
+}
+
+model Table {
+  id        String @id @default(uuid())
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  sessions  TableSession[]
+}
+
+model TableSession {
+  id        String @id @default(uuid())
+  tableId   String
+  table     Table @relation(fields: [tableId], references: [id])
+  token     String @unique
+  isActive  Boolean @default(true)
+  expiresAt DateTime
+  orders    Order[]
+
+  @@index([tableId])
+}
+
+enum OrderStatus {
+  CREATED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+model Order {
+  id             String @id @default(uuid())
+  tenantId       String
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id])
+  status         OrderStatus @default(CREATED)
+
+  @@index([tenantId])
+  @@index([tableSessionId])
 }
 
 model User {
