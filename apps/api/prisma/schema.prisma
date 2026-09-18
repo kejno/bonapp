@@ -12,7 +12,19 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  users User[]
+  users    User[]
+  settings TenantSettings?
+  shifts   Shift[]
+  payments Payment[]
+}
+
+model TenantSettings {
+  id         String @id @default(uuid())
+  tenantId   String @unique
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  sknoSerial String
+  sknoUnp    String
+  sknoApiUrl String
 }
 
 model User {
@@ -23,4 +35,54 @@ model User {
   role     String
 
   @@index([tenantId])
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model Shift {
+  id       String      @id @default(uuid())
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  status   ShiftStatus @default(OPEN)
+  openedAt DateTime    @default(now())
+  closedAt DateTime?
+  zReport  Json?
+  payments Payment[]
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+enum PaymentStatus {
+  COMPLETED
+}
+
+enum FiscalStatus {
+  PENDING
+  FISCALIZED
+  FISCAL_FAILED
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  tenantId            String
+  tenant              Tenant        @relation(fields: [tenantId], references: [id])
+  shiftId             String?
+  shift               Shift?        @relation(fields: [shiftId], references: [id])
+  orderId             String
+  amount              Decimal       @db.Decimal(10, 2)
+  status              PaymentStatus @default(COMPLETED)
+  fiscalStatus        FiscalStatus  @default(PENDING)
+  fiscalReceiptNumber String?
+  fiscalAttempts      Int           @default(0)
+  fiscalFailedAt      DateTime?
+  fiscalizedAt        DateTime?
+  createdAt           DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([shiftId])
+  @@index([fiscalStatus])
 }
