@@ -15,8 +15,10 @@
   "dependencies": {
     "@bonapp/shared-types": "*",
     "@tanstack/react-query": "^5.62.7",
+    "howler": "^2.2.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "socket.io-client": "^4.8.3",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -24,6 +26,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
+    "@types/howler": "^2.2.13",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
