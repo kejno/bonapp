@@ -19,4 +19,20 @@ describe('AppController', () => {
       expect(appController.getHello()).toBe('Hello World!');
     });
   });
+
+  describe('readiness', () => {
+    it('returns an incomplete checklist while readiness modules are unavailable', () => {
+      expect(appController.getReadiness()).toEqual({
+        menuReady: false,
+        tablesReady: false,
+        paymentsReady: false,
+      });
+    });
+  });
+
+  describe('shift', () => {
+    it('confirms that a shift was opened', () => {
+      expect(appController.openShift()).toEqual({ opened: true });
+    });
+  });
 });
