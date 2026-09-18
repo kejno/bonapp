@@ -1,0 +1,14 @@
+{
+  "provider": "claude-code",
+  "models": [
+    "claude-haiku-4-5-20251001",
+    "claude-sonnet-4-6"
+  ],
+  "input_other": 4525,
+  "input_cache_read": 2453973,
+  "input_cache_creation": 113875,
+  "output": 66516,
+  "total_input": 2572373,
+  "total_tokens": 2638889,
+  "cost_usd": 2.2201173499999993
+}
