@@ -39,7 +39,7 @@ describe('WebhookConsumer', () => {
         {
           provide: PrismaService,
           useValue: {
-            payment: { findFirst: jest.fn(), update: jest.fn() },
+            payment: { findFirst: jest.fn(), updateMany: jest.fn() },
             order: { update: jest.fn() },
           },
         },
@@ -62,10 +62,7 @@ describe('WebhookConsumer', () => {
   describe('processJob — ERIP confirmed', () => {
     it('marks payment COMPLETED, sets is_paid=true and emits WS event', async () => {
       (prisma.payment.findFirst as jest.Mock).mockResolvedValue(mockPendingPayment);
-      (prisma.payment.update as jest.Mock).mockResolvedValue({
-        ...mockPendingPayment,
-        status: PaymentStatus.COMPLETED,
-      });
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
       (prisma.order.update as jest.Mock).mockResolvedValue({ ...mockOrder, is_paid: true });
 
       const job = makeJob({
@@ -77,8 +74,12 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-1' },
+      expect(prisma.payment.findFirst).toHaveBeenCalledWith({
+        where: { gatewayRef: 'ERIP-001', method: PaymentMethod.ERIP },
+        include: { order: true },
+      });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'pay-1', status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.COMPLETED, webhookPayload: {} },
       });
       expect(prisma.order.update).toHaveBeenCalledWith({
@@ -101,10 +102,7 @@ describe('WebhookConsumer', () => {
   describe('processJob — ERIP failed', () => {
     it('marks payment FAILED and does not set is_paid or emit COMPLETED event', async () => {
       (prisma.payment.findFirst as jest.Mock).mockResolvedValue(mockPendingPayment);
-      (prisma.payment.update as jest.Mock).mockResolvedValue({
-        ...mockPendingPayment,
-        status: PaymentStatus.FAILED,
-      });
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
 
       const job = makeJob({
         provider: 'ERIP',
@@ -115,8 +113,8 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-1' },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'pay-1', status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.FAILED, webhookPayload: {} },
       });
       expect(prisma.order.update).not.toHaveBeenCalled();
@@ -142,10 +140,7 @@ describe('WebhookConsumer', () => {
         gatewayRef: 'tok-001',
       };
       (prisma.payment.findFirst as jest.Mock).mockResolvedValue(bepaidPayment);
-      (prisma.payment.update as jest.Mock).mockResolvedValue({
-        ...bepaidPayment,
-        status: PaymentStatus.COMPLETED,
-      });
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
       (prisma.order.update as jest.Mock).mockResolvedValue({ ...mockOrder, is_paid: true });
 
       const job = makeJob({
@@ -157,8 +152,8 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-2' },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'pay-2', status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.COMPLETED, webhookPayload: {} },
       });
       expect(prisma.order.update).toHaveBeenCalledWith({
@@ -189,7 +184,7 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
       expect(prisma.order.update).not.toHaveBeenCalled();
       expect(socketService.emitToRoom).not.toHaveBeenCalled();
     });
@@ -209,7 +204,7 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
       expect(socketService.emitToRoom).not.toHaveBeenCalled();
     });
   });
@@ -227,7 +222,26 @@ describe('WebhookConsumer', () => {
 
       await consumer.processJob(job);
 
-      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(socketService.emitToRoom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('processJob — concurrent delivery', () => {
+    it('does not update the order or emit when another worker already changed the status', async () => {
+      (prisma.payment.findFirst as jest.Mock).mockResolvedValue(mockPendingPayment);
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+
+      await consumer.processJob(
+        makeJob({
+          provider: 'ERIP',
+          gatewayRef: 'ERIP-001',
+          newStatus: 'COMPLETED',
+          rawPayload: {},
+        }),
+      );
+
+      expect(prisma.order.update).not.toHaveBeenCalled();
       expect(socketService.emitToRoom).not.toHaveBeenCalled();
     });
   });

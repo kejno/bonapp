@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentMethod, PaymentStatus } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { REDIS_CONNECTION, WEBHOOK_QUEUE_NAME } from '../queue/queue.module';
@@ -34,10 +34,10 @@ export class WebhookConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   async processJob(job: Job<WebhookJobData>): Promise<void> {
-    const { gatewayRef, newStatus, rawPayload } = job.data;
+    const { provider, gatewayRef, newStatus, rawPayload } = job.data;
 
     const payment = await this.prisma.payment.findFirst({
-      where: { gatewayRef },
+      where: { gatewayRef, method: provider as PaymentMethod },
       include: { order: true },
     });
 
@@ -56,10 +56,17 @@ export class WebhookConsumer implements OnModuleInit, OnModuleDestroy {
     const targetStatus =
       newStatus === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
 
-    await this.prisma.payment.update({
-      where: { id: payment.id },
+    const updateResult = await this.prisma.payment.updateMany({
+      where: { id: payment.id, status: PaymentStatus.PENDING },
       data: { status: targetStatus, webhookPayload: rawPayload as object },
     });
+
+    if (updateResult.count === 0) {
+      this.logger.log(
+        `Payment ${payment.id} was processed by another worker, skipping duplicate webhook`,
+      );
+      return;
+    }
 
     if (targetStatus === PaymentStatus.COMPLETED) {
       await this.prisma.order.update({
