@@ -11,8 +11,27 @@ model Tenant {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
+  posType   String?
+  posApiKey String?
+  posUrl    String?
 
-  users User[]
+  users       User[]
+  menuImports MenuImport[]
+}
+
+model MenuImport {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  status        String
+  importedItems Int      @default(0)
+  totalItems    Int      @default(0)
+  failedItems   Int      @default(0)
+  errors        Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
 }
 
 model User {
