@@ -14,11 +14,14 @@ import { OplatiService } from '../src/payment/oplati/oplati.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { EventsGateway } from '../src/events/events.gateway';
 import { PAYMENT_WEBHOOKS_QUEUE } from '../src/queues/queues.module';
+import { PaymentWebhookConsumer } from '../src/queues/payment-webhook.consumer';
 
 const WEBHOOK_SECRET = 'integration-test-secret';
 
 function sign(body: string): string {
-  return createHmac('sha256', WEBHOOK_SECRET).update(Buffer.from(body)).digest('hex');
+  return createHmac('sha256', WEBHOOK_SECRET)
+    .update(Buffer.from(body))
+    .digest('hex');
 }
 
 describe('Oplati Payment Flow (integration)', () => {
@@ -59,10 +62,13 @@ describe('Oplati Payment Flow (integration)', () => {
       update: jest
         .fn()
         .mockResolvedValue({ ...mockPayment, status: PaymentStatus.COMPLETED }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest
       .fn()
-      .mockImplementation(async (fn: (tx: any) => Promise<any>) => fn(mockPrisma)),
+      .mockImplementation(async (fn: (tx: any) => Promise<any>) =>
+        fn(mockPrisma),
+      ),
   };
 
   const mockOplati = {
@@ -87,11 +93,13 @@ describe('Oplati Payment Flow (integration)', () => {
     mockPrisma.payment.create.mockResolvedValue(mockPayment);
 
     const mockQueue = {
-      add: jest.fn().mockImplementation(
-        async (_name: string, data: { externalId: string }) => {
-          processedJobs.push(data);
-        },
-      ),
+      add: jest
+        .fn()
+        .mockImplementation(
+          async (_name: string, data: { externalId: string }) => {
+            processedJobs.push(data);
+          },
+        ),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -122,6 +130,8 @@ describe('Oplati Payment Flow (integration)', () => {
       .useValue(mockEvents)
       .overrideProvider(PAYMENT_WEBHOOKS_QUEUE)
       .useValue(mockQueue)
+      .overrideProvider(PaymentWebhookConsumer)
+      .useValue({ onModuleInit: jest.fn(), onModuleDestroy: jest.fn() })
       .compile();
 
     app = moduleFixture.createNestApplication({ rawBody: true });
@@ -157,7 +167,10 @@ describe('Oplati Payment Flow (integration)', () => {
   });
 
   it('POST /webhooks/oplati with valid signature enqueues a confirm-payment job', async () => {
-    const body = JSON.stringify({ paymentId: 'oplati-ext-001', status: 'paid' });
+    const body = JSON.stringify({
+      paymentId: 'oplati-ext-001',
+      status: 'paid',
+    });
     const signature = sign(body);
 
     await request(app.getHttpServer())
@@ -172,7 +185,10 @@ describe('Oplati Payment Flow (integration)', () => {
   });
 
   it('POST /webhooks/oplati with invalid signature returns 401', async () => {
-    const body = JSON.stringify({ paymentId: 'oplati-ext-001', status: 'paid' });
+    const body = JSON.stringify({
+      paymentId: 'oplati-ext-001',
+      status: 'paid',
+    });
 
     await request(app.getHttpServer())
       .post('/api/v1/webhooks/oplati')
@@ -190,9 +206,9 @@ describe('Oplati Payment Flow (integration)', () => {
     const paymentService = app.get(PaymentService);
     await paymentService.processWebhookConfirmation('oplati-ext-001');
 
-    expect(mockPrisma.payment.update).toHaveBeenCalledWith(
+    expect(mockPrisma.payment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'payment-test-1' },
+        where: { id: 'payment-test-1', status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.COMPLETED },
       }),
     );

@@ -51,6 +51,7 @@ describe('PaymentService', () => {
               create: jest.fn(),
               findUnique: jest.fn(),
               update: jest.fn(),
+              updateMany: jest.fn(),
             },
             $transaction: jest.fn(),
           },
@@ -161,10 +162,7 @@ describe('PaymentService', () => {
       (prisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
         fn(prisma),
       );
-      (prisma.payment.update as jest.Mock).mockResolvedValue({
-        ...mockPayment,
-        status: PaymentStatus.COMPLETED,
-      });
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
 
       await service.processWebhookConfirmation('ext-abc123');
 
@@ -172,6 +170,10 @@ describe('PaymentService', () => {
         where: { externalId: 'ext-abc123' },
       });
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'payment-1', status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.COMPLETED },
+      });
       expect(eventsGateway.emitPaymentUpdate).toHaveBeenCalledWith(
         'order-1',
         'payment-1',
@@ -187,6 +189,19 @@ describe('PaymentService', () => {
       await service.processWebhookConfirmation('ext-abc123');
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(eventsGateway.emitPaymentUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not emit a duplicate event when another worker completes the payment first', async () => {
+      (prisma.payment.findUnique as jest.Mock).mockResolvedValue(mockPayment);
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn(prisma),
+      );
+      (prisma.payment.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+
+      await service.processWebhookConfirmation('ext-abc123');
+
+      expect(prisma.order.update).not.toHaveBeenCalled();
       expect(eventsGateway.emitPaymentUpdate).not.toHaveBeenCalled();
     });
 

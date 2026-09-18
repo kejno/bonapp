@@ -4,12 +4,12 @@ import {
   HttpCode,
   Inject,
   Post,
-  RawBodyRequest,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { verifyOplatiSignature } from './oplati-hmac';
 import { PAYMENT_WEBHOOKS_QUEUE } from '../queues/queues.module';
@@ -33,7 +33,10 @@ export class OplatiWebhookController {
 
   async processWebhook(rawBody: Buffer, signature: string): Promise<void> {
     const webhookSecret = this.config.getOrThrow('OPLATI_WEBHOOK_SECRET');
-    if (!signature || !verifyOplatiSignature(rawBody, signature, webhookSecret)) {
+    if (
+      !signature ||
+      !verifyOplatiSignature(rawBody, signature, webhookSecret)
+    ) {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 

@@ -24,8 +24,12 @@ export class PaymentService {
     private readonly events: EventsGateway,
   ) {}
 
-  async createOplatiPayment(orderId: string): Promise<CreateOplatiPaymentResult> {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+  async createOplatiPayment(
+    orderId: string,
+  ): Promise<CreateOplatiPaymentResult> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
 
     if (!order) {
       throw new NotFoundException(`Order ${orderId} not found`);
@@ -37,7 +41,10 @@ export class PaymentService {
 
     const totalWithTipsByn = order.total + order.tipAmount;
 
-    const oplatiResult = await this.oplati.createPayment(orderId, totalWithTipsByn);
+    const oplatiResult = await this.oplati.createPayment(
+      orderId,
+      totalWithTipsByn,
+    );
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -67,25 +74,35 @@ export class PaymentService {
     });
 
     if (!payment) {
-      throw new NotFoundException(`Payment with externalId ${externalId} not found`);
+      throw new NotFoundException(
+        `Payment with externalId ${externalId} not found`,
+      );
     }
 
     if (payment.status === PaymentStatus.COMPLETED) {
       return;
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
+    const wasCompleted = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payment.updateMany({
+        where: { id: payment.id, status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.COMPLETED },
       });
+
+      if (result.count === 0) {
+        return false;
+      }
 
       await tx.order.update({
         where: { id: payment.orderId },
         data: { isPaid: true },
       });
+
+      return true;
     });
 
-    this.events.emitPaymentUpdate(payment.orderId, payment.id);
+    if (wasCompleted) {
+      this.events.emitPaymentUpdate(payment.orderId, payment.id);
+    }
   }
 }
