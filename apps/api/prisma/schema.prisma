@@ -10,6 +10,13 @@ datasource db {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
+  slug      String   @unique
+  legalName String
+  unp       String   @unique
+  address   String
+  timezone  String   @default("Europe/Minsk")
+  brandColor String  @default("#e0533c")
+  logoUrl   String?
   createdAt DateTime @default(now())
 
   users User[]
