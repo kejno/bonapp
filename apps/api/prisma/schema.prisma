@@ -24,3 +24,39 @@ model User {
 
   @@index([tenantId])
 }
+
+model Order {
+  id        String   @id @default(uuid())
+  tenantId  String
+  total     Int
+  tipAmount Int      @default(0)
+  isPaid    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  payments Payment[]
+
+  @@index([tenantId])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id])
+  externalId       String        @unique
+  provider         String
+  status           PaymentStatus @default(PENDING)
+  qrCodeData       String
+  deepLink         String
+  eripCode         String?
+  totalWithTipsByn Int
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([orderId])
+}
