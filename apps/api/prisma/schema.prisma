@@ -13,6 +13,42 @@ model Tenant {
   createdAt DateTime @default(now())
 
   users User[]
+  menuCategories MenuCategory[]
+  menuItems      MenuItem[]
+}
+
+model MenuCategory {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  sortOrder     Int      @default(0)
+  isVisible     Boolean  @default(true)
+  posCategoryId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  items         MenuItem[]
+
+  @@unique([tenantId, posCategoryId])
+  @@index([tenantId, sortOrder, id])
+}
+
+model MenuItem {
+  id            String       @id @default(uuid())
+  tenantId      String
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  price         Int
+  imageUrl      String?
+  isActive      Boolean      @default(true)
+  isInStopList  Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([tenantId, categoryId, name, id])
 }
 
 model User {
