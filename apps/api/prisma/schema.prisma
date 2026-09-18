@@ -8,11 +8,24 @@ datasource db {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  name       String
+  brandColor String   @default("#e0533c")
+  logoUrl    String?
+  createdAt  DateTime @default(now())
 
-  users User[]
+  users  User[]
+  tables Table[]
+}
+
+model Table {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  number   String
+  qrToken  String @unique
+
+  @@index([tenantId])
 }
 
 model User {

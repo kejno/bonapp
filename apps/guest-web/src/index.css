@@ -6,6 +6,10 @@
   --font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
 }
 
+:root {
+  --color-primary: #e0533c;
+}
+
 body {
   margin: 0;
 }
