@@ -1255,12 +1255,20 @@ function action(params) {
     var allProcessedKeys = [];
     var allSkippedKeys   = [];
     var allStatusChangedKeys = [];
+    var ruleErrors = [];
 
     rules.forEach(function(rule, i) {
-        var result = processRule(rule, globalRepoInfo, i, workflowBudget);
-        allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
-        allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
-        allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        try {
+            var result = processRule(rule, globalRepoInfo, i, workflowBudget);
+            allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
+            allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
+            allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        } catch (e) {
+            var error = e && e.message || String(e);
+            var label = rule.description || rule.configFile || ('Rule #' + (i + 1));
+            console.error('  ❌ Rule failed; continuing with remaining rules: ' + label + ' — ' + error);
+            ruleErrors.push({ rule: label, error: error });
+        }
     });
 
     console.log('\n══ SM Agent complete — processed: ' + allProcessedKeys.length + ' ' +
@@ -1278,13 +1286,14 @@ function action(params) {
     }
 
     return {
-        success: true,
+        success: ruleErrors.length === 0,
         processed: allProcessedKeys.length,
         skipped: allSkippedKeys.length,
         processedKeys: allProcessedKeys,
         skippedKeys: allSkippedKeys,
         needsAnotherPass: allStatusChangedKeys.length > 0,
-        statusChangedKeys: allStatusChangedKeys
+        statusChangedKeys: allStatusChangedKeys,
+        ruleErrors: ruleErrors
     };
 }
 

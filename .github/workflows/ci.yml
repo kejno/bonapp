@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +27,9 @@ jobs:
         with:
           path: node_modules/.cache/turbo
           key: turbo-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node-${{ matrix.node-version }}-
+            turbo-${{ runner.os }}-
       - run: npm run lint
 
   typecheck:
@@ -35,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,6 +50,9 @@ jobs:
         with:
           path: node_modules/.cache/turbo
           key: turbo-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node-${{ matrix.node-version }}-
+            turbo-${{ runner.os }}-
       - run: npm run typecheck
 
   test:
@@ -55,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,6 +73,9 @@ jobs:
         with:
           path: node_modules/.cache/turbo
           key: turbo-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node-${{ matrix.node-version }}-
+            turbo-${{ runner.os }}-
       - run: npm test
 
   build:
@@ -75,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,6 +96,9 @@ jobs:
         with:
           path: node_modules/.cache/turbo
           key: turbo-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node-${{ matrix.node-version }}-
+            turbo-${{ runner.os }}-
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
