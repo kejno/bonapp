@@ -187,7 +187,9 @@ function checkoutBranch(ticketKey, config, ticket, customParams) {
     // cache during checkout. Preserve only untracked cache files outside the
     // worktree; tracked files and ticket input are left untouched.
     try {
-        runCmd({ command: 'bash agents/scripts/preserve-untracked-jira-cache.sh' });
+        // cli_execute_command runs from the repository root in CI, while the
+        // Teammate workflow itself starts in .dmtools.
+        runCmd({ command: 'bash .dmtools/agents/scripts/preserve-untracked-jira-cache.sh' });
     } catch (e) {
         console.warn('Could not preserve untracked Jira cache before branch setup:', e);
     }
