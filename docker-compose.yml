@@ -1,22 +1,35 @@
 services:
   postgres:
-    image: postgres:16-alpine
-    ports:
-      - '5432:5432'
+    image: postgres:15
     environment:
+      POSTGRES_DB: bonapp
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: bonapp
+    ports:
+      - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - bonapp_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d bonapp']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
+    command: redis-server --appendonly yes
     ports:
       - '6379:6379'
+    volumes:
+      - bonapp_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-07-18T21-56-31Z
     command: server /data --console-address ':9001'
     ports:
       - '9000:9000'
@@ -28,5 +41,6 @@ services:
       - minio_data:/data
 
 volumes:
-  postgres_data:
+  bonapp_pg_data:
+  bonapp_redis_data:
   minio_data:

@@ -108,6 +108,19 @@ console.log('=== pickProviderWithBudget ===');
   check('no budget object at all → first provider (unbounded)', t.pickProviderWithBudget(['codex', 'claude-code'], null) === 'codex');
 }
 
+console.log('=== two independent Codex account slots ===');
+{
+  const budget = t.buildWorkflowBudget({ 'codex-1': 1, 'codex-2': 1 }, {});
+  const providers = ['codex-1', 'codex-2'];
+  const first = t.pickProviderWithBudget(providers, budget);
+  t.providerBudgetBucket(budget, first).remaining -= 1;
+  const second = t.pickProviderWithBudget(providers, budget);
+  check('first ticket uses codex-1', first === 'codex-1');
+  check('second ticket uses independent codex-2 slot', second === 'codex-2');
+  check('slot buckets are independent',
+    t.providerBudgetBucket(budget, 'codex-1') !== t.providerBudgetBucket(budget, 'codex-2'));
+}
+
 console.log('=== fair-share dispatch across one SM pass (the actual user-facing requirement) ===');
 {
   // The scenario that motivated fair-share picking: with 3+ eligible tickets
@@ -208,6 +221,8 @@ console.log('=== parseProviderFromRunName ===');
   // miss the 'claude-code' bucket sm.json's maxTriggeredWorkflows configures.
   check('current "claude" display label maps back to the real provider value "claude-code"',
     t.parseProviderFromRunName({ name: '[claude] AI Teammate (x)' }) === 'claude-code');
+  check('Codex account slot remains distinct in a tagged run name',
+    t.parseProviderFromRunName({ name: '[codex-2] AI Teammate (x)' }) === 'codex-2');
   check('display_title used when name absent',
     t.parseProviderFromRunName({ display_title: '[claude] AI Teammate (x)' }) === 'claude-code');
   // A run dispatched before this label change still has the old literal

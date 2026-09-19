@@ -9,16 +9,16 @@ export class StorageService {
   private readonly publicEndpoint: string;
 
   constructor(private readonly config: ConfigService) {
-    const endpoint = config.get<string>('S3_ENDPOINT', 'http://localhost:9000');
-    this.bucket = config.get<string>('S3_BUCKET', 'bonapp');
+    const endpoint = config.getOrThrow<string>('S3_ENDPOINT');
+    this.bucket = config.getOrThrow<string>('S3_BUCKET');
     this.publicEndpoint = config.get<string>('S3_PUBLIC_ENDPOINT', endpoint);
+    const accessKeyId = config.getOrThrow<string>('S3_ACCESS_KEY');
+    const secretAccessKey = config.getOrThrow<string>('S3_SECRET_KEY');
+
     this.client = new S3Client({
       endpoint,
       region: config.get<string>('S3_REGION', 'us-east-1'),
-      credentials: {
-        accessKeyId: config.get<string>('S3_ACCESS_KEY', 'minioadmin'),
-        secretAccessKey: config.get<string>('S3_SECRET_KEY', 'minioadmin'),
-      },
+      credentials: { accessKeyId, secretAccessKey },
       forcePathStyle: true,
     });
   }

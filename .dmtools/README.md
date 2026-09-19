@@ -40,12 +40,12 @@ Playwright (`tests/e2e/{TC_KEY}.spec.ts`).
 
 ## Как этим пользоваться (для овнера)
 
-1. Завести Epic-тикет в Jira (проект `BNP`, статус `Backlog`) с сырым
-   описанием фичи своими словами
-2. SM-агент (крон каждые 20 мин) подхватит его, запустит `intake.json` —
-   Claude Code разберёт идею, изучит существующие тикеты (чтоб не
-   дублировать), создаст Epic+Story тикеты с описаниями, зависимостями
-   между ними, оценкой сложности (Story Points)
+1. Для всего продукта завести Epic в Jira (проект `BNP`, статус `Backlog`),
+   добавить label `umbrella_epic` и описать продукт своими словами. Для одной
+   самостоятельной фичи достаточно обычного Epic без этого label.
+2. SM-агент (крон каждые 20 мин) запускает двухэтапный intake: зонтик создаёт
+   только продуктовые Epic, затем отдельный intake каждого продуктового Epic
+   создаёт только его дочерние Story с описаниями, зависимостями и Story Points.
 3. Дальше каждая созданная Story идёт по обычному циклу — вопросы, BA,
    dev, PR review, merge — без твоего участия
 4. Готовые PR смотришь и мержишь сам (пайплайн не автомерджит без review)
@@ -200,18 +200,15 @@ variables → Actions → Variables). Локально — `AI_AGENT_PROVIDER=co
 
 Отсюда два следствия, которых нет у Claude:
 
-1. **Codex-прогоны между собой строго сериализованы.** `ai-teammate.yml`
-   кладёт любой запуск с `provider: codex` в одну общую concurrency-группу на
-   весь репозиторий (`ai-teammate-agent-codex-auth`) вместо пер-тикетной: два
-   параллельных Codex-job'а держали бы один `auth.json`, оба ротировали бы
-   токен, и проигравший оставил бы мёртвую учётку. Это ограничение только на
-   Codex-запуски *между собой* — Claude-запуски в это же время идут своей
-   обычной пер-тикетной concurrency и Codex им не мешает (см. «Параллельный
-   запуск Claude + Codex» ниже).
+1. **Codex-прогоны сериализованы внутри одного аккаунта.** Провайдеры
+   `codex-1` и `codex-2` имеют разные secrets и concurrency-группы, поэтому
+   могут работать параллельно. Два job одного слота не пересекаются. Старое
+   значение `codex` остаётся alias для `codex-1`.
 2. **Остаточный риск.** Шаг «Persist rotated Codex auth» стоит с
    `if: always()`, но job, убитый по cancel/timeout, не выполнит его вовсе —
    токен сгорит. Восстановление только руками: `codex login` локально →
-   вставить новый `~/.codex/auth.json` в секрет `CODEX_AUTH_JSON`.
+   вставить новый `~/.codex/auth.json` в `CODEX_AUTH_JSON` (аккаунт 1) либо
+   `CODEX_AUTH_JSON_2` (аккаунт 2).
 
 Если параллелизм важнее подписки — `OPENAI_API_KEY` вместо `CODEX_AUTH_JSON`:
 ротации нет, пер-тикетная concurrency сохраняется, но оплата идёт по токенам
@@ -221,15 +218,30 @@ variables → Actions → Variables). Локально — `AI_AGENT_PROVIDER=co
 
 | Что | Значение |
 |---|---|
-| Переменная `AI_AGENT_PROVIDER` | `codex` — провайдер по умолчанию для любого dispatch без явного `provider` (см. ниже) |
+| Переменная `AI_AGENT_PROVIDER` | `claude-code,codex-1,codex-2` для распределения между Claude и двумя Codex-аккаунтами; `codex` остаётся alias аккаунта 1 |
 | Переменная `CODEX_MODEL` | опционально; если не задана, используется модель по умолчанию, выбранная Codex CLI для авторизованного аккаунта |
 | Секрет `CODEX_AUTH_JSON` | содержимое `~/.codex/auth.json` после `codex login` |
+| Секрет `CODEX_AUTH_JSON_2` | содержимое отдельного `auth.json` после входа во второй аккаунт через отдельный `CODEX_HOME` |
 | Секрет `CODEX_SECRETS_ADMIN_PAT` | fine-grained PAT, **только на `kejno/bonapp`**, право `Secrets: Read and write` — нужен чтобы записать ротированный токен обратно; `GITHUB_TOKEN` так не умеет, и никакой `permissions:`-скоуп этого не даёт |
 | Секрет `OPENAI_API_KEY` | альтернатива `CODEX_AUTH_JSON` (без ротации) |
 
-Безопасность: `CODEX_AUTH_JSON` — живые учётные данные вашей подписки
-ChatGPT. Любой, кто может запустить workflow в репозитории, получает к ней
-доступ. `CODEX_SECRETS_ADMIN_PAT` скоупить строго на один репозиторий.
+Второй аккаунт авторизуется в изолированном каталоге, чтобы не перезаписать
+первый:
+
+```bash
+CODEX_SECOND_HOME="$(mktemp -d)"
+CODEX_HOME="${CODEX_SECOND_HOME}" codex login
+gh secret set CODEX_AUTH_JSON_2 --repo kejno/bonapp < "${CODEX_SECOND_HOME}/auth.json"
+```
+
+После добавления секрета задайте repo variable
+`AI_AGENT_PROVIDER=claude-code,codex-1,codex-2`. До этого значения `codex`
+и `codex-1` используют только первый аккаунт.
+
+Безопасность: оба `CODEX_AUTH_JSON*` — живые учётные данные подписок ChatGPT.
+Любой, кто может изменять и запускать workflow в репозитории, потенциально
+может использовать их. `CODEX_SECRETS_ADMIN_PAT` скоупить строго на один
+репозиторий.
 
 ### Параллельный запуск Claude + Codex
 
@@ -241,7 +253,7 @@ ChatGPT. Любой, кто может запустить workflow в репоз
   "description": "Subtasks with 'q' label → trigger PO refinement",
   "jql": "...",
   "configFile": "agents/po_refinement.json",
-  "provider": "codex",
+  "provider": "codex-2",
   "...": "..."
 }
 ```
@@ -252,15 +264,11 @@ ChatGPT. Любой, кто может запустить workflow в репоз
 `"provider"` продолжает наследовать репозиторную переменную — старые правила
 менять не нужно.
 
-Из этого следует практическая схема: держите `AI_AGENT_PROVIDER=claude-code`
-(или вообще не задавайте — это дефолт), а на конкретные правила, которые
-хотите гонять на подписке Codex, добавьте `"provider": "codex"`. Claude-прогоны
-и Codex-прогоны для разных тикетов идут одновременно; несколько Codex-прогонов
-между собой всё равно сериализуются через concurrency-группу в
-`ai-teammate.yml` (см. выше — не настраивается, это следствие single-use
-refresh-токена), так что Codex — это не второй параллельный поток throughput,
-а способ забрать часть очереди на другую подписку, пока Claude обрабатывает
-остальное.
+Практическая схема: `AI_AGENT_PROVIDER=claude-code,codex-1,codex-2` включает
+fair-share распределение между тремя слотами. Конкретное правило можно
+закрепить за `codex-1` или `codex-2` через `"provider"`. Оба Codex-аккаунта
+работают параллельно, но каждый аккаунт обрабатывает не более одного job
+одновременно из-за single-use refresh token.
 
 Ещё один способ распределить провайдера — не через `rule.provider` на
 отдельных правилах, а списком, применяемым сразу ко всем правилам без
@@ -273,7 +281,7 @@ refresh-токена), так что Codex — это не второй пара
 
 ```json
 "jobParams": {
-  "aiAgentProvider": "claude-code,codex",
+  "aiAgentProvider": "claude-code,codex-1,codex-2",
   "...": "..."
 }
 ```
@@ -289,9 +297,9 @@ refresh-токена), так что Codex — это не второй пара
 В GitHub Actions `sm-agent.yml` передаёт repo variable `AI_AGENT_PROVIDER` в
 `jobParams.aiAgentProvider` через JSON override команды `dmtools run`, поэтому
 repo variable является единым источником выбора провайдера. Значение в
-`sm.json` остаётся локальным значением по умолчанию. Если repo variable равна
-`claude-code` или `codex`, SM выбирает только этот провайдер; список
-`claude-code,codex` включает fair-share распределение между обоими.
+`sm.json` остаётся локальным значением по умолчанию. Список
+`claude-code,codex-1,codex-2` включает fair-share распределение между всеми
+тремя слотами.
 
 #### Бюджет на провайдера (`maxTriggeredWorkflows`)
 
@@ -304,7 +312,7 @@ repo variable является единым источником выбора п
 без разделения по провайдеру (все провайдеры делят один и тот же пул слотов).
 
 ```json
-"maxTriggeredWorkflows": { "claude-code": 2, "codex": 1 }
+"maxTriggeredWorkflows": { "claude-code": 2, "codex-1": 1, "codex-2": 1 }
 ```
 — отдельный потолок на каждый провайдер. Когда правило без явного
 `"provider"` находит несколько подходящих тикетов подряд (в рамках лимита
@@ -335,10 +343,9 @@ Claude закончится собственный бюджет.
 уберите его из списка `AI_AGENT_PROVIDER`/из `rule.provider`, а не ставьте
 ему `0`.
 
-`codex` в объектной форме имеет смысл ставить не выше `1` — сама
-concurrency-группа в `ai-teammate.yml` всё равно сериализует его до одного
-активного job'а, так что более высокое число просто оставит лишние
-Codex-dispatches ждать в очереди GitHub вместо реального параллелизма.
+Каждый из `codex-1` и `codex-2` имеет смысл ставить не выше `1` — его
+concurrency-группа всё равно сериализует один аккаунт. Два слота вместе дают
+до двух параллельных Codex jobs.
 
 Тесты чистой budget-логики (aliasing общего пула, независимость
 per-provider бакетов, выбор провайдера с оставшимся бюджетом) —
@@ -346,15 +353,17 @@ per-provider бакетов, выбор провайдера с оставшим
 
 ## Крон / триггеры
 
-`sm-agent.yml` не на фиксированном расписании — триггерится `workflow_run`
-сразу после завершения `ai-teammate.yml` (событийно, без опроса), плюс
-`workflow_dispatch` для ручных прогонов. Значит первый цикл нужно запустить
-руками (`gh workflow run sm-agent.yml` или Actions → Run workflow) — без хотя
-бы одного ручного старта цепочка никогда не начнётся сама. SM сам сканит весь
-Jira-бэклог и диспатчит `ai-teammate.yml` под каждый подходящий тикет — с
-созданной Epic/Story идеи владелец дальше не трогает пайплайн руками до
-готового PR. Оба workflow используют `runs-on: ubuntu-latest`
-(GitHub-hosted), не self-hosted, как в resume.
+`sm-agent.yml` имеет только `workflow_dispatch`. При
+`SM_AGENT_TRIGGER_MODE=after_all` финальный coordinator-job внутри
+`ai-teammate.yml` ждёт завершения остальных AI Teammate runs и диспатчит SM
+ровно один раз. Более старые coordinator-jobs уступают самому новому run ID;
+поэтому в Actions не создаются отдельные skipped SM runs. При значении
+`manual` (включая отсутствующую переменную) coordinator-job пропускается и SM
+запускается только вручную. Первый цикл в любом случае нужно запустить руками
+(`gh workflow run sm-agent.yml` или Actions → Run workflow), потому что до
+первого SM dispatch нет AI Teammate run, который мог бы продолжить цепочку.
+Оба workflow используют `runs-on: ubuntu-latest` (GitHub-hosted), не
+self-hosted, как в resume.
 
 ## Известные баги upstream-кода (найдены и исправлены при отладке в resume)
 
@@ -487,10 +496,10 @@ Jira-бэклог и диспатчит `ai-teammate.yml` под каждый п
 - **`ai-teammate.yml`'s `npm ci` шаг упадёт до первого Node-коммита** —
   bonapp пока docs-only (нет `package.json`); как только появится
   React/NestJS-скелет, шаг заработает сам, без правок workflow.
-- **Первый цикл нужно запустить вручную** — `sm-agent.yml` триггерится
-  `workflow_run` от `ai-teammate.yml`, у которого своих триггеров кроме
-  `workflow_dispatch` нет; без ручного `gh workflow run sm-agent.yml`
-  (Actions → Run workflow) цепочка не стартует сама первый раз.
+- **Первый цикл нужно запустить вручную** — автоматический coordinator
+  находится в `ai-teammate.yml`, а AI Teammate до первого SM-dispatch ещё не
+  запущен; без ручного `gh workflow run sm-agent.yml` (Actions → Run workflow)
+  цепочка не стартует сама первый раз.
 - **Ничего из пайплайна ещё не прогонялось на bonapp** — весь раздел «Известные
   баги upstream-кода» выше основан на опыте resume; стоит быть готовым, что
   в новом Jira-проекте/репо вылезет что-то ещё специфичное для BNP (см. баг 4

@@ -7,9 +7,9 @@
     },
     "jobParams": {
       "_comment_aiAgentProvider": "Local/default provider list. In GitHub Actions, sm-agent.yml overrides this value from the AI_AGENT_PROVIDER repo variable because dmtools' GraalJS context cannot read OS environment variables directly. See .dmtools/README.md's 'Параллельный запуск Claude + Codex' section.",
-      "aiAgentProvider": "claude-code,codex",
-      "_comment_maxTriggeredWorkflows": "codex capped at 1: its subscription refresh token is single-use and ai-teammate.yml already serializes every codex run into one repo-wide concurrency group, so a higher number here would just queue extra dispatches in GitHub without any real added parallelism — see .dmtools/README.md's 'Бюджет на провайдера' section.",
-      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1 },
+      "aiAgentProvider": "claude-code,codex-1,codex-2",
+      "_comment_maxTriggeredWorkflows": "Each Codex account has its own single-use rotating refresh token, secret and concurrency group. codex is retained as a backwards-compatible alias for account 1; use codex-1,codex-2 for two-account scheduling.",
+      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1, "codex-1": 1, "codex-2": 1 },
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
@@ -92,17 +92,25 @@
           "enabled": true
         },
         {
-          "description": "Blocked Stories & Bugs with all resolved dependencies → move to Backlog",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('Blocked') AND (labels is EMPTY OR labels NOT IN ('ai_content_blocker')) ORDER BY updated ASC",
+          "description": "In Progress Epics with all child Stories Done → Done",
+          "jql": "project = {jiraProject} AND issuetype = Epic AND status = 'In Progress'",
+          "configFile": "agents/epic_done_check.json",
+          "localExecution": true,
+          "enabled": true
+        },
+        {
+          "description": "Blocked Epics, Stories & Bugs with all resolved dependencies → resume",
+          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status = 'Blocked' ORDER BY updated ASC",
           "configFile": "agents/unblock_resolved_dependencies.json",
+          "skipIfLabel": "ai_content_blocker",
           "localExecution": true,
           "enabled": true
         },
         {
           "description": "In Review Stories & Bugs → trigger pr_review",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status = 'In Review'",
           "configFile": "agents/pr_review.json",
-          "skipIfLabel": "sm_story_review_triggered",
+          "skipIfLabels": ["sm_story_review_triggered", "pr_approved"],
           "addLabel": "sm_story_review_triggered",
           "enabled": true
         },

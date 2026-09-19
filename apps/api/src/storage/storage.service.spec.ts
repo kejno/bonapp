@@ -8,6 +8,17 @@ jest.mock('@aws-sdk/client-s3');
 const mockSend = jest.fn();
 (S3Client as jest.Mock).mockImplementation(() => ({ send: mockSend }));
 
+function makeConfigService(values: Record<string, string>) {
+  return {
+    get: (key: string, fallback?: string) => values[key] ?? fallback,
+    getOrThrow: (key: string) => {
+      const val = values[key];
+      if (val === undefined) throw new Error(`Config key "${key}" is required`);
+      return val;
+    },
+  };
+}
+
 describe('StorageService', () => {
   let service: StorageService;
 
@@ -31,10 +42,7 @@ describe('StorageService', () => {
         StorageService,
         {
           provide: ConfigService,
-          useValue: {
-            get: (key: string, fallback?: string) =>
-              configValues[key] ?? fallback,
-          },
+          useValue: makeConfigService(configValues),
         },
       ],
     }).compile();
@@ -77,6 +85,59 @@ describe('StorageService', () => {
       await expect(
         service.upload('key', Buffer.from('x'), 'image/png'),
       ).rejects.toThrow('S3 unavailable');
+    });
+  });
+
+  describe('configuration fail-fast', () => {
+    it('should throw at construction when S3_ACCESS_KEY is missing', async () => {
+      const incompleteConfig = { ...configValues };
+      delete incompleteConfig.S3_ACCESS_KEY;
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            StorageService,
+            {
+              provide: ConfigService,
+              useValue: makeConfigService(incompleteConfig),
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow('Config key "S3_ACCESS_KEY" is required');
+    });
+
+    it('should throw at construction when S3_SECRET_KEY is missing', async () => {
+      const incompleteConfig = { ...configValues };
+      delete incompleteConfig.S3_SECRET_KEY;
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            StorageService,
+            {
+              provide: ConfigService,
+              useValue: makeConfigService(incompleteConfig),
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow('Config key "S3_SECRET_KEY" is required');
+    });
+
+    it('should throw at construction when S3_ENDPOINT is missing', async () => {
+      const incompleteConfig = { ...configValues };
+      delete incompleteConfig.S3_ENDPOINT;
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            StorageService,
+            {
+              provide: ConfigService,
+              useValue: makeConfigService(incompleteConfig),
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow('Config key "S3_ENDPOINT" is required');
     });
   });
 });

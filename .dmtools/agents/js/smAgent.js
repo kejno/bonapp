@@ -66,6 +66,8 @@
  *                               GitHub Actions secrets.
  *   localTeammateScript (optional) — path to the local runner script
  *                               (default: agents/scripts/run-teammate-local.sh)
+ *   allowBlockedParent (optional) — if true, allow a child issue to run while its
+ *                               parent Epic is Blocked (default: false)
  */
 
 var configLoader = require('./configLoader.js');
@@ -80,6 +82,7 @@ var STALE_NON_RUNNING_WORKFLOW_MS = 6 * 60 * 60 * 1000;
 // jobParams.aiAgentProvider — see defaultProviderList() for why this is NOT
 // read from the OS environment on every call.
 var configuredProviderList = null;
+var parentIssueCache = {};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +97,60 @@ function loadRuleConfig(rule) {
     console.log('  🔧 Rule config: ' + rule.configPath +
         (ruleConfig.jira.project ? ' (project: ' + ruleConfig.jira.project + ')' : ''));
     return ruleConfig;
+}
+
+/**
+ * Prevent child work from advancing while its parent Epic is Blocked.
+ *
+ * Jira JQL cannot reliably express "parent Epic status != Blocked" across all
+ * project types, so enforce the invariant once here for every SM rule. The
+ * explicit opt-out is intended for exceptional maintenance rules only.
+ */
+function isBlockedByParentEpic(ticket, rule, effectiveConfig) {
+    if (!ticket || rule.allowBlockedParent === true) return false;
+
+    var fullTicket = ticket;
+    var fields = fullTicket.fields || {};
+
+    // Search results may be configured by an older dmtools version that ignores
+    // requested fields. Fetch the issue once more before deciding it has no parent.
+    if (!fields.parent) {
+        try {
+            fullTicket = jira_get_ticket({ key: ticket.key, fields: ['parent', 'issuetype'] });
+            if (typeof fullTicket === 'string') fullTicket = JSON.parse(fullTicket);
+            fields = fullTicket && fullTicket.fields || {};
+        } catch (e) {
+            console.warn('  ⚠️  Could not inspect parent for ' + ticket.key + ': ' + (e.message || e));
+            return false;
+        }
+    }
+
+    var parentKey = fields.parent && fields.parent.key;
+    if (!parentKey) return false;
+
+    var parent = parentIssueCache[parentKey];
+    if (!parent) {
+        try {
+            parent = jira_get_ticket({ key: parentKey, fields: ['status', 'issuetype'] });
+            if (typeof parent === 'string') parent = JSON.parse(parent);
+            parentIssueCache[parentKey] = parent;
+        } catch (e) {
+            console.warn('  ⚠️  Could not inspect parent ' + parentKey + ' for ' + ticket.key + ': ' + (e.message || e));
+            return false;
+        }
+    }
+
+    var parentFields = parent && parent.fields || {};
+    var parentType = parentFields.issuetype && parentFields.issuetype.name;
+    var parentStatus = parentFields.status && parentFields.status.name;
+    var configuredBlocked = effectiveConfig && effectiveConfig.jira &&
+        effectiveConfig.jira.statuses && effectiveConfig.jira.statuses.BLOCKED;
+
+    if (parentType === 'Epic' && parentStatus === (configuredBlocked || 'Blocked')) {
+        console.log('  ⏭️  ' + ticket.key + ' skipped (parent Epic ' + parentKey + ' is Blocked)');
+        return true;
+    }
+    return false;
 }
 
 function parseWorkflowRuns(raw) {
@@ -453,16 +510,15 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
         if (hasActiveTargetWorkflowRun(scm, workflowFile, resolvedCf, concurrencyKey)) {
             return false;
         }
-        // resolvedProvider ('claude-code' | 'codex') — from rule.provider when
+        // resolvedProvider ('claude-code' | 'codex' | 'codex-1' | 'codex-2')
+        // — from rule.provider when
         // the rule sets it explicitly, otherwise smAgent's own pick across
         // AI_AGENT_PROVIDER's list (see resolveRuleProvider /
         // pickProviderWithBudget) — lets different rules, or even different
         // tickets under the SAME rule, run on different AI CLI providers
-        // concurrently. Codex runs still serialize into one repo-wide
-        // concurrency group (see ai-teammate.yml's job.concurrency comment)
-        // because its subscription refresh token is single-use, but a
-        // claude-code run and a codex run for different tickets now overlap
-        // freely instead of both being pinned to one global switch.
+        // concurrently. Codex runs serialize per account because each
+        // subscription refresh token is single-use; codex-1 and codex-2 have
+        // independent secrets and concurrency groups and can overlap.
         //
         // Always sent explicitly (never left to the workflow's own
         // vars.AI_AGENT_PROVIDER fallback) — that repo variable can itself be
@@ -732,7 +788,7 @@ function processRuleLocally(rule, globalRepoInfo, ruleIndex) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         throw e;
@@ -756,6 +812,11 @@ function processRuleLocally(rule, globalRepoInfo, ruleIndex) {
 
     tickets.forEach(function(ticket) {
         var key = ticket.key;
+
+        if (isBlockedByParentEpic(ticket, rule, effectiveConfig)) {
+            skippedKeys.push(key);
+            return;
+        }
 
         var skipLabel = firstMatchingLabel(ticket, normalizeLabels(rule.skipIfLabel, rule.skipIfLabels));
         if (skipLabel) {
@@ -854,7 +915,7 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         throw e;
@@ -899,6 +960,11 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
         }
         var ticket = tickets[idx];
         var key = ticket.key;
+
+        if (isBlockedByParentEpic(ticket, rule, effectiveConfig)) {
+            skippedKeys.push(key);
+            continue;
+        }
 
         var skipLabel = firstMatchingLabel(ticket, normalizeLabels(rule.skipIfLabel, rule.skipIfLabels));
         if (skipLabel) {
@@ -1028,6 +1094,7 @@ function action(params) {
 
     // Load global project configuration (used as default when rules have no configPath)
     projectConfig = configLoader.loadProjectConfig(p);
+    parentIssueCache = {};
 
     // See defaultProviderList()'s comment for why this is a jobParams field
     // and not an OS environment lookup. sm.json:
@@ -1188,12 +1255,20 @@ function action(params) {
     var allProcessedKeys = [];
     var allSkippedKeys   = [];
     var allStatusChangedKeys = [];
+    var ruleErrors = [];
 
     rules.forEach(function(rule, i) {
-        var result = processRule(rule, globalRepoInfo, i, workflowBudget);
-        allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
-        allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
-        allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        try {
+            var result = processRule(rule, globalRepoInfo, i, workflowBudget);
+            allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
+            allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
+            allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        } catch (e) {
+            var error = e && e.message || String(e);
+            var label = rule.description || rule.configFile || ('Rule #' + (i + 1));
+            console.error('  ❌ Rule failed; continuing with remaining rules: ' + label + ' — ' + error);
+            ruleErrors.push({ rule: label, error: error });
+        }
     });
 
     console.log('\n══ SM Agent complete — processed: ' + allProcessedKeys.length + ' ' +
@@ -1211,13 +1286,14 @@ function action(params) {
     }
 
     return {
-        success: true,
+        success: ruleErrors.length === 0,
         processed: allProcessedKeys.length,
         skipped: allSkippedKeys.length,
         processedKeys: allProcessedKeys,
         skippedKeys: allSkippedKeys,
         needsAnotherPass: allStatusChangedKeys.length > 0,
-        statusChangedKeys: allStatusChangedKeys
+        statusChangedKeys: allStatusChangedKeys,
+        ruleErrors: ruleErrors
     };
 }
 

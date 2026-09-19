@@ -4,6 +4,7 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
   ParseFilePipe,
   MaxFileSizeValidator,
@@ -11,10 +12,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TenantService } from './tenant.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2 MB
 
 @Controller('admin/tenant')
+@UseGuards(AuthGuard)
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 

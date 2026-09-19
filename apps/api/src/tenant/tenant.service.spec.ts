@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +10,7 @@ const mockStorageService = {
 
 const mockPrismaService = {
   tenant: {
+    findUnique: jest.fn(),
     update: jest.fn(),
   },
 };
@@ -41,6 +43,10 @@ describe('TenantService', () => {
       buffer: Buffer.from('img'),
       mimetype: 'image/png',
     } as Express.Multer.File;
+
+    beforeEach(() => {
+      mockPrismaService.tenant.findUnique.mockResolvedValue({ id: tenantId, name: 'Test Tenant' });
+    });
 
     it('should upload file to storage with correct key', async () => {
       mockStorageService.upload.mockResolvedValue(
@@ -105,6 +111,26 @@ describe('TenantService', () => {
       await expect(service.uploadLogo(tenantId, file)).rejects.toThrow(
         'upload failed',
       );
+    });
+
+    describe('tenant not found', () => {
+      beforeEach(() => {
+        mockPrismaService.tenant.findUnique.mockResolvedValue(null);
+      });
+
+      it('should throw NotFoundException when tenant does not exist', async () => {
+        await expect(service.uploadLogo(tenantId, file)).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+
+      it('should not upload to S3 when tenant does not exist', async () => {
+        await expect(service.uploadLogo(tenantId, file)).rejects.toThrow(
+          NotFoundException,
+        );
+
+        expect(mockStorageService.upload).not.toHaveBeenCalled();
+      });
     });
   });
 });
