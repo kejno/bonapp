@@ -182,6 +182,16 @@ function checkoutBranch(ticketKey, config, ticket, customParams) {
 
     stashGeneratedIndex();
 
+    // DMTools writes Jira cache files before this action runs. An older target
+    // branch may track the same path, so Git refuses to overwrite the untracked
+    // cache during checkout. Preserve only untracked cache files outside the
+    // worktree; tracked files and ticket input are left untouched.
+    try {
+        runCmd({ command: 'bash agents/scripts/preserve-untracked-jira-cache.sh' });
+    } catch (e) {
+        console.warn('Could not preserve untracked Jira cache before branch setup:', e);
+    }
+
     try {
         runCmd({ command: 'git config user.name "' + config.git.authorName + '"' });
         runCmd({ command: 'git config user.email "' + config.git.authorEmail + '"' });
@@ -357,6 +367,16 @@ function action(params) {
             var branchError = e && e.toString ? e.toString() : String(e);
             console.error('Branch checkout failed:', branchError);
             postSetupErrorToJira(ticketKey, 'Git Branch Setup', branchError);
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: statuses.READY_FOR_DEVELOPMENT });
+                console.log('Reset ' + ticketKey + ' to ' + statuses.READY_FOR_DEVELOPMENT + ' after branch setup failure');
+            } catch (statusError) {
+                console.warn('Failed to reset ' + ticketKey + ' after branch setup failure:', statusError);
+            }
+            if (customParams && customParams.removeLabel) {
+                try { jira_remove_label({ key: ticketKey, label: customParams.removeLabel }); }
+                catch (labelError) { console.warn('Failed to clear development trigger label:', labelError); }
+            }
             throw new Error('Git branch setup failed: ' + branchError);
         }
 
