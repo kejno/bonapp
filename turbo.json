@@ -15,6 +15,9 @@
     "test:e2e": {
       "dependsOn": ["^build"]
     },
-    "lint": {}
+    "lint": {},
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    }
   }
 }
