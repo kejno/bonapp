@@ -109,6 +109,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The teammate can legitimately add/update CI workflows. The default
+          # GITHUB_TOKEN is a GitHub App token and GitHub rejects pushes that
+          # modify .github/workflows/*. Use the project PAT (repo + workflow)
+          # for the persisted git credential as well as for API operations.
+          token: ${{ secrets.GH_PROJECT_TOKEN }}
 
       - name: Setup Java
         uses: actions/setup-java@v4
