@@ -100,16 +100,17 @@
         },
         {
           "description": "Blocked Epics, Stories & Bugs with all resolved dependencies → resume",
-          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status in ('Blocked') AND (labels is EMPTY OR labels NOT IN ('ai_content_blocker')) ORDER BY updated ASC",
+          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status = 'Blocked' ORDER BY updated ASC",
           "configFile": "agents/unblock_resolved_dependencies.json",
+          "skipIfLabel": "ai_content_blocker",
           "localExecution": true,
           "enabled": true
         },
         {
           "description": "In Review Stories & Bugs → trigger pr_review",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status = 'In Review'",
           "configFile": "agents/pr_review.json",
-          "skipIfLabel": "sm_story_review_triggered",
+          "skipIfLabels": ["sm_story_review_triggered", "pr_approved"],
           "addLabel": "sm_story_review_triggered",
           "enabled": true
         },
