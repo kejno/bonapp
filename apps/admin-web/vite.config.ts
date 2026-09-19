@@ -5,6 +5,9 @@ import { defineConfig } from 'vitest/config'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    port: 5174,
+  },
   test: {
     environment: 'jsdom',
     globals: true,
