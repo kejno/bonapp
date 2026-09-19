@@ -1,0 +1,116 @@
+@theme static {
+  /* Colors — primary */
+  --color-primary: #e0533c;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #cd4630;
+  --color-on-primary-container: #fffbff;
+  --color-inverse-primary: #ffb4a6;
+
+  /* Colors — secondary */
+  --color-secondary: #904d00;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #fe932c;
+  --color-on-secondary-container: #663500;
+
+  /* Colors — tertiary */
+  --color-tertiary: #006860;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #248279;
+  --color-on-tertiary-container: #f3fffc;
+
+  /* Colors — error */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* Colors — surface */
+  --color-surface: #fff8f5;
+  --color-surface-dim: #f3ece7;
+  --color-surface-bright: #fff8f5;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #faf2ee;
+  --color-surface-container: #f4ece8;
+  --color-surface-container-high: #ede3dc;
+  --color-surface-container-highest: #e9e1dd;
+  --color-surface-variant: #e9e1dd;
+  --color-surface-canvas: #faf7f5;
+  --color-surface-card: #ffffff;
+  --color-surface-tint: #af301d;
+  --color-on-surface: #1e1b19;
+  --color-on-surface-variant: #59413d;
+  --color-inverse-surface: #33302d;
+  --color-inverse-on-surface: #f7efeb;
+
+  /* Colors — background */
+  --color-background: #fff8f5;
+  --color-on-background: #1e1b19;
+
+  /* Colors — outline */
+  --color-outline: #8d706b;
+  --color-outline-variant: #e1bfb9;
+
+  /* Colors — admin */
+  --color-admin-surface: #0f172a;
+  --color-admin-surface-elevated: #1e293b;
+  --color-admin-surface-muted: #94a3b8;
+
+  /* Colors — status */
+  --color-status-pending: #d97706;
+  --color-status-pending-bg: #fef3c7;
+  --color-status-cooking: #2563eb;
+  --color-status-cooking-bg: #dbeafe;
+  --color-status-ready: #16a34a;
+  --color-status-ready-bg: #dcfce7;
+  --color-status-error: #dc2626;
+  --color-status-error-bg: #fee2e2;
+
+  /* Colors — dietary tags */
+  --color-tag-vegan: #15803d;
+  --color-tag-vegan-bg: #dcfce7;
+  --color-tag-spicy: #be123c;
+  --color-tag-spicy-bg: #ffe4e6;
+  --color-tag-gluten-free: #a16207;
+  --color-tag-gluten-free-bg: #fef9c3;
+  --color-tag-special: #c2410c;
+  --color-tag-special-bg: #ffedd5;
+
+  /* Fixed palette */
+  --color-primary-fixed: #ffdad4;
+  --color-primary-fixed-dim: #ffb4a6;
+  --color-on-primary-fixed: #3f0300;
+  --color-on-primary-fixed-variant: #8d1607;
+  --color-secondary-fixed: #ffdcc3;
+  --color-secondary-fixed-dim: #ffb77d;
+  --color-on-secondary-fixed: #2f1500;
+  --color-on-secondary-fixed-variant: #6e3900;
+  --color-tertiary-fixed: #9cf2e8;
+  --color-tertiary-fixed-dim: #80d5cb;
+  --color-on-tertiary-fixed: #00201d;
+  --color-on-tertiary-fixed-variant: #00504a;
+
+  /* Typography */
+  --font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-gutter: 1rem;
+  --spacing-gutter-desktop: 1.5rem;
+  --spacing-margin: 1rem;
+  --spacing-margin-tablet: 1.5rem;
+  --spacing-margin-desktop: 2rem;
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 0.75rem;
+  --spacing-space-lg: 1rem;
+  --spacing-space-xl: 1.5rem;
+}
