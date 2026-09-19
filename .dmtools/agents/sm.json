@@ -9,7 +9,7 @@
       "_comment_aiAgentProvider": "Local/default provider list. In GitHub Actions, sm-agent.yml overrides this value from the AI_AGENT_PROVIDER repo variable because dmtools' GraalJS context cannot read OS environment variables directly. See .dmtools/README.md's 'Параллельный запуск Claude + Codex' section.",
       "aiAgentProvider": "claude-code,codex-1,codex-2",
       "_comment_maxTriggeredWorkflows": "Each Codex account has its own single-use rotating refresh token, secret and concurrency group. codex is retained as a backwards-compatible alias for account 1; use codex-1,codex-2 for two-account scheduling.",
-      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1, "codex-1": 1, "codex-2": 1 },
+      "maxTriggeredWorkflows": { "claude-code": 1, "codex": 1, "codex-1": 1, "codex-2": 1 },
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
@@ -100,16 +100,17 @@
         },
         {
           "description": "Blocked Epics, Stories & Bugs with all resolved dependencies → resume",
-          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status in ('Blocked') AND (labels is EMPTY OR labels NOT IN ('ai_content_blocker')) ORDER BY updated ASC",
+          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status = 'Blocked' ORDER BY updated ASC",
           "configFile": "agents/unblock_resolved_dependencies.json",
+          "skipIfLabel": "ai_content_blocker",
           "localExecution": true,
           "enabled": true
         },
         {
           "description": "In Review Stories & Bugs → trigger pr_review",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status = 'In Review'",
           "configFile": "agents/pr_review.json",
-          "skipIfLabel": "sm_story_review_triggered",
+          "skipIfLabels": ["sm_story_review_triggered", "pr_approved"],
           "addLabel": "sm_story_review_triggered",
           "enabled": true
         },

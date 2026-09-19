@@ -14,6 +14,10 @@ module.exports = tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked.map((config) => ({
+    ...config,
+    files: ['apps/api/**/*.ts'],
+  })),
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
@@ -22,6 +26,19 @@ module.exports = tseslint.config(
         ...globals.node,
         ...globals.jest,
       },
+    },
+  },
+  {
+    files: ['apps/api/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: __dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'warn',
+      '@typescript-eslint/no-unsafe-argument': 'warn',
     },
   },
   prettier,
