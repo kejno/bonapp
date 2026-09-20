@@ -4,6 +4,8 @@ import { resolve as pathResolve } from 'node:path';
 
 const repositoryRoot = pathResolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
+const HEALTHCHECK_TIMEOUT = 120_000;
+const STARTUP_SCENARIO_TIMEOUT = 240_000;
 
 const compose = (...args: string[]) =>
   execFileSync('docker', ['compose', ...args], {
@@ -28,6 +30,30 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as ServiceStatus);
+}
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForServicesHealthy() {
+  const deadline = Date.now() + HEALTHCHECK_TIMEOUT;
+  let statuses: ServiceStatus[] = [];
+
+  while (Date.now() < deadline) {
+    statuses = parseServiceStatuses(compose('ps', '--format', 'json'));
+    const postgres = statuses.find((service) => service.Service === 'postgres');
+    const redis = statuses.find((service) => service.Service === 'redis');
+
+    if (postgres?.Health === 'healthy' && redis?.Health === 'healthy') {
+      return;
+    }
+
+    await wait(1_000);
+  }
+
+  throw new Error(
+    `PostgreSQL and Redis did not become healthy within ${HEALTHCHECK_TIMEOUT} ms: ${JSON.stringify(statuses)}`,
+  );
 }
 
 describe('BNP-325: local start guide', () => {
@@ -70,77 +96,89 @@ describe('BNP-325: local start guide', () => {
     expect(prismaIdx).toBeLessThan(devIdx);
   });
 
-  it('executes the documented startup sequence: services become healthy, migration succeeds, API starts without connection errors', async () => {
-    // Step 1: execute the documented command, then wait for its healthchecks.
-    compose('up', '-d', '--wait');
+  it(
+    'executes the documented startup sequence: services become healthy, migration succeeds, API starts without connection errors',
+    async () => {
+      // Step 1: execute the documented command exactly, then poll healthchecks.
+      compose('up', '-d');
+      await waitForServicesHealthy();
 
-    const statuses = parseServiceStatuses(compose('ps', '--format', 'json'));
-    const postgres = statuses.find((s) => s.Service === 'postgres');
-    const redis = statuses.find((s) => s.Service === 'redis');
-    expect(postgres?.Health).toBe('healthy');
-    expect(redis?.Health).toBe('healthy');
+      const statuses = parseServiceStatuses(compose('ps', '--format', 'json'));
+      const postgres = statuses.find((s) => s.Service === 'postgres');
+      const redis = statuses.find((s) => s.Service === 'redis');
+      expect(postgres?.Health).toBe('healthy');
+      expect(redis?.Health).toBe('healthy');
 
-    // Step 2: execute the exact documented migration command.
-    const migrateOutput = execFileSync(
-      'npx',
-      ['prisma', 'migrate', 'dev', '--schema', 'apps/api/prisma/schema.prisma'],
-      {
-        cwd: repositoryRoot,
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 60_000,
-        env: {
-          ...process.env,
-          DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/bonapp',
+      // Step 2: execute the exact documented migration command.
+      const migrateOutput = execFileSync(
+        'npx',
+        [
+          'prisma',
+          'migrate',
+          'dev',
+          '--schema',
+          'apps/api/prisma/schema.prisma',
+        ],
+        {
+          cwd: repositoryRoot,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 60_000,
+          env: {
+            ...process.env,
+            DATABASE_URL:
+              'postgresql://postgres:postgres@localhost:5432/bonapp',
+          },
         },
-      },
-    );
-    expect(migrateOutput).not.toMatch(/error/i);
+      );
+      expect(migrateOutput).not.toMatch(/error/i);
 
-    // Step 3: execute the documented workspace startup command and verify the API boots.
-    await new Promise<void>((resolve, reject) => {
-      const apiProcess = spawn('npm', ['run', 'dev'], {
-        cwd: repositoryRoot,
-        stdio: 'pipe',
-        env: { ...process.env },
-      });
+      // Step 3: execute the documented workspace startup command and verify the API boots.
+      await new Promise<void>((resolve, reject) => {
+        const apiProcess = spawn('npm', ['run', 'dev'], {
+          cwd: repositoryRoot,
+          stdio: 'pipe',
+          env: { ...process.env },
+        });
 
-      let output = '';
-      const startTimeout = setTimeout(() => {
-        apiProcess.kill('SIGTERM');
-        reject(
-          new Error(
-            `API did not emit a ready signal within 30 s. Output:\n${output}`,
-          ),
-        );
-      }, 30_000);
-
-      const handleData = (data: Buffer) => {
-        const chunk = data.toString();
-        output += chunk;
-        if (
-          /Nest application successfully started/i.test(output) ||
-          /Application is running on/i.test(output)
-        ) {
-          clearTimeout(startTimeout);
+        let output = '';
+        const startTimeout = setTimeout(() => {
           apiProcess.kill('SIGTERM');
-          try {
-            expect(output).not.toMatch(/ECONNREFUSED/);
-            expect(output).not.toMatch(/connection refused/i);
-            resolve();
-          } catch (e) {
-            reject(e as Error);
+          reject(
+            new Error(
+              `API did not emit a ready signal within 30 s. Output:\n${output}`,
+            ),
+          );
+        }, 30_000);
+
+        const handleData = (data: Buffer) => {
+          const chunk = data.toString();
+          output += chunk;
+          if (
+            /Nest application successfully started/i.test(output) ||
+            /Application is running on/i.test(output)
+          ) {
+            clearTimeout(startTimeout);
+            apiProcess.kill('SIGTERM');
+            try {
+              expect(output).not.toMatch(/ECONNREFUSED/);
+              expect(output).not.toMatch(/connection refused/i);
+              resolve();
+            } catch (e) {
+              reject(e as Error);
+            }
           }
-        }
-      };
+        };
 
-      apiProcess.stdout?.on('data', handleData);
-      apiProcess.stderr?.on('data', handleData);
+        apiProcess.stdout?.on('data', handleData);
+        apiProcess.stderr?.on('data', handleData);
 
-      apiProcess.on('error', (err) => {
-        clearTimeout(startTimeout);
-        reject(err);
+        apiProcess.on('error', (err) => {
+          clearTimeout(startTimeout);
+          reject(err);
+        });
       });
-    });
-  }, 60_000);
+    },
+    STARTUP_SCENARIO_TIMEOUT,
+  );
 });
