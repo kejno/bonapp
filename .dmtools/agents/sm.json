@@ -200,6 +200,8 @@
           "description": "In Rework Test Cases → trigger pr_test_automation_rework",
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Rework')",
           "configFile": "agents/pr_test_automation_rework.json",
+          "concurrencyKeyFromParent": true,
+          "concurrencyKeyPrefix": "test-pr-",
           "skipIfLabel": "sm_test_rework_triggered",
           "addLabel": "sm_test_rework_triggered",
           "enabled": true
@@ -208,6 +210,8 @@
           "description": "In Review Test Cases → trigger pr_test_automation_review",
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
           "configFile": "agents/pr_test_automation_review.json",
+          "concurrencyKeyFromParent": true,
+          "concurrencyKeyPrefix": "test-pr-",
           "skipIfLabel": "sm_test_review_triggered",
           "addLabel": "sm_test_review_triggered",
           "enabled": true
