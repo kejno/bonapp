@@ -428,9 +428,17 @@ function action(params) {
             }
         }
 
-        // Step 7: Add label + remove WIP
+        // Step 7: Remember an individually approved Test Case while another file
+        // still blocks the shared PR. Without this durable marker, removing the
+        // transient SM trigger below makes every SM pass review the same approved
+        // ticket again. A later successful rework clears this marker from every
+        // Test Case linked to the Story because the shared PR diff has changed.
         try {
-            jira_add_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            if (isApproved) {
+                jira_add_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            } else {
+                jira_remove_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            }
         } catch (e) {}
 
         const wipLabel = params.metadata && params.metadata.contextId

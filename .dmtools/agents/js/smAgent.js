@@ -40,6 +40,8 @@
  *   workflowFile   (optional) — GitHub Actions workflow file  (default: ai-teammate.yml)
  *   workflowRef    (optional) — git ref for dispatch           (default: main)
  *   concurrencyKey (optional) — workflow concurrency key override (default: ticket key)
+ *   concurrencyKeyFromParent (optional) — derive the key from the ticket's parent so
+ *                               sibling Test Cases sharing one test PR cannot overlap
  *   projectKey     (optional) — value passed as the `project_key` workflow input so the runner
  *                               activates the correct project-specific dependency setup (e.g. "myproject",
  *                               "bice"). Auto-derived from configPath basename when not set
@@ -83,6 +85,7 @@ var STALE_NON_RUNNING_WORKFLOW_MS = 6 * 60 * 60 * 1000;
 // read from the OS environment on every call.
 var configuredProviderList = null;
 var parentIssueCache = {};
+var reservedConcurrencyKeys = {};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -206,12 +209,72 @@ function shouldRecoverStaleTriggerLabel(rule, label) {
     return isRuleTriggerLabel(rule, label);
 }
 
+function linkedStoryKey(fields, storyIssueType) {
+    var links = fields && fields.issuelinks;
+    if (!Array.isArray(links)) return '';
+    for (var i = 0; i < links.length; i++) {
+        var other = links[i] && (links[i].outwardIssue || links[i].inwardIssue);
+        var issueType = other && other.fields && other.fields.issuetype && other.fields.issuetype.name;
+        if (other && other.key && issueType === storyIssueType) return other.key;
+    }
+    return '';
+}
+
+function resolveRuleConcurrencyKey(rule, ticketKey, ticket, effectiveConfig) {
+    if (!rule.concurrencyKeyFromParent) return rule.concurrencyKey || ticketKey;
+
+    var fields = ticket && ticket.fields || {};
+    var parentKey = fields.parent && fields.parent.key;
+    var storyIssueType = effectiveConfig && effectiveConfig.jira && effectiveConfig.jira.issueTypes
+        && effectiveConfig.jira.issueTypes.STORY || 'Story';
+    if (!parentKey) parentKey = linkedStoryKey(fields, storyIssueType);
+    if (!parentKey) {
+        try {
+            // Test Cases in this project are linked to their Story; they are not Jira
+            // subtasks, so fields.parent is normally empty. Fetch the full ticket to
+            // inspect issuelinks, matching prepareTestPRForReview/preCliTestReworkSetup.
+            var freshTicket = jira_get_ticket({ key: ticketKey });
+            if (typeof freshTicket === 'string') freshTicket = JSON.parse(freshTicket);
+            parentKey = freshTicket && freshTicket.fields && freshTicket.fields.parent
+                && freshTicket.fields.parent.key;
+            if (!parentKey) parentKey = linkedStoryKey(freshTicket && freshTicket.fields, storyIssueType);
+        } catch (e) {
+            console.warn('  ⚠️  Could not resolve parent concurrency key for ' + ticketKey + ': ' + (e.message || e));
+        }
+    }
+
+    if (!parentKey) {
+        try {
+            var linkedStories = jira_search_by_jql({
+                jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "' + storyIssueType + '"',
+                fields: ['key'],
+                maxResults: 1
+            }) || [];
+            if (linkedStories.length > 0) parentKey = linkedStories[0].key;
+        } catch (e2) {
+            console.warn('  ⚠️  Could not query linked Story for ' + ticketKey + ': ' + (e2.message || e2));
+        }
+    }
+
+    if (!parentKey) {
+        console.warn('  ⚠️  ' + ticketKey + ' has no parent — falling back to ticket concurrency');
+        return rule.concurrencyKey || ticketKey;
+    }
+    return (rule.concurrencyKeyPrefix || 'parent-') + parentKey;
+}
+
 function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
     if (!scm || typeof scm.listWorkflowRuns !== 'function') return false;
 
     var expectedRunName = configFile + ' : ' + ticketKey;
     var expectedRunNameSuffix = ' : ' + ticketKey;
-    var currentRunName = 'AI Teammate (' + configFile + ' · ' + ticketKey + ')';
+    var shortAgentName = configFile.substring(configFile.lastIndexOf('/') + 1).replace(/\.json$/, '');
+    var currentRunNames = [
+        'Team (' + configFile + ' · ' + ticketKey + ')',
+        'Team (' + shortAgentName + ' · ' + ticketKey + ')',
+        // Backwards compatibility for runs created before the workflow rename.
+        'AI Teammate (' + configFile + ' · ' + ticketKey + ')'
+    ];
     var statuses = ['queued', 'in_progress', 'waiting', 'pending'];
 
     for (var i = 0; i < statuses.length; i++) {
@@ -235,7 +298,10 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
                 return runName === expectedRunName ||
                     (runName.indexOf(configFile + ' : ') === 0 &&
                         runName.substring(runName.length - expectedRunNameSuffix.length) === expectedRunNameSuffix) ||
-                    runName.indexOf(currentRunName) !== -1;
+                    currentRunNames.some(function(currentRunName) {
+                        return runName.indexOf(currentRunName) !== -1;
+                    }) ||
+                    runName.indexOf('· lock:' + ticketKey + ')') !== -1;
             });
             if (matchesTarget) {
                 console.log('  ⏭️  ' + ticketKey + ' skipped (active workflow already exists: ' + expectedRunName + ')');
@@ -490,11 +556,11 @@ function isWorkflowBudgetExhausted(rule, effectiveConfig, workflowBudget) {
     return providerBudgetBucket(workflowBudget, provider).remaining <= 0;
 }
 
-function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBudget) {
+function triggerWorkflow(repoInfo, ticketKey, ticket, rule, effectiveConfig, workflowBudget) {
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
     var workflowRef  = rule.workflowRef  || 'main';
     var resolvedCf   = buildEncodedConfigModule.resolveConfigFile(rule, effectiveConfig);
-    var concurrencyKey = rule.concurrencyKey || ticketKey;
+    var concurrencyKey = resolveRuleConcurrencyKey(rule, ticketKey, ticket, effectiveConfig);
     var resolvedProvider = resolveRuleProvider(rule, workflowBudget);
 
     // Resolve project_key: explicit rule field takes priority, then auto-derive from configPath
@@ -507,6 +573,10 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
     }
 
     try {
+        if (reservedConcurrencyKeys[concurrencyKey]) {
+            console.log('  ⏭️  ' + ticketKey + ' skipped (workflow lock already reserved in this SM pass: ' + concurrencyKey + ')');
+            return false;
+        }
         var scm = scmModule.createScm(effectiveConfig);
         ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, resolvedProvider);
         var bucket = providerBudgetBucket(workflowBudget, resolvedProvider);
@@ -540,6 +610,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
             display_key:     ticketKey,
             input_jql:       'key = ' + ticketKey,
             config_file:     resolvedCf,
+            agent_name:      resolvedCf.substring(resolvedCf.lastIndexOf('/') + 1).replace(/\.json$/, ''),
             encoded_config:  buildEncodedConfigModule.buildEncodedConfig(ticketKey, rule, effectiveConfig),
             project_key:     projectKey,
             provider:        resolvedProvider
@@ -552,6 +623,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
             JSON.stringify(dispatchPayload),
             workflowRef
         );
+        reservedConcurrencyKeys[concurrencyKey] = true;
         console.log('  ✅ Triggered ' + workflowFile + '@' + workflowRef + ' for ' + ticketKey +
             (projectKey ? ' [project_key=' + projectKey + ']' : ''));
         return true;
@@ -796,7 +868,7 @@ function processRuleLocally(rule, globalRepoInfo, ruleIndex) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype'] }) || [];
+        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype', 'issuelinks'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         throw e;
@@ -982,7 +1054,7 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
                 var workflowFile = rule.workflowFile || 'ai-teammate.yml';
                 var resolvedCf = buildEncodedConfigModule.resolveConfigFile(rule, effectiveConfig);
                 var scm = scmModule.createScm(effectiveConfig);
-                var activeKey = rule.concurrencyKey || key;
+                var activeKey = resolveRuleConcurrencyKey(rule, key, ticket, effectiveConfig);
                 if (hasActiveTargetWorkflowRun(scm, workflowFile, resolvedCf, activeKey)) {
                     skippedKeys.push(key);
                     continue;
@@ -1014,7 +1086,7 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
         // stale-label recovery. Only add it when the target job does *not* already self-manage it.
         var triggered = rule.localTeammate
             ? runTeammateLocally(key, rule, effectiveConfig)
-            : triggerWorkflow(effectiveRepoInfo, key, rule, effectiveConfig, workflowBudget);
+            : triggerWorkflow(effectiveRepoInfo, key, ticket, rule, effectiveConfig, workflowBudget);
 
         if (triggered && !ruleSelfManagesLabel) addRuleLabels(key, rule);
         // A status-changing rule can move the ticket out of its own JQL before
@@ -1108,6 +1180,7 @@ function action(params) {
     // Load global project configuration (used as default when rules have no configPath)
     projectConfig = configLoader.loadProjectConfig(p);
     parentIssueCache = {};
+    reservedConcurrencyKeys = {};
 
     // See defaultProviderList()'s comment for why this is a jobParams field
     // and not an OS environment lookup. sm.json:
