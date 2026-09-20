@@ -1,17 +1,56 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { execFileSync, spawn } from 'node:child_process';
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  unlinkSync,
+} from 'node:fs';
+import { resolve as pathResolve } from 'node:path';
 
-const repositoryRoot = resolve(__dirname, '../../..');
+const repositoryRoot = pathResolve(__dirname, '../../..');
+const COMPOSE_TIMEOUT = 120_000;
+
 const compose = (...args: string[]) =>
   execFileSync('docker', ['compose', ...args], {
     cwd: repositoryRoot,
     encoding: 'utf8',
     stdio: 'pipe',
+    timeout: COMPOSE_TIMEOUT,
   });
 
+interface ServiceStatus {
+  Service: string;
+  Health: string;
+}
+
+function parseServiceStatuses(raw: string): ServiceStatus[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
+    return JSON.parse(trimmed) as ServiceStatus[];
+  }
+  return trimmed
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as ServiceStatus);
+}
+
 describe('BNP-325: local start guide', () => {
+  const envPath = pathResolve(repositoryRoot, 'apps/api/.env');
+  const envExamplePath = pathResolve(repositoryRoot, 'apps/api/.env.example');
+  let envCreatedByTest = false;
+
+  beforeAll(() => {
+    if (!existsSync(envPath)) {
+      copyFileSync(envExamplePath, envPath);
+      envCreatedByTest = true;
+    }
+  });
+
   afterAll(() => {
+    if (envCreatedByTest && existsSync(envPath)) {
+      unlinkSync(envPath);
+    }
     try {
       compose('down');
     } catch {
@@ -19,12 +58,111 @@ describe('BNP-325: local start guide', () => {
     }
   });
 
-  it('documents the required startup sequence and starts its first step', () => {
-    const readme = readFileSync(resolve(repositoryRoot, 'README.md'), 'utf8');
+  it('README documents all three startup commands in the correct order', () => {
+    const readme = readFileSync(
+      pathResolve(repositoryRoot, 'README.md'),
+      'utf8',
+    );
 
-    expect(readme).toContain('docker compose up -d');
-    expect(readme).toContain('npx prisma migrate dev');
-    expect(readme).toContain('npm run dev');
-    expect(() => compose('up', '-d')).not.toThrow();
+    const dockerComposeIdx = readme.indexOf('docker compose up -d');
+    const prismaIdx = readme.indexOf('npx prisma migrate dev');
+    const devIdx = readme.indexOf('npm run dev');
+
+    expect(dockerComposeIdx).toBeGreaterThan(-1);
+    expect(prismaIdx).toBeGreaterThan(-1);
+    expect(devIdx).toBeGreaterThan(-1);
+    expect(dockerComposeIdx).toBeLessThan(prismaIdx);
+    expect(prismaIdx).toBeLessThan(devIdx);
   });
+
+  it(
+    'executes the documented startup sequence: services become healthy, migration succeeds, API starts without connection errors',
+    async () => {
+      // Step 1: Start services and wait for healthchecks to pass.
+      compose('up', '-d', 'postgres', 'redis', '--wait');
+
+      const statuses = parseServiceStatuses(compose('ps', '--format', 'json'));
+      const postgres = statuses.find((s) => s.Service === 'postgres');
+      const redis = statuses.find((s) => s.Service === 'redis');
+      expect(postgres?.Health).toBe('healthy');
+      expect(redis?.Health).toBe('healthy');
+
+      // Step 2: Apply existing migrations as the README startup sequence requires.
+      // Using `migrate deploy` rather than `migrate dev` for a non-interactive run;
+      // both apply pending migrations to a fresh database.
+      const migrateOutput = execFileSync(
+        'npx',
+        [
+          'prisma',
+          'migrate',
+          'deploy',
+          '--schema',
+          'apps/api/prisma/schema.prisma',
+        ],
+        {
+          cwd: repositoryRoot,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 60_000,
+          env: {
+            ...process.env,
+            DATABASE_URL:
+              'postgresql://postgres:postgres@localhost:5432/bonapp',
+          },
+        },
+      );
+      expect(migrateOutput).not.toMatch(/error/i);
+
+      // Step 3: Start the API and verify it boots without connection errors.
+      await new Promise<void>((resolve, reject) => {
+        const apiProcess = spawn(
+          'npm',
+          ['run', 'dev', '-w', 'apps/api'],
+          {
+            cwd: repositoryRoot,
+            stdio: 'pipe',
+            env: { ...process.env },
+          },
+        );
+
+        let output = '';
+        const startTimeout = setTimeout(() => {
+          apiProcess.kill('SIGTERM');
+          reject(
+            new Error(
+              `API did not emit a ready signal within 30 s. Output:\n${output}`,
+            ),
+          );
+        }, 30_000);
+
+        const handleData = (data: Buffer) => {
+          const chunk = data.toString();
+          output += chunk;
+          if (
+            /Nest application successfully started/i.test(output) ||
+            /Application is running on/i.test(output)
+          ) {
+            clearTimeout(startTimeout);
+            apiProcess.kill('SIGTERM');
+            try {
+              expect(output).not.toMatch(/ECONNREFUSED/);
+              expect(output).not.toMatch(/connection refused/i);
+              resolve();
+            } catch (e) {
+              reject(e as Error);
+            }
+          }
+        };
+
+        apiProcess.stdout?.on('data', handleData);
+        apiProcess.stderr?.on('data', handleData);
+
+        apiProcess.on('error', (err) => {
+          clearTimeout(startTimeout);
+          reject(err);
+        });
+      });
+    },
+    60_000,
+  );
 });
