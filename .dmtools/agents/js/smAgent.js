@@ -268,8 +268,10 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
 
     var expectedRunName = configFile + ' : ' + ticketKey;
     var expectedRunNameSuffix = ' : ' + ticketKey;
+    var shortAgentName = configFile.substring(configFile.lastIndexOf('/') + 1).replace(/\.json$/, '');
     var currentRunNames = [
         'Team (' + configFile + ' · ' + ticketKey + ')',
+        'Team (' + shortAgentName + ' · ' + ticketKey + ')',
         // Backwards compatibility for runs created before the workflow rename.
         'AI Teammate (' + configFile + ' · ' + ticketKey + ')'
     ];
@@ -608,6 +610,7 @@ function triggerWorkflow(repoInfo, ticketKey, ticket, rule, effectiveConfig, wor
             display_key:     ticketKey,
             input_jql:       'key = ' + ticketKey,
             config_file:     resolvedCf,
+            agent_name:      resolvedCf.substring(resolvedCf.lastIndexOf('/') + 1).replace(/\.json$/, ''),
             encoded_config:  buildEncodedConfigModule.buildEncodedConfig(ticketKey, rule, effectiveConfig),
             project_key:     projectKey,
             provider:        resolvedProvider

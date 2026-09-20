@@ -42,7 +42,7 @@ const workflow = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', '.
 assert(workflow.includes("startsWith(inputs.concurrency_key, 'test-pr-')"));
 assert(workflow.includes("format('ai-teammate-agent-{0}', inputs.concurrency_key)"));
 assert(workflow.includes('name: Team'));
-assert(workflow.includes('] Team ('));
+assert(workflow.includes('inputs.agent_name || inputs.config_file'));
 const context = {
   module: { exports: {} },
   console,
@@ -70,6 +70,7 @@ assert.strictEqual(context.resolveRuleConcurrencyKey(testReviewRule, 'BNP-329', 
 assert.strictEqual(context.resolveRuleConcurrencyKey(testReworkRule, 'BNP-330', {
   fields: {}
 }), 'test-pr-BNP-122');
+assert(testReviewRule.skipIfLabels.includes('ai_pr_reviewed'));
 
 const active = (run) => ({ listWorkflowRuns: (status) =>
   status === 'in_progress' ? { workflow_runs: [run] } : { workflow_runs: [] } });
@@ -77,7 +78,7 @@ const configFile = 'agents/test_cases_generator.json';
 const ticket = 'BNP-123';
 assert(context.hasActiveTargetWorkflowRun(active({
   name: 'AI Teammate',
-  display_title: '[claude] Team (agents/test_cases_generator.json · BNP-123)'
+  display_title: '[claude] Team (test_cases_generator · BNP-123)'
 }), 'ai-teammate.yml', configFile, ticket));
 assert(context.hasActiveTargetWorkflowRun(active({
   name: 'agents/test_cases_generator.json : BNP-123'
