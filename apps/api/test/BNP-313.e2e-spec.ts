@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
+const LINT_TIMEOUT_MS = 300_000;
 
 interface TsConfig {
   extends?: string;
@@ -44,14 +46,14 @@ describe('BNP-313: TypeScript strict mode + ESLint/Prettier configs across works
       expect(getExtendsValue(tsconfigPath)).toBe('../../tsconfig.json');
     });
 
-    it('apps/guest-web/tsconfig.app.json extends root tsconfig', () => {
-      const tsconfigPath = path.join(REPO_ROOT, 'apps/guest-web/tsconfig.app.json');
+    it('apps/guest-web/tsconfig.json extends root tsconfig', () => {
+      const tsconfigPath = path.join(REPO_ROOT, 'apps/guest-web/tsconfig.json');
       expect(fs.existsSync(tsconfigPath)).toBe(true);
       expect(getExtendsValue(tsconfigPath)).toBe('../../tsconfig.json');
     });
 
-    it('apps/admin-web/tsconfig.app.json extends root tsconfig', () => {
-      const tsconfigPath = path.join(REPO_ROOT, 'apps/admin-web/tsconfig.app.json');
+    it('apps/admin-web/tsconfig.json extends root tsconfig', () => {
+      const tsconfigPath = path.join(REPO_ROOT, 'apps/admin-web/tsconfig.json');
       expect(fs.existsSync(tsconfigPath)).toBe(true);
       expect(getExtendsValue(tsconfigPath)).toBe('../../tsconfig.json');
     });
@@ -90,7 +92,23 @@ describe('BNP-313: TypeScript strict mode + ESLint/Prettier configs across works
 
     it('.prettierrc is valid JSON', () => {
       const prettierPath = path.join(REPO_ROOT, '.prettierrc');
-      expect(() => JSON.parse(fs.readFileSync(prettierPath, 'utf-8'))).not.toThrow();
+      expect(() => {
+        JSON.parse(fs.readFileSync(prettierPath, 'utf-8'));
+      }).not.toThrow();
     });
   });
+
+  it(
+    'npm run lint succeeds with the root ESLint configuration in every workspace',
+    () => {
+      expect(() => {
+        execFileSync('npm', ['run', 'lint'], {
+          cwd: REPO_ROOT,
+          stdio: 'pipe',
+          timeout: LINT_TIMEOUT_MS,
+        });
+      }).not.toThrow();
+    },
+    LINT_TIMEOUT_MS,
+  );
 });

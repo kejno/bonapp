@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
+const LINT_TIMEOUT_MS = 300_000;
 
 interface TurboTask {
   dependsOn?: string[];
@@ -60,4 +62,18 @@ describe('BNP-311: turbo.json pipelines — correct task dependencies', () => {
   it('lint task is defined', () => {
     expect(turboConfig.tasks.lint).toBeDefined();
   });
+
+  it(
+    'npm run lint succeeds for all workspaces',
+    () => {
+      expect(() => {
+        execFileSync('npm', ['run', 'lint'], {
+          cwd: REPO_ROOT,
+          stdio: 'pipe',
+          timeout: LINT_TIMEOUT_MS,
+        });
+      }).not.toThrow();
+    },
+    LINT_TIMEOUT_MS,
+  );
 });

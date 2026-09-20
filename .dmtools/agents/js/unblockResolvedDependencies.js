@@ -5,13 +5,15 @@
  * - Reads issuelinks to find all "is blocked by" dependencies (inwardIssue with Blocks link type).
  * - If all blockers are in a terminal status (Done, Merged, Passed, Closed, Irrelevant)
  *   or the blocker was deleted (inwardIssue === null), resumes the ticket.
- * - An Epic with existing child Stories moves to In Progress. An empty Epic,
- *   Story, or Bug moves to Backlog for normal intake/processing.
+ * - An Epic with existing child Stories moves to In Progress. A Story whose
+ *   test automation has already started returns to In Testing; an empty Epic
+ *   or other ticket moves to Backlog for normal intake/processing.
  * - Otherwise leaves the ticket in Blocked.
  */
 
 const configLoader = require('./configLoader.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
+const { LABELS } = require('./config.js');
 
 function isResolved(blocker, terminalStatuses) {
     // Deleted ticket — no inwardIssue object at all
@@ -26,6 +28,12 @@ function isResolved(blocker, terminalStatuses) {
 function resumeStatus(ticketKey, ticket, jiraConfig) {
     var issueType = ticket && ticket.fields && ticket.fields.issuetype &&
         ticket.fields.issuetype.name;
+    var labels = ticket && ticket.fields && ticket.fields.labels || [];
+    // A blocked Story can already be deep in the test-automation lifecycle.
+    // Sending it to Backlog would bypass the In Testing review/merge/done rules.
+    if (issueType === 'Story' && labels.indexOf(LABELS.AI_TEST_AUTOMATION) !== -1) {
+        return jiraConfig.statuses.IN_TESTING;
+    }
     if (issueType !== 'Epic') return jiraConfig.statuses.BACKLOG;
 
     try {
@@ -74,7 +82,7 @@ function action(params) {
 
     var ticket;
     try {
-        ticket = jira_get_ticket({ key: ticketKey, fields: ['issuelinks', 'issuetype'] });
+        ticket = jira_get_ticket({ key: ticketKey, fields: ['issuelinks', 'issuetype', 'labels'] });
     } catch (e) {
         console.warn('Failed to fetch ticket details:', e.message || e);
         return { success: false, action: 'fetch_failed', error: e.toString() };
