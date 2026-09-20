@@ -23,6 +23,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/turbo
@@ -46,6 +47,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/turbo
@@ -69,6 +71,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/turbo
@@ -92,6 +95,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/turbo
