@@ -2,7 +2,8 @@ import { getPullRequest, getRunById, WorkflowRun } from './github-actions';
 
 const RUN_ID = process.env.CI_PULL_REQUEST_RUN_ID ?? process.env.CI_WORKFLOW_RUN_ID;
 const PR_NUMBER = process.env.CI_PULL_REQUEST_NUMBER;
-const ALL_INPUTS_PROVIDED = !!(RUN_ID && PR_NUMBER);
+const HEAD_SHA = process.env.CI_PULL_REQUEST_HEAD_SHA;
+const ALL_INPUTS_PROVIDED = !!(RUN_ID && PR_NUMBER && HEAD_SHA);
 
 describe('BNP-326: CI pipeline passes for clean PR — all 4 jobs green, PR unblocked', () => {
   let run: WorkflowRun;
@@ -18,9 +19,7 @@ describe('BNP-326: CI pipeline passes for clean PR — all 4 jobs green, PR unbl
     expect(run.event).toBe('pull_request');
     expect(run.status).toBe('completed');
     expect(run.conclusion).toBe('success');
-    if (process.env.GITHUB_SHA) {
-      expect(run.headSha).toBe(process.env.GITHUB_SHA);
-    }
+    expect(run.headSha).toBe(HEAD_SHA);
   });
 
   itAll('completes lint, typecheck, test and build jobs successfully', () => {
