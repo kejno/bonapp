@@ -237,6 +237,50 @@ BINEOF
 }
 run_stale_session_case
 
+# The feedback loop calls the provider-neutral wrapper with `--continue`.
+# Codex must translate that into its `exec resume <session-id>` form instead
+# of forwarding an unsupported top-level option to the CLI.
+run_continue_translation_case() {
+  local case_dir="${TEST_ROOT}/continue-translation"
+  local fake_bin="${case_dir}/bin"
+  local session_id="feedback-session-id"
+  mkdir -p "${fake_bin}" "${case_dir}/outputs" "${case_dir}/.codex/sessions/2026/09/21"
+  cat > "${fake_bin}/codex" << 'BINEOF'
+#!/bin/bash
+printf '%s\n' "$@" > "${CAPTURED_ARGS_FILE}"
+echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+exit 0
+BINEOF
+  chmod +x "${fake_bin}/codex"
+  touch "${case_dir}/.codex/sessions/2026/09/21/rollout-${session_id}.jsonl"
+
+  (
+    cd "${case_dir}"
+    export PATH="${fake_bin}:${PATH}"
+    export OPENAI_API_KEY="test-key"
+    export CODEX_HOME="${case_dir}/.codex"
+    export CAPTURED_ARGS_FILE="${case_dir}/args.txt"
+    export DMTOOLS_CLI_LOG_DIR="${case_dir}/logs"
+    echo "${session_id}" > .codex-session-id
+    PROMPT_ARG="test prompt"
+    PROMPT="test prompt"
+    PROMPT_BYTES=11
+    PASS_ARGS=(--continue)
+
+    run_codex >/dev/null 2>&1 || true
+
+    grep -qx -- 'resume' "${CAPTURED_ARGS_FILE}" \
+      || { echo "[continue-translation] expected Codex resume subcommand" >&2; exit 1; }
+    grep -qx -- "${session_id}" "${CAPTURED_ARGS_FILE}" \
+      || { echo "[continue-translation] expected saved session id" >&2; exit 1; }
+    if grep -qx -- '--continue' "${CAPTURED_ARGS_FILE}"; then
+      echo "[continue-translation] unsupported --continue was forwarded to Codex" >&2
+      exit 1
+    fi
+  )
+}
+run_continue_translation_case
+
 # A run that never really happened must leave outputs/agent_failure.json
 # behind, so the postJSAction can refuse to advance the ticket — an empty
 # outputs/ folder alone is indistinguishable from "the agent had nothing to

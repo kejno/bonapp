@@ -49,6 +49,23 @@ run_codex() {
   codex_model_args=(--model "${codex_model}")
   local codex_sandbox="${CODEX_SANDBOX:-danger-full-access}"
 
+  # `run-agent.sh --continue <prompt>` is the provider-neutral feedback-loop
+  # interface. Codex does not have a top-level `--continue` option: resuming is
+  # expressed as the `codex exec resume <session-id>` subcommand, which this
+  # provider already selects below when `.codex-session-id` and its rollout
+  # file are available. Do not forward the generic flag to Codex itself; doing
+  # so makes every quality-gate retry fail before the model starts.
+  local codex_pass_args=()
+  local pass_arg
+  if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
+    for pass_arg in "${PASS_ARGS[@]}"; do
+      case "${pass_arg}" in
+        --continue) ;;
+        *) codex_pass_args+=("${pass_arg}") ;;
+      esac
+    done
+  fi
+
   if ! command -v codex >/dev/null 2>&1; then
     echo "Error: codex CLI not found. Install with: npm install -g @openai/codex" >&2
     return 1
@@ -127,7 +144,7 @@ run_codex() {
       ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
-      ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
+      ${codex_pass_args[@]+"${codex_pass_args[@]}"} \
       - < "${codex_prompt_stdin_file}" \
       2>&1 | tee "${codex_log}"
     codex_exit_code=${PIPESTATUS[0]}
@@ -143,7 +160,7 @@ run_codex() {
       ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
-      ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
+      ${codex_pass_args[@]+"${codex_pass_args[@]}"} \
       - < "${PROMPT_ARG}" \
       2>&1 | tee "${codex_log}"
     codex_exit_code=${PIPESTATUS[0]}
@@ -161,7 +178,7 @@ run_codex() {
       ${codex_model_args[@]+"${codex_model_args[@]}"} \
       --sandbox "${codex_sandbox}" \
       --skip-git-repo-check \
-      ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} \
+      ${codex_pass_args[@]+"${codex_pass_args[@]}"} \
       - < "${codex_inline_prompt_file}" \
       2>&1 | tee "${codex_log}"
     codex_exit_code=${PIPESTATUS[0]}
