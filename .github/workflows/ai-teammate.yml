@@ -1,4 +1,4 @@
-name: AI Teammate
+name: Team
 
 # Without this the run list is 840 identically-titled "AI Teammate" rows.
 # GitHub's expression syntax has no replace/split, so config_file keeps its
@@ -15,7 +15,7 @@ name: AI Teammate
 # run-agent.sh's case branches, sm.json's maxTriggeredWorkflows keys) stays
 # "claude-code" — smAgent.js's parseProviderFromRunName() maps the display
 # label back to it. If you change the label here, update that mapping too.
-run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(' · lock:{0}', inputs.concurrency_key) || '' }})"
+run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(' · lock:{0}', inputs.concurrency_key) || '' }})"
 
 on:
   workflow_dispatch:

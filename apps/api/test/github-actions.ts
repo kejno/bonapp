@@ -105,6 +105,19 @@ export async function getCompletedWorkflowRuns(
   );
 }
 
+export async function getRunById(runId: string): Promise<WorkflowRun> {
+  const output = await gh([
+    'run',
+    'view',
+    runId,
+    '--repo',
+    REPOSITORY,
+    '--json',
+    'databaseId,event,headBranch,headSha,status,conclusion,createdAt,updatedAt,jobs',
+  ]);
+  return JSON.parse(output) as WorkflowRun;
+}
+
 export async function getWorkflowLogs(runId: number): Promise<string> {
   return gh(['run', 'view', String(runId), '--repo', REPOSITORY, '--log']);
 }
