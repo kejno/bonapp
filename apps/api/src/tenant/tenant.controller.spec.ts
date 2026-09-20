@@ -54,7 +54,7 @@ describe('TenantController', () => {
 
     it('should throw BadRequestException when tenantId is missing', async () => {
       await expect(
-        controller.uploadLogo(file, '' as string),
+        controller.uploadLogo(file, ''),
       ).rejects.toThrow(BadRequestException);
     });
 

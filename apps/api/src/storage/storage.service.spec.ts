@@ -35,7 +35,7 @@ describe('StorageService', () => {
     mockSend.mockReset();
     mockSend.mockResolvedValue({});
     (S3Client as jest.Mock).mockClear();
-    (PutObjectCommand as jest.Mock).mockClear();
+    (PutObjectCommand as unknown as jest.Mock).mockClear();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
