@@ -169,3 +169,61 @@ export async function getRunArtifacts(
     }
   ).artifacts;
 }
+
+export async function downloadArtifactFiles(
+  runId: number,
+  artifactName: string,
+): Promise<string[]> {
+  const downloadPath = await fs.mkdtemp(
+    path.join(tmpdir(), 'github-artifact-'),
+  );
+
+  try {
+    await gh([
+      'run',
+      'download',
+      String(runId),
+      '--repo',
+      REPOSITORY,
+      '--name',
+      artifactName,
+      '--dir',
+      downloadPath,
+    ]);
+    const entries = await fs.readdir(downloadPath, { recursive: true });
+    const filePaths: string[] = [];
+    for (const entry of entries) {
+      const fullPath = path.join(downloadPath, String(entry));
+      const stats = await fs.stat(fullPath);
+      if (stats.isFile() && stats.size > 0) {
+        filePaths.push(String(entry));
+      }
+    }
+    return filePaths;
+  } finally {
+    await fs.rm(downloadPath, { force: true, recursive: true });
+  }
+}
+
+export interface PullRequest {
+  number: number;
+  mergeable: boolean | null;
+  mergeableState: string;
+}
+
+export async function getPullRequest(prNumber: string): Promise<PullRequest> {
+  const output = await gh([
+    'api',
+    `repos/${REPOSITORY}/pulls/${prNumber}`,
+  ]);
+  const data = JSON.parse(output) as {
+    number: number;
+    mergeable: boolean | null;
+    mergeable_state: string;
+  };
+  return {
+    number: data.number,
+    mergeable: data.mergeable,
+    mergeableState: data.mergeable_state,
+  };
+}

@@ -1,5 +1,5 @@
 import {
-  downloadArtifact,
+  downloadArtifactFiles,
   getRunArtifacts,
   getRunById,
   WorkflowRun,
@@ -30,15 +30,20 @@ describe('BNP-328: Build artifacts available for download after successful CI', 
     },
   );
 
-  itRun('downloads a non-expired build artifact', async () => {
+  itRun('downloads a non-expired build artifact containing dist/ files', async () => {
     const artifacts = await getRunArtifacts(run.databaseId);
     const artifact = artifacts.find(
       (candidate) => candidate.name.startsWith('build-') && !candidate.expired,
     );
 
     expect(artifact).toBeDefined();
-    expect(
-      await downloadArtifact(run.databaseId, artifact!.name),
-    ).toBeGreaterThan(0);
+
+    const files = await downloadArtifactFiles(run.databaseId, artifact!.name);
+    expect(files.length).toBeGreaterThan(0);
+
+    const distFiles = files.filter((f) =>
+      f.split('/').includes('dist') || f.split('\\').includes('dist'),
+    );
+    expect(distFiles.length).toBeGreaterThan(0);
   });
 });

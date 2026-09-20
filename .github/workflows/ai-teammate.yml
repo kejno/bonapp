@@ -15,7 +15,7 @@ name: Team
 # run-agent.sh's case branches, sm.json's maxTriggeredWorkflows keys) stays
 # "claude-code" — smAgent.js's parseProviderFromRunName() maps the display
 # label back to it. If you change the label here, update that mapping too.
-run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(' · lock:{0}', inputs.concurrency_key) || '' }})"
+run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.agent_name || inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(' · lock:{0}', inputs.concurrency_key) || '' }})"
 
 on:
   workflow_dispatch:
@@ -23,6 +23,9 @@ on:
       config_file:
         description: 'Path to config (relative to .dmtools/, e.g. agents/story_development.json)'
         required: true
+      agent_name:
+        description: 'Short agent name shown in the run title (set by SM agent)'
+        required: false
       encoded_config:
         description: 'Encoded or JSON Agent Config override'
         required: false

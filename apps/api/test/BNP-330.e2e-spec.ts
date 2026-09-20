@@ -2,7 +2,14 @@ import { getRunById, getWorkflowLogs, WorkflowRun } from './github-actions';
 
 const FIRST_RUN_ID = process.env.CI_FIRST_PUSH_RUN_ID;
 const SECOND_RUN_ID = process.env.CI_SECOND_PUSH_RUN_ID;
-const BOTH_IDS_PROVIDED = !!(FIRST_RUN_ID && SECOND_RUN_ID);
+const FIRST_HEAD_SHA = process.env.CI_FIRST_PUSH_HEAD_SHA;
+const SECOND_HEAD_SHA = process.env.CI_SECOND_PUSH_HEAD_SHA;
+const ALL_INPUTS_PROVIDED = !!(
+  FIRST_RUN_ID &&
+  SECOND_RUN_ID &&
+  FIRST_HEAD_SHA &&
+  SECOND_HEAD_SHA
+);
 
 describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
   let firstRun: WorkflowRun;
@@ -10,7 +17,7 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
   let secondRunLogs: string;
 
   beforeAll(async () => {
-    if (!BOTH_IDS_PROVIDED) return;
+    if (!ALL_INPUTS_PROVIDED) return;
     [firstRun, secondRun] = await Promise.all([
       getRunById(FIRST_RUN_ID!),
       getRunById(SECOND_RUN_ID!),
@@ -18,7 +25,7 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
     secondRunLogs = await getWorkflowLogs(secondRun.databaseId);
   });
 
-  const itBothRuns = BOTH_IDS_PROVIDED ? it : it.skip;
+  const itBothRuns = ALL_INPUTS_PROVIDED ? it : it.skip;
   const JOB_NAMES = ['Lint', 'Typecheck', 'Unit tests', 'Build'];
 
   // setup-node outputs "Cache restored successfully" for its built-in npm cache;
@@ -39,16 +46,22 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
     );
 
   itBothRuns(
-    'both controlled runs are push-to-main events with successful conclusions',
+    'both controlled runs are push-to-main events with expected SHAs and correct order',
     () => {
       expect(firstRun.event).toBe('push');
       expect(firstRun.headBranch).toBe('main');
       expect(firstRun.conclusion).toBe('success');
+      expect(firstRun.headSha).toBe(FIRST_HEAD_SHA);
+
       expect(secondRun.event).toBe('push');
       expect(secondRun.headBranch).toBe('main');
       expect(secondRun.conclusion).toBe('success');
-      expect(firstRun.headSha).toMatch(/^[0-9a-f]{40}$/);
-      expect(secondRun.headSha).toMatch(/^[0-9a-f]{40}$/);
+      expect(secondRun.headSha).toBe(SECOND_HEAD_SHA);
+
+      // first run must predate second run to confirm cold→warm cache order
+      expect(new Date(firstRun.createdAt).getTime()).toBeLessThan(
+        new Date(secondRun.createdAt).getTime(),
+      );
     },
   );
 

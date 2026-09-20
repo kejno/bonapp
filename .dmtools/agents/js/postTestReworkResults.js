@@ -58,6 +58,29 @@ function findBranchKeyForTicket(ticketKey, jiraConfig) {
     }
 }
 
+function clearSharedPrReviewMarkers(storyKey, jiraConfig) {
+    if (!storyKey) return;
+    try {
+        const testCases = jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + storyKey + '") AND issuetype = "' + jiraConfig.issueTypes.TEST_CASE + '"',
+            fields: ['key', 'labels'],
+            maxResults: 100
+        }) || [];
+        testCases.forEach(function(testCase) {
+            const labels = testCase && testCase.fields && testCase.fields.labels || [];
+            if (labels.indexOf(LABELS.AI_PR_REVIEWED) === -1) return;
+            try {
+                jira_remove_label({ key: testCase.key, label: LABELS.AI_PR_REVIEWED });
+                console.log('✅ Cleared stale shared-PR review marker from', testCase.key);
+            } catch (e) {
+                console.warn('Could not clear shared-PR review marker from', testCase.key + ':', e);
+            }
+        });
+    } catch (e) {
+        console.warn('Could not find Test Cases linked to Story ' + storyKey + ':', e);
+    }
+}
+
 function cleanCommandOutput(output) {
     if (!output) return '';
     return output.split('\n').filter(function(line) {
@@ -267,6 +290,7 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
 
     var mergeInProgress = isMergeInProgress();
 
+    var committed = false;
     if (!mergeInProgress && prIsDirty) {
         // Commit any test fixes first so the working tree/index is clean for the merge.
         testFilesPaths.forEach(function(p) {
@@ -276,7 +300,7 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
                 console.warn('git add ' + p + ' failed (path may not exist yet):', addErr);
             }
         });
-        commitIfNeeded(ticketKey, passed, config);
+        committed = commitIfNeeded(ticketKey, passed, config) || committed;
         console.log('PR is dirty — starting merge of origin/' + baseBranch);
         try {
             cli_execute_command({ command: 'git merge origin/' + baseBranch + ' --no-commit --no-ff' });
@@ -296,7 +320,7 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
     stageUnmergedPaths(config);
 
     // Commit. If a merge is in progress this creates the merge commit.
-    commitIfNeeded(ticketKey, passed, config);
+    committed = commitIfNeeded(ticketKey, passed, config) || committed;
 
     // Get local HEAD SHA to verify push actually succeeded
     const localSha = cleanCommandOutput(
@@ -322,7 +346,7 @@ function commitAndPush(ticketKey, passed, config, prIsDirty) {
     }
 
     console.log('✅ Pushed to remote branch:', branchName);
-    return branchName;
+    return { branchName: branchName, changed: committed };
 }
 
 function createPRIfMissing(scm, branchName, ticketKey, config) {
@@ -534,8 +558,11 @@ function action(params) {
         }
 
         let branchName;
+        var sharedPrChanged = false;
         try {
-            branchName = commitAndPush(ticketKey, passed, config, prIsDirty);
+            var pushResult = commitAndPush(ticketKey, passed, config, prIsDirty);
+            branchName = pushResult.branchName;
+            sharedPrChanged = pushResult.changed;
         } catch (e) {
             console.error('Git operations failed:', e);
             var resume = feedbackLoop.resumeAgent({
@@ -554,6 +581,13 @@ function action(params) {
             });
             releaseLock();
             return { success: false, error: e.toString() };
+        }
+
+        // One test PR contains all Test Cases linked to the Story. Only invalidate
+        // their prior approvals when this rework actually produced a new commit;
+        // a no-op rework must not cause every already-approved sibling to loop.
+        if (sharedPrChanged) {
+            clearSharedPrReviewMarkers(findBranchKeyForTicket(ticketKey, jiraConfig), jiraConfig);
         }
 
         // Step 3: Ensure PR exists; create if missing (e.g. preCliJSAction failed to create it)
