@@ -15,7 +15,7 @@ name: Team
 # run-agent.sh's case branches, sm.json's maxTriggeredWorkflows keys) stays
 # "claude-code" — smAgent.js's parseProviderFromRunName() maps the display
 # label back to it. If you change the label here, update that mapping too.
-run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.agent_name || inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(' · lock:{0}', inputs.concurrency_key) || '' }})"
+run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.agent_name || inputs.config_file }}${{ inputs.display_key && format(':{0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(',lock:{0}', inputs.lock_display_key || inputs.concurrency_key) || '' }})"
 
 on:
   workflow_dispatch:
@@ -34,6 +34,9 @@ on:
         required: false
       concurrency_key:
         description: 'Concurrency group override (set by SM agent)'
+        required: false
+      lock_display_key:
+        description: 'Short lock key for the run title; does not affect concurrency'
         required: false
       input_jql:
         description: 'JQL that selected the ticket (set by SM agent)'
@@ -329,6 +332,10 @@ jobs:
         if: ${{ always() && startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
+          if [ -f outputs/agent_cli_intentionally_skipped.json ]; then
+            echo "✅ Agent CLI intentionally skipped by pre-action: $(cat outputs/agent_cli_intentionally_skipped.json)"
+            exit 0
+          fi
           latest_log="$(ls -t .dmtools-logs/cli/agent/codex-*.log 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
             echo "::error::No Codex transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
@@ -345,6 +352,10 @@ jobs:
         if: ${{ always() && !startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
+          if [ -f outputs/agent_cli_intentionally_skipped.json ]; then
+            echo "✅ Agent CLI intentionally skipped by pre-action: $(cat outputs/agent_cli_intentionally_skipped.json)"
+            exit 0
+          fi
           latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
             echo "::error::No Claude Code transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
