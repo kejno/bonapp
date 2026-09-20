@@ -9,7 +9,7 @@ describe('BNP-329: CI автоматически запускается при p
 
   beforeAll(async () => {
     if (!ALL_INPUTS_PROVIDED) return;
-    run = await getRunById(RUN_ID!);
+    run = await getRunById(RUN_ID);
   });
 
   const itAll = ALL_INPUTS_PROVIDED ? it : it.skip;

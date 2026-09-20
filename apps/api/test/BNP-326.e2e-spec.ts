@@ -10,7 +10,7 @@ describe('BNP-326: CI pipeline passes for clean PR — all 4 jobs green, PR unbl
 
   beforeAll(async () => {
     if (!ALL_INPUTS_PROVIDED) return;
-    run = await getRunById(RUN_ID!);
+    run = await getRunById(RUN_ID);
   });
 
   const itAll = ALL_INPUTS_PROVIDED ? it : it.skip;
@@ -34,6 +34,8 @@ describe('BNP-326: CI pipeline passes for clean PR — all 4 jobs green, PR unbl
   itAll('PR is mergeable and not blocked by branch protection', async () => {
     const pr = await getPullRequest(PR_NUMBER!);
     expect(pr.number).toBe(Number(PR_NUMBER));
+    // pr.headSha must match run.headSha — proves the run and PR belong to the same commit
+    expect(pr.headSha).toBe(run.headSha);
     expect(pr.mergeable).toBe(true);
     expect(pr.mergeableState).toBe('clean');
   });

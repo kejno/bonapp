@@ -19,8 +19,8 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
   beforeAll(async () => {
     if (!ALL_INPUTS_PROVIDED) return;
     [firstRun, secondRun] = await Promise.all([
-      getRunById(FIRST_RUN_ID!),
-      getRunById(SECOND_RUN_ID!),
+      getRunById(FIRST_RUN_ID),
+      getRunById(SECOND_RUN_ID),
     ]);
     secondRunLogs = await getWorkflowLogs(secondRun.databaseId);
   });
@@ -46,7 +46,7 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
     );
 
   itBothRuns(
-    'both controlled runs are push-to-main events with expected SHAs and correct order',
+    'both controlled runs are push-to-main events with same revision and correct order',
     () => {
       expect(firstRun.event).toBe('push');
       expect(firstRun.headBranch).toBe('main');
@@ -57,6 +57,10 @@ describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
       expect(secondRun.headBranch).toBe('main');
       expect(secondRun.conclusion).toBe('success');
       expect(secondRun.headSha).toBe(SECOND_HEAD_SHA);
+
+      // both runs must be from the same revision — proves this is a cold→warm cache pair,
+      // not two arbitrary runs from different commits with different dependency states
+      expect(firstRun.headSha).toBe(secondRun.headSha);
 
       // first run must predate second run to confirm cold→warm cache order
       expect(new Date(firstRun.createdAt).getTime()).toBeLessThan(

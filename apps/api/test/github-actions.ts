@@ -207,6 +207,7 @@ export async function downloadArtifactFiles(
 
 export interface PullRequest {
   number: number;
+  headSha: string;
   mergeable: boolean | null;
   mergeableState: string;
 }
@@ -218,11 +219,13 @@ export async function getPullRequest(prNumber: string): Promise<PullRequest> {
   ]);
   const data = JSON.parse(output) as {
     number: number;
+    head: { sha: string };
     mergeable: boolean | null;
     mergeable_state: string;
   };
   return {
     number: data.number,
+    headSha: data.head.sha,
     mergeable: data.mergeable,
     mergeableState: data.mergeable_state,
   };

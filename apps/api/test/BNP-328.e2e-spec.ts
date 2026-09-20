@@ -14,7 +14,7 @@ describe('BNP-328: Build artifacts available for download after successful CI', 
 
   beforeAll(async () => {
     if (!ALL_INPUTS_PROVIDED) return;
-    run = await getRunById(RUN_ID!);
+    run = await getRunById(RUN_ID);
   });
 
   const itRun = ALL_INPUTS_PROVIDED ? it : it.skip;
