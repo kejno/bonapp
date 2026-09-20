@@ -125,6 +125,13 @@ describe('BNP-325: local start guide', () => {
       expect(postgres?.Health).toBe('healthy');
       expect(redis?.Health).toBe('healthy');
 
+      // Load DATABASE_URL from the .env created from .env.example so the migration
+      // runs in the documented environment rather than a hardcoded override.
+      const createdEnvContent = readFileSync(envPath, 'utf8');
+      const dbUrlMatch = createdEnvContent.match(/^DATABASE_URL=(.+)$/m);
+      expect(dbUrlMatch).not.toBeNull();
+      const databaseUrl = dbUrlMatch![1].trim();
+
       // Step 2: execute the exact documented migration command.
       const migrateOutput = execFileSync(
         'npx',
@@ -142,8 +149,7 @@ describe('BNP-325: local start guide', () => {
           timeout: 60_000,
           env: {
             ...process.env,
-            DATABASE_URL:
-              'postgresql://postgres:postgres@localhost:5432/bonapp',
+            DATABASE_URL: databaseUrl,
           },
         },
       );

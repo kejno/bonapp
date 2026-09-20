@@ -72,12 +72,23 @@ describe('BNP-324: API local environment template', () => {
   it(
     'creates .env from template with non-empty JWT secrets and starts API without PostgreSQL/Redis connection errors',
     async () => {
-      // Verify .env.example provides correct local service URLs.
+      // Verify .env.example provides all required fields with correct placeholders.
       const envExample = readFileSync(envExamplePath, 'utf8');
       expect(envExample).toContain(
         'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp',
       );
       expect(envExample).toContain('REDIS_URL=redis://localhost:6379');
+      expect(envExample).toContain('JWT_SECRET=replace-with-a-long-random-secret');
+      expect(envExample).toContain('JWT_REFRESH_SECRET=replace-with-a-different-long-random-secret');
+      expect(envExample).toContain('PAYMENT_PUBLIC_KEY=replace-with-payment-public-key');
+      expect(envExample).toContain('PAYMENT_SECRET_KEY=replace-with-payment-secret-key');
+
+      // Verify the created .env has non-empty, non-placeholder JWT secrets.
+      const envContent = readFileSync(envPath, 'utf8');
+      expect(envContent).toMatch(/^JWT_SECRET=.+$/m);
+      expect(envContent).not.toContain('JWT_SECRET=replace-with-a-long-random-secret');
+      expect(envContent).toMatch(/^JWT_REFRESH_SECRET=.+$/m);
+      expect(envContent).not.toContain('JWT_REFRESH_SECRET=replace-with-a-different-long-random-secret');
 
       // Start only the services required for the API (postgres, redis).
       compose('up', '-d', 'postgres', 'redis', '--wait');

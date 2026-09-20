@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { Redis } from 'ioredis';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
@@ -30,6 +31,15 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as ServiceStatus);
+}
+
+function psql(...args: string[]): string {
+  return execFileSync('psql', ['--host', 'localhost', '--port', '5432', '--username', 'postgres', ...args], {
+    env: { ...process.env, PGPASSWORD: 'postgres' },
+    encoding: 'utf8',
+    stdio: 'pipe',
+    timeout: 10_000,
+  });
 }
 
 const wait = (milliseconds: number) =>
@@ -78,40 +88,16 @@ describe('BNP-323: local Docker Compose services', () => {
       expect(postgres?.Health).toBe('healthy');
       expect(redis?.Health).toBe('healthy');
 
-      // Step 3: write test data to both services.
-      compose(
-        'exec',
-        '-T',
-        'redis',
-        'redis-cli',
-        'SET',
-        'bnp323-persistence',
-        'preserved',
-      );
-      compose(
-        'exec',
-        '-T',
-        'postgres',
-        'psql',
-        '-U',
-        'postgres',
-        '-d',
-        'bonapp',
-        '-c',
-        'CREATE TABLE IF NOT EXISTS bnp323_persistence (value text)',
-      );
-      compose(
-        'exec',
-        '-T',
-        'postgres',
-        'psql',
-        '-U',
-        'postgres',
-        '-d',
-        'bonapp',
-        '-c',
-        "INSERT INTO bnp323_persistence (value) VALUES ('preserved')",
-      );
+      // Step 3: write test data via localhost clients to verify host-port accessibility.
+      const redisWrite = new Redis({ host: 'localhost', port: 6379 });
+      try {
+        await redisWrite.set('bnp323-persistence', 'preserved');
+      } finally {
+        await redisWrite.quit();
+      }
+
+      psql('--dbname', 'bonapp', '--command', 'CREATE TABLE IF NOT EXISTS bnp323_persistence (value text)');
+      psql('--dbname', 'bonapp', '--command', "INSERT INTO bnp323_persistence (value) VALUES ('preserved')");
 
       // Step 4: down/up cycle to verify named volume persistence.
       compose('down');
@@ -126,24 +112,18 @@ describe('BNP-323: local Docker Compose services', () => {
         'healthy',
       );
 
-      // Step 5: verify test data survived the down/up cycle.
-      expect(
-        compose('exec', '-T', 'redis', 'redis-cli', 'GET', 'bnp323-persistence'),
-      ).toContain('preserved');
-      expect(
-        compose(
-          'exec',
-          '-T',
-          'postgres',
-          'psql',
-          '-U',
-          'postgres',
-          '-d',
-          'bonapp',
-          '-tAc',
-          'SELECT value FROM bnp323_persistence LIMIT 1',
-        ),
-      ).toContain('preserved');
+      // Step 5: verify test data survived the down/up cycle via localhost clients.
+      const redisRead = new Redis({ host: 'localhost', port: 6379 });
+      let redisValue: string | null;
+      try {
+        redisValue = await redisRead.get('bnp323-persistence');
+      } finally {
+        await redisRead.quit();
+      }
+      expect(redisValue).toBe('preserved');
+
+      const pgResult = psql('--dbname', 'bonapp', '--tuples-only', '--no-align', '--command', 'SELECT value FROM bnp323_persistence LIMIT 1');
+      expect(pgResult.trim()).toBe('preserved');
     },
     SCENARIO_TIMEOUT,
   );
