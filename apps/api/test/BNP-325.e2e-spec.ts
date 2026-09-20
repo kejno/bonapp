@@ -181,7 +181,7 @@ describe('BNP-325: local start guide', () => {
               expect(output).not.toMatch(/connection refused/i);
               resolve();
             } catch (e) {
-              reject(e as Error);
+              reject(e instanceof Error ? e : new Error(String(e)));
             }
           }
         };
