@@ -211,6 +211,7 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
 
     var expectedRunName = configFile + ' : ' + ticketKey;
     var expectedRunNameSuffix = ' : ' + ticketKey;
+    var currentRunName = 'AI Teammate (' + configFile + ' · ' + ticketKey + ')';
     var statuses = ['queued', 'in_progress', 'waiting', 'pending'];
 
     for (var i = 0; i < statuses.length; i++) {
@@ -225,11 +226,18 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
         for (var j = 0; j < runs.length; j++) {
             var run = runs[j] || {};
             if (isStaleNonRunningWorkflowRun(run, statuses[i])) continue;
-            var runName = run.name || run.display_title || '';
-            var matchesOldName = runName === expectedRunName;
-            var matchesDisplayName = runName.indexOf(configFile + ' : ') === 0 &&
-                runName.substring(runName.length - expectedRunNameSuffix.length) === expectedRunNameSuffix;
-            if (matchesOldName || matchesDisplayName) {
+            // GitHub exposes the workflow's static name and its run-name in
+            // different fields depending on the API/DMTools version. Check
+            // both, including the current "[provider] AI Teammate (...)" form.
+            var runNames = [run.name, run.display_title, run.displayTitle];
+            var matchesTarget = runNames.some(function(runName) {
+                if (!runName) return false;
+                return runName === expectedRunName ||
+                    (runName.indexOf(configFile + ' : ') === 0 &&
+                        runName.substring(runName.length - expectedRunNameSuffix.length) === expectedRunNameSuffix) ||
+                    runName.indexOf(currentRunName) !== -1;
+            });
+            if (matchesTarget) {
                 console.log('  ⏭️  ' + ticketKey + ' skipped (active workflow already exists: ' + expectedRunName + ')');
                 return true;
             }
@@ -1009,6 +1017,11 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
             : triggerWorkflow(effectiveRepoInfo, key, rule, effectiveConfig, workflowBudget);
 
         if (triggered && !ruleSelfManagesLabel) addRuleLabels(key, rule);
+        // A status-changing rule can move the ticket out of its own JQL before
+        // dispatch succeeds. Keep its phase label even when dispatch fails so
+        // a same-status retry rule can pick it up on the next SM pass instead
+        // of letting the downstream stage run prematurely.
+        if (!triggered && rule.targetStatus) addRuleLabels(key, rule);
 
         if (triggered) {
             processedKeys.push(key);

@@ -75,6 +75,12 @@
           "enabled": true
         },
         {
+          "description": "In Development Stories with an interrupted development run → retry",
+          "jql": "project = {jiraProject} AND issuetype = Story AND status = 'In Development' AND labels = 'sm_story_development_triggered'",
+          "configFile": "agents/story_development.json",
+          "enabled": true
+        },
+        {
           "description": "Backlog / To Do / Ready For Development / In Development / In Rework Bugs → trigger bug_development",
           "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Backlog', 'To Do', 'Ready For Development', 'In Development', 'In Rework')",
           "configFile": "agents/bug_development.json",
@@ -139,6 +145,12 @@
           "enabled": true
         },
         {
+          "description": "Ready For Testing Stories with unfinished test case generation → retry",
+          "jql": "project = {jiraProject} AND issuetype = Story AND status = 'Ready For Testing' AND labels = 'sm_test_cases_triggered'",
+          "configFile": "agents/test_cases_generator.json",
+          "enabled": true
+        },
+        {
           "description": "Merged Bugs → Ready For Testing + RCA/prevention summary",
           "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Merged')",
           "targetStatus": "Ready For Testing",
@@ -148,10 +160,16 @@
           "enabled": true
         },
         {
+          "description": "Ready For Testing Bugs with unfinished merge summary → retry",
+          "jql": "project = {jiraProject} AND issuetype = Bug AND status = 'Ready For Testing' AND labels = 'sm_bug_merged_triggered'",
+          "configFile": "agents/bug_merged.json",
+          "enabled": true
+        },
+        {
           "description": "Ready For Testing Bugs → generate test cases",
-          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Ready For Testing') AND (labels is EMPTY OR labels NOT IN ('sm_bug_test_cases_triggered', 'sm_bug_test_cases_done'))",
+          "jql": "project = {jiraProject} AND issuetype = Bug AND status = 'Ready For Testing'",
           "configFile": "agents/bug_test_cases_generator.json",
-          "skipIfLabel": "sm_bug_test_cases_triggered",
+          "skipIfLabels": ["sm_bug_test_cases_done", "sm_bug_merged_triggered", "sm_bug_test_cases_triggered"],
           "addLabel": "sm_bug_test_cases_triggered",
           "enabled": true
         },
@@ -172,6 +190,7 @@
           "configFile": "agents/bug_test_automation.json",
           "skipIfLabel": "sm_bug_test_automation_triggered",
           "skipIfLabels": [
+            "sm_bug_merged_triggered",
             "sm_bug_test_cases_triggered"
           ],
           "addLabel": "sm_bug_test_automation_triggered",
