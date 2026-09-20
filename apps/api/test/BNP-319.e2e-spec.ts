@@ -14,8 +14,8 @@ import { PrismaService } from '../src/prisma/prisma.service';
 // NestJS v11 FileTypeValidator loads the ESM-only `file-type` package through
 // `load-esm`, which Jest's synchronous VM cannot import without this shim.
 jest.mock('load-esm', () => ({
-  loadEsm: async (_module: string) => ({
-    fileTypeFromBuffer: async (buffer: Buffer) => {
+  loadEsm: () => ({
+    fileTypeFromBuffer: (buffer: Buffer) => {
       if (
         buffer.length >= 4 &&
         buffer[0] === 0x89 &&
@@ -117,9 +117,10 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
       });
 
     expect([200, 201]).toContain(uploadResponse.status);
-    expect(uploadResponse.body.url).toEqual(expect.stringMatching(/^http/));
+    const body = uploadResponse.body as { url: string };
+    expect(body.url).toEqual(expect.stringMatching(/^http/));
 
-    const downloadResponse = await fetch(uploadResponse.body.url);
+    const downloadResponse = await fetch(body.url);
 
     expect(downloadResponse.status).toBe(200);
     expect(downloadResponse.headers.get('content-type')).toMatch(/^image\/png/);
