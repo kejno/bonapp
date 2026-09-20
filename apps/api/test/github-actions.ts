@@ -18,6 +18,7 @@ export interface WorkflowRun {
   databaseId: number;
   event: string;
   headBranch: string;
+  headSha: string;
   status: string;
   conclusion: string | null;
   createdAt: string;
@@ -53,7 +54,7 @@ export async function getCompletedWorkflowRuns(
       '--repo',
       REPOSITORY,
       '--json',
-      'databaseId,event,headBranch,status,conclusion,createdAt,updatedAt,jobs',
+      'databaseId,event,headBranch,headSha,status,conclusion,createdAt,updatedAt,jobs',
     ]);
     return [JSON.parse(run) as WorkflowRun];
   }
@@ -98,7 +99,7 @@ export async function getCompletedWorkflowRuns(
         '--repo',
         REPOSITORY,
         '--json',
-        'databaseId,event,headBranch,status,conclusion,createdAt,updatedAt,jobs',
+        'databaseId,event,headBranch,headSha,status,conclusion,createdAt,updatedAt,jobs',
       ]).then((output) => JSON.parse(output) as WorkflowRun),
     ),
   );

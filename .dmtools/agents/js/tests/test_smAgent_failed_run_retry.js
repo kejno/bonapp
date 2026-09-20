@@ -38,12 +38,27 @@ assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_triggered'));
 assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_done'));
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'smAgent.js'), 'utf8');
+const workflow = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'ai-teammate.yml'), 'utf8');
+assert(workflow.includes("startsWith(inputs.concurrency_key, 'test-pr-')"));
+assert(workflow.includes("format('ai-teammate-agent-{0}', inputs.concurrency_key)"));
 const context = {
   module: { exports: {} },
   console,
   require: () => ({})
 };
-vm.runInNewContext(source + '\nthis.hasActiveTargetWorkflowRun = hasActiveTargetWorkflowRun;', context);
+vm.runInNewContext(source + '\nthis.hasActiveTargetWorkflowRun = hasActiveTargetWorkflowRun;' +
+  '\nthis.resolveRuleConcurrencyKey = resolveRuleConcurrencyKey;', context);
+
+const testReviewRule = rule('agents/pr_test_automation_review.json',
+  'In Review Test Cases → trigger pr_test_automation_review');
+const testReworkRule = rule('agents/pr_test_automation_rework.json',
+  'In Rework Test Cases → trigger pr_test_automation_rework');
+assert.strictEqual(context.resolveRuleConcurrencyKey(testReviewRule, 'BNP-329', {
+  fields: { parent: { key: 'BNP-122' } }
+}), 'test-pr-BNP-122');
+assert.strictEqual(context.resolveRuleConcurrencyKey(testReworkRule, 'BNP-330', {
+  fields: { parent: { key: 'BNP-122' } }
+}), 'test-pr-BNP-122');
 
 const active = (run) => ({ listWorkflowRuns: (status) =>
   status === 'in_progress' ? { workflow_runs: [run] } : { workflow_runs: [] } });
@@ -59,5 +74,8 @@ assert(context.hasActiveTargetWorkflowRun(active({
 assert(!context.hasActiveTargetWorkflowRun(active({
   display_title: '[claude] AI Teammate (agents/test_cases_generator.json · BNP-124)'
 }), 'ai-teammate.yml', configFile, ticket));
+assert(context.hasActiveTargetWorkflowRun(active({
+  display_title: '[codex-2] AI Teammate (agents/pr_test_automation_review.json · BNP-329 · lock:test-pr-BNP-122)'
+}), 'ai-teammate.yml', 'agents/pr_test_automation_rework.json', 'test-pr-BNP-122'));
 
 console.log('SM failed-run retry checks passed');
