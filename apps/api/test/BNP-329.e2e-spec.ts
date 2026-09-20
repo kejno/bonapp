@@ -1,35 +1,25 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
-
-const CI_WORKFLOW_PATH = path.join(
-  __dirname,
-  '../../../.github/workflows/ci.yml',
-);
+import { getCompletedWorkflowRuns, WorkflowRun } from './github-actions';
 
 describe('BNP-329: CI автоматически запускается при push в main без создания PR', () => {
-  let workflow: Record<string, any>;
+  let run: WorkflowRun;
 
-  beforeAll(() => {
-    const content = fs.readFileSync(CI_WORKFLOW_PATH, 'utf-8');
-    workflow = yaml.load(content) as Record<string, any>;
+  beforeAll(async () => {
+    [run] = await getCompletedWorkflowRuns('push');
   });
 
-  it('workflow file is valid', () => {
-    expect(workflow).toBeDefined();
+  it('was triggered by a push to main', () => {
+    expect(run.event).toBe('push');
+    expect(run.headBranch).toBe('main');
   });
 
-  it('triggers on push event', () => {
-    expect(workflow.on?.push).toBeDefined();
-  });
+  it('completes the workflow and all required jobs successfully', () => {
+    expect(run).toMatchObject({ status: 'completed', conclusion: 'success' });
 
-  it('push trigger targets the main branch', () => {
-    const branches: string[] = workflow.on?.push?.branches ?? [];
-    expect(branches).toContain('main');
-  });
-
-  it('push trigger is independent from pull_request (both present)', () => {
-    expect(workflow.on?.push).toBeDefined();
-    expect(workflow.on?.pull_request).toBeDefined();
+    for (const jobName of ['Lint', 'Typecheck', 'Unit tests', 'Build']) {
+      const job = run.jobs.find((candidate) =>
+        candidate.name.startsWith(jobName),
+      );
+      expect(job).toMatchObject({ status: 'completed', conclusion: 'success' });
+    }
   });
 });

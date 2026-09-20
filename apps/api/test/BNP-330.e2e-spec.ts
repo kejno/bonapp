@@ -1,56 +1,52 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
-
-const CI_WORKFLOW_PATH = path.join(
-  __dirname,
-  '../../../.github/workflows/ci.yml',
-);
+import {
+  getCompletedWorkflowRuns,
+  getWorkflowLogs,
+  WorkflowRun,
+} from './github-actions';
 
 describe('BNP-330: Second CI run uses npm and Turborepo cache', () => {
-  let workflow: Record<string, any>;
+  let latestRun: WorkflowRun;
+  let previousRun: WorkflowRun;
+  let logs: string;
 
-  beforeAll(() => {
-    const content = fs.readFileSync(CI_WORKFLOW_PATH, 'utf-8');
-    workflow = yaml.load(content) as Record<string, any>;
+  beforeAll(async () => {
+    [latestRun, previousRun] = await getCompletedWorkflowRuns('push', 2);
+    logs = await getWorkflowLogs(latestRun.databaseId);
   });
 
-  const JOB_NAMES = ['lint', 'typecheck', 'test', 'build'];
+  const JOB_NAMES = ['Lint', 'Typecheck', 'Unit tests', 'Build'];
+  const hasCacheHit = (jobName: string, cacheKey: string) =>
+    logs
+      .split('\n')
+      .some(
+        (line) =>
+          line.startsWith(`${jobName} (Node`) &&
+          line.includes(`Cache hit for: ${cacheKey}`),
+      );
+
+  it('compares two completed successful push runs', () => {
+    expect(latestRun.conclusion).toBe('success');
+    expect(previousRun.conclusion).toBe('success');
+    expect(
+      new Date(latestRun.updatedAt).getTime() -
+        new Date(latestRun.createdAt).getTime(),
+    ).toBeLessThan(
+      new Date(previousRun.updatedAt).getTime() -
+        new Date(previousRun.createdAt).getTime(),
+    );
+  });
 
   it.each(JOB_NAMES)(
-    'job "%s" caches npm dependencies via actions/setup-node',
+    'job "%s" reports an npm cache hit in its real log',
     (jobName) => {
-      const steps: any[] = workflow.jobs[jobName]?.steps ?? [];
-      const setupNode = steps.find(
-        (s: any) => typeof s.uses === 'string' && s.uses.startsWith('actions/setup-node'),
-      );
-      expect(setupNode).toBeDefined();
-      expect(setupNode?.with?.cache).toBe('npm');
+      expect(hasCacheHit(jobName, 'node-cache')).toBe(true);
     },
   );
 
   it.each(JOB_NAMES)(
-    'job "%s" caches Turborepo output via actions/cache',
+    'job "%s" reports a Turborepo cache hit in its real log',
     (jobName) => {
-      const steps: any[] = workflow.jobs[jobName]?.steps ?? [];
-      const turboCache = steps.find(
-        (s: any) => typeof s.uses === 'string' && s.uses.startsWith('actions/cache'),
-      );
-      expect(turboCache).toBeDefined();
-      expect(turboCache?.with?.path).toContain('turbo');
-    },
-  );
-
-  it.each(JOB_NAMES)(
-    'job "%s" Turborepo cache key includes package-lock.json hash for determinism',
-    (jobName) => {
-      const steps: any[] = workflow.jobs[jobName]?.steps ?? [];
-      const turboCache = steps.find(
-        (s: any) => typeof s.uses === 'string' && s.uses.startsWith('actions/cache'),
-      );
-      const cacheKey: string = turboCache?.with?.key ?? '';
-      expect(cacheKey).toContain('hashFiles');
-      expect(cacheKey).toContain('package-lock.json');
+      expect(hasCacheHit(jobName, 'turbo-')).toBe(true);
     },
   );
 });
