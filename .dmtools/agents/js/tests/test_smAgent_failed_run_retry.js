@@ -90,4 +90,31 @@ assert(context.hasActiveTargetWorkflowRun(active({
   display_title: '[codex-2] AI Teammate (agents/pr_test_automation_review.json · BNP-329 · lock:test-pr-BNP-122)'
 }), 'ai-teammate.yml', 'agents/pr_test_automation_rework.json', 'test-pr-BNP-122'));
 
+const reworkConfig = require('../../pr_test_automation_rework.json');
+const qualityGates = reworkConfig.params.customParams.feedbackLoop.qualityGates.gates;
+assert.deepStrictEqual(qualityGates.map((gate) => gate.name), ['lint', 'typecheck', 'test', 'build']);
+
+const jiraActions = [];
+global.jira_add_label = (args) => jiraActions.push({ action: 'add', ...args });
+global.jira_remove_label = (args) => jiraActions.push({ action: 'remove', ...args });
+global.jira_move_to_status = (args) => jiraActions.push({ action: 'move', ...args });
+const reviewPostAction = require('../postTestReviewComments.js');
+const normalize = (value) => String(value || '').toUpperCase() === 'APPROVE' ? 'APPROVE' : 'BLOCK';
+const coordinator = reviewPostAction.applySharedPrVerdicts({
+  perTestCase: {
+    'BNP-326': 'BLOCK',
+    'BNP-328': 'BLOCK',
+    'BNP-329': 'APPROVE',
+    'BNP-330': 'APPROVE'
+  }
+}, 'BNP-329', { statuses: { IN_REWORK: 'In Rework' } }, normalize);
+assert.strictEqual(coordinator, 'BNP-326');
+assert(jiraActions.some((entry) => entry.action === 'move' && entry.key === 'BNP-326'));
+assert(!jiraActions.some((entry) => entry.action === 'move' && entry.key === 'BNP-328'));
+assert(jiraActions.some((entry) => entry.action === 'add' && entry.key === 'BNP-328'));
+assert(jiraActions.some((entry) => entry.action === 'add' && entry.key === 'BNP-330'));
+delete global.jira_add_label;
+delete global.jira_remove_label;
+delete global.jira_move_to_status;
+
 console.log('SM failed-run retry checks passed');
