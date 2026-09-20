@@ -212,7 +212,7 @@
           "configFile": "agents/pr_test_automation_review.json",
           "concurrencyKeyFromParent": true,
           "concurrencyKeyPrefix": "test-pr-",
-          "skipIfLabel": "sm_test_review_triggered",
+          "skipIfLabels": ["sm_test_review_triggered", "ai_pr_reviewed"],
           "addLabel": "sm_test_review_triggered",
           "enabled": true
         },

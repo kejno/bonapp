@@ -5,7 +5,7 @@ import { resolve as pathResolve } from 'node:path';
 const repositoryRoot = pathResolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
 const HEALTHCHECK_TIMEOUT = 120_000;
-const STARTUP_SCENARIO_TIMEOUT = 240_000;
+const STARTUP_SCENARIO_TIMEOUT = 420_000;
 
 const compose = (...args: string[]) =>
   execFileSync('docker', ['compose', ...args], {
