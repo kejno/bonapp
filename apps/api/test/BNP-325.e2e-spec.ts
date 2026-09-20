@@ -85,15 +85,31 @@ describe('BNP-325: local start guide', () => {
       'utf8',
     );
 
-    const dockerComposeIdx = readme.indexOf('docker compose up -d');
-    const prismaIdx = readme.indexOf('npx prisma migrate dev');
-    const devIdx = readme.indexOf('npm run dev');
+    const localDevelopmentSection = readme.match(
+      /^## Локальная разработка\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m,
+    );
+    expect(localDevelopmentSection).not.toBeNull();
 
-    expect(dockerComposeIdx).toBeGreaterThan(-1);
-    expect(prismaIdx).toBeGreaterThan(-1);
-    expect(devIdx).toBeGreaterThan(-1);
-    expect(dockerComposeIdx).toBeLessThan(prismaIdx);
-    expect(prismaIdx).toBeLessThan(devIdx);
+    const commandBlocks = [
+      ...(localDevelopmentSection?.[1].matchAll(/```bash\s*\n([\s\S]*?)```/g) ??
+        []),
+    ].map((match) =>
+      match[1]
+        .trim()
+        .split('\n')
+        .map((command) => command.trim())
+        .filter(Boolean),
+    );
+    const startupBlocks = commandBlocks.filter((commands) =>
+      commands.includes('docker compose up -d'),
+    );
+
+    expect(startupBlocks).toHaveLength(1);
+    expect(startupBlocks[0]).toEqual([
+      'docker compose up -d',
+      'npx prisma migrate dev --schema apps/api/prisma/schema.prisma',
+      'npm run dev',
+    ]);
   });
 
   it(
