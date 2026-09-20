@@ -86,7 +86,9 @@ describe('BNP-323: local Docker Compose services', () => {
     compose('up', '-d', 'postgres', 'redis', '--wait');
 
     const afterUp = parseServiceStatuses(compose('ps', '--format', 'json'));
-    expect(afterUp.find((s) => s.Service === 'postgres')?.Health).toBe('healthy');
+    expect(afterUp.find((s) => s.Service === 'postgres')?.Health).toBe(
+      'healthy',
+    );
     expect(afterUp.find((s) => s.Service === 'redis')?.Health).toBe('healthy');
 
     expect(
