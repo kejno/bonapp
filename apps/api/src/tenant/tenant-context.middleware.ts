@@ -72,7 +72,8 @@ export class TenantContextMiddleware implements NestMiddleware {
       ) as Record<string, unknown>;
       const now = Math.floor(Date.now() / 1000);
       if (
-        (typeof payload['exp'] === 'number' && payload['exp'] <= now) ||
+        typeof payload['exp'] !== 'number' ||
+        payload['exp'] <= now ||
         (typeof payload['nbf'] === 'number' && payload['nbf'] > now)
       ) {
         throw new UnauthorizedException('JWT is not active');

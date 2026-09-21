@@ -9,9 +9,11 @@ const mockStorageService = {
 };
 
 const mockPrismaService = {
-  tenant: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
+  db: {
+    tenant: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
   },
 };
 
@@ -45,14 +47,14 @@ describe('TenantService', () => {
     } as Express.Multer.File;
 
     beforeEach(() => {
-      mockPrismaService.tenant.findUnique.mockResolvedValue({ id: tenantId, name: 'Test Tenant' });
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({ id: tenantId, name: 'Test Tenant' });
     });
 
     it('should upload file to storage with correct key', async () => {
       mockStorageService.upload.mockResolvedValue(
         'http://s3/bucket/tenants/tenant-uuid/logo.png',
       );
-      mockPrismaService.tenant.update.mockResolvedValue({});
+      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo(tenantId, file);
 
@@ -66,11 +68,11 @@ describe('TenantService', () => {
     it('should persist logoUrl to database', async () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.tenant.update.mockResolvedValue({});
+      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo(tenantId, file);
 
-      expect(mockPrismaService.tenant.update).toHaveBeenCalledWith({
+      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
         where: { id: tenantId },
         data: { logoUrl: url },
       });
@@ -79,7 +81,7 @@ describe('TenantService', () => {
     it('should return the public URL', async () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.tenant.update.mockResolvedValue({});
+      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       const result = await service.uploadLogo(tenantId, file);
 
@@ -94,7 +96,7 @@ describe('TenantService', () => {
       } as Express.Multer.File;
 
       mockStorageService.upload.mockResolvedValue('url');
-      mockPrismaService.tenant.update.mockResolvedValue({});
+      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo(tenantId, webpFile);
 
@@ -115,7 +117,7 @@ describe('TenantService', () => {
 
     describe('tenant not found', () => {
       beforeEach(() => {
-        mockPrismaService.tenant.findUnique.mockResolvedValue(null);
+        mockPrismaService.db.tenant.findUnique.mockResolvedValue(null);
       });
 
       it('should throw NotFoundException when tenant does not exist', async () => {

@@ -15,6 +15,7 @@ async function main() {
       where: { id: SEED_TENANT_ID },
       create: {
         id: SEED_TENANT_ID,
+        slug: 'le-bistro-gourmand',
         name: 'Le Bistro Gourmand',
       },
       update: {
@@ -23,10 +24,17 @@ async function main() {
     });
 
     await tx.user.upsert({
-      where: { email: 'admin@lebistro.by' },
+      where: {
+        tenantId_email: {
+          tenantId: seededTenant.id,
+          email: 'admin@lebistro.by',
+        },
+      },
       create: {
         tenantId: seededTenant.id,
         email: 'admin@lebistro.by',
+        passwordHash: '',
+        fullName: 'Le Bistro Gourmand Owner',
         role: 'OWNER',
       },
       update: {

@@ -22,6 +22,54 @@ const TENANT_FILTERED_OPS = new Set([
 
 const TENANT_WRITE_OPS = new Set(['create', 'createMany', 'upsert']);
 type QueryArgs = Record<string, unknown>;
+type ModelDelegate = Record<string, (args: QueryArgs) => Promise<unknown>>;
+
+function asRecord(value: unknown): QueryArgs {
+  return value !== null && typeof value === 'object' ? { ...value } : {};
+}
+
+/** Builds scoped arguments without mutating the arguments supplied by a caller. */
+export function scopeTenantQueryArgs(
+  model: string,
+  operation: string,
+  input: QueryArgs,
+  tenantId: string,
+): QueryArgs {
+  if (!TENANT_SCOPED_MODELS.has(model)) return input;
+
+  const args = { ...input };
+  const tenantField = model === 'Tenant' ? 'id' : 'tenantId';
+
+  if (TENANT_FILTERED_OPS.has(operation)) {
+    args['where'] = { ...asRecord(args['where']), [tenantField]: tenantId };
+  }
+
+  if (!TENANT_WRITE_OPS.has(operation)) return args;
+
+  if (operation === 'createMany') {
+    const data = Array.isArray(args['data']) ? args['data'] : [args['data']];
+    args['data'] = data.map((item) => ({
+      ...asRecord(item),
+      [tenantField]: tenantId,
+    }));
+    return args;
+  }
+
+  if (operation === 'upsert') {
+    const where = asRecord(args['where']);
+    if (model === 'User' && typeof where['email'] === 'string') {
+      args['where'] = {
+        tenantId_email: { tenantId, email: where['email'] },
+      };
+    }
+    args['create'] = { ...asRecord(args['create']), [tenantField]: tenantId };
+    args['update'] = { ...asRecord(args['update']), [tenantField]: tenantId };
+    return args;
+  }
+
+  args['data'] = { ...asRecord(args['data']), [tenantField]: tenantId };
+  return args;
+}
 
 @Injectable()
 export class PrismaService
@@ -43,59 +91,43 @@ export class PrismaService
   /**
    * Returns an extended Prisma client that automatically injects
    * WHERE tenantId = <tenantId> into all operations on tenant-scoped models.
+   * The GUC and the query run inside one interactive transaction so RLS sees
+   * the transaction-local value on the same database connection.
    */
   forTenant(tenantId: string) {
     return this.$extends({
       query: {
         $allModels: {
           $allOperations: async (params: unknown): Promise<unknown> => {
-            const { model, operation, args, query } = params as {
+            const { model, operation, args } = params as {
               model: string;
               operation: string;
               args: QueryArgs;
-              query: (a: unknown) => Promise<unknown>;
             };
-            if (!TENANT_SCOPED_MODELS.has(model)) return query(args);
+            if (!TENANT_SCOPED_MODELS.has(model)) {
+              throw new Error(`Unscoped model ${model} is not supported`);
+            }
 
-            // RLS policies read this transaction-local value before every scoped query.
-            await this.$executeRawUnsafe(
-              "SELECT set_config('app.current_tenant_id', $1, true)",
+            const scopedArgs = scopeTenantQueryArgs(
+              model,
+              operation,
+              args,
               tenantId,
             );
-
-            const tenantField = model === 'Tenant' ? 'id' : 'tenantId';
-            if (TENANT_FILTERED_OPS.has(operation)) {
-              args['where'] = {
-                ...(args['where'] as Record<string, unknown>),
-                [tenantField]: tenantId,
-              };
-            }
-            if (TENANT_WRITE_OPS.has(operation)) {
-              if (operation === 'createMany') {
-                const data = Array.isArray(args['data'])
-                  ? args['data']
-                  : [args['data']];
-                args['data'] = data.map((item) => ({
-                  ...(item as Record<string, unknown>),
-                  [tenantField]: tenantId,
-                }));
-              } else if (operation === 'upsert') {
-                args['create'] = {
-                  ...(args['create'] as Record<string, unknown>),
-                  [tenantField]: tenantId,
-                };
-                args['update'] = {
-                  ...(args['update'] as Record<string, unknown>),
-                  [tenantField]: tenantId,
-                };
-              } else {
-                args['data'] = {
-                  ...(args['data'] as Record<string, unknown>),
-                  [tenantField]: tenantId,
-                };
+            return this.$transaction(async (tx) => {
+              await tx.$executeRawUnsafe(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                tenantId,
+              );
+              const delegate = tx[
+                `${model.charAt(0).toLowerCase()}${model.slice(1)}` as keyof typeof tx
+              ] as unknown as ModelDelegate;
+              const execute = delegate[operation];
+              if (!execute) {
+                throw new Error(`Unsupported Prisma operation: ${operation}`);
               }
-            }
-            return query(args);
+              return execute(scopedArgs);
+            });
           },
         },
       },

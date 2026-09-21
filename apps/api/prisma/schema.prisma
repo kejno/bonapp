@@ -7,21 +7,99 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  logoUrl   String?
-  createdAt DateTime @default(now())
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  MANAGER
+  WAITER
+  CHEF
+  CASHIER
+}
 
-  users User[]
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLOSED
+}
+
+model Tenant {
+  id               String       @id @default(uuid())
+  slug             String       @unique
+  name             String
+  legalName        String?      @map("legal_name")
+  unp              String?
+  address          String?
+  timezone         String       @default("Europe/Minsk")
+  currency         String       @default("BYN")
+  logoUrl          String?      @map("logo_url")
+  brandColor       String?      @map("brand_color")
+  dineIn           Boolean      @default(true) @map("dine_in")
+  takeaway         Boolean      @default(false)
+  delivery         Boolean      @default(false)
+  isActive         Boolean      @default(true) @map("is_active")
+  trialEndsAt      DateTime?    @map("trial_ends_at")
+  subscriptionPlan String       @default("free") @map("subscription_plan")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  users            User[]
+  diningAreas      DiningArea[]
+  tables           Table[]
+
+  @@map("tenants")
 }
 
 model User {
-  id       String @id @default(uuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-  email    String @unique
-  role     String
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  email        String
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  phone        String?
+  role         UserRole
+  pinCode      String?   @map("pin_code")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model DiningArea {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tables    Table[]
 
   @@index([tenantId])
+  @@map("dining_areas")
+}
+
+model Table {
+  id          String      @id @default(uuid())
+  tenantId    String      @map("tenant_id")
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  areaId      String      @map("area_id")
+  area        DiningArea  @relation(fields: [areaId], references: [id])
+  tableNumber Int         @map("table_number")
+  label       String?
+  seatsCount  Int         @default(1) @map("seats_count")
+  qrToken     String      @unique @map("qr_token")
+  posTableId  String?     @map("pos_table_id")
+  status      TableStatus @default(AVAILABLE)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@unique([tenantId, tableNumber])
+  @@index([qrToken], map: "idx_tables_qr_token")
+  @@index([tenantId])
+  @@index([areaId])
+  @@map("tables")
 }

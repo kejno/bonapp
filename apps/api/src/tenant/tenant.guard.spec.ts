@@ -1,35 +1,21 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { TenantContextService } from './tenant-context.service';
 import { TenantGuard } from './tenant.guard';
 
 describe('TenantGuard', () => {
-  let service: TenantContextService;
-  let guard: TenantGuard;
-
-  beforeEach(() => {
-    service = new TenantContextService();
-    guard = new TenantGuard(service, { getAllAndOverride: () => false } as any);
-  });
-
+  const reflector = {
+    getAllAndOverride: jest.fn<boolean, [string, unknown[]]>().mockReturnValue(false),
+  } as unknown as Reflector;
   const context = {
     getHandler: () => undefined,
     getClass: () => undefined,
-  } as any;
+  } as unknown as ExecutionContext;
 
-  it('throws UnauthorizedException when no tenant context is set', () => {
+  it('requires a tenant context unless the route opts out', () => {
+    const service = new TenantContextService();
+    const guard = new TenantGuard(service, reflector);
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
-  });
-
-  it('returns true when tenant context is set', () => {
-    let result: boolean | undefined;
-    service.run('tenant-a', () => {
-      result = guard.canActivate(context);
-    });
-    expect(result).toBe(true);
-  });
-
-  it('throws for every call without context, not just the first', () => {
-    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    expect(service.run('tenant-a', () => guard.canActivate(context))).toBe(true);
   });
 });
