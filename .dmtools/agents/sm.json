@@ -81,8 +81,8 @@
           "enabled": true
         },
         {
-          "description": "Backlog / To Do / Ready For Development / In Development / In Rework Bugs → trigger bug_development",
-          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Backlog', 'To Do', 'Ready For Development', 'In Development', 'In Rework')",
+          "description": "Backlog / To Do / Ready For Development / In Development Bugs → trigger bug_development",
+          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Backlog', 'To Do', 'Ready For Development', 'In Development')",
           "configFile": "agents/bug_development.json",
           "concurrencyKey": "bug_development",
           "skipIfLabel": "sm_bug_development_triggered",
@@ -92,7 +92,7 @@
         },
         {
           "description": "Review/Rework/Blocked Stories & Bugs with already merged PR → recover Merged status",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review', 'In Rework', 'Blocked') ORDER BY updated ASC",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review', 'In Rework', 'Blocked') AND (labels is EMPTY OR labels NOT IN ('test_pr_finalized')) ORDER BY updated ASC",
           "configFile": "agents/recover_merged_pr.json",
           "localExecution": true,
           "enabled": true
@@ -191,7 +191,8 @@
           "skipIfLabel": "sm_bug_test_automation_triggered",
           "skipIfLabels": [
             "sm_bug_merged_triggered",
-            "sm_bug_test_cases_triggered"
+            "sm_bug_test_cases_triggered",
+            "test_pr_finalized"
           ],
           "addLabel": "sm_bug_test_automation_triggered",
           "enabled": true

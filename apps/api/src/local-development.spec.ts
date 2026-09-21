@@ -30,4 +30,36 @@ describe('local development infrastructure', () => {
     expect(environment).toContain('PAYMENT_PUBLIC_KEY=');
     expect(environment).toContain('PAYMENT_SECRET_KEY=');
   });
+
+  it('keeps the initial migration safe when a legacy database already has its tables', () => {
+    const migration = readFileSync(
+      resolve(
+        repositoryRoot,
+        'apps/api/prisma/migrations/20260916000000_init/migration.sql',
+      ),
+      'utf8',
+    );
+
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "Tenant"');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "User"');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key"',
+    );
+    expect(migration).toContain(
+      'CREATE INDEX IF NOT EXISTS "User_tenantId_idx"',
+    );
+  });
+
+  it('does not modify a developer .env while preparing isolated connections', () => {
+    const startupCheck = readFileSync(
+      resolve(repositoryRoot, 'apps/api/test/BNP-325.e2e-spec.ts'),
+      'utf8',
+    );
+
+    expect(startupCheck).toContain("readFileSync(envExamplePath, 'utf8')");
+    expect(startupCheck).toContain('runtimeEnvironment = {');
+    expect(startupCheck).toContain('env: runtimeEnvironment');
+    expect(startupCheck).not.toContain('writeFileSync(envPath');
+    expect(startupCheck).not.toContain('unlinkSync(envPath');
+  });
 });

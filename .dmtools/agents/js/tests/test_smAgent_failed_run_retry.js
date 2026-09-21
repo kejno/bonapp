@@ -19,8 +19,12 @@ const storyAutomation = rule('agents/story_test_automation.json',
   'Ready For Testing Stories → automate linked test cases in bulk');
 const storyReview = rules.find((r) => r.configFile === 'agents/pr_story_test_automation_review.json');
 const bugReview = rules.find((r) => r.configFile === 'agents/pr_bug_test_automation_review.json');
+const mergedRecovery = rules.find((r) => r.configFile === 'agents/recover_merged_pr.json');
+const bugAutomation = rules.find((r) => r.configFile === 'agents/bug_test_automation.json');
 assert(storyReview.jql.includes("'test_pr_finalized'"));
 assert(bugReview.jql.includes("'test_pr_finalized'"));
+assert(mergedRecovery.jql.includes("'test_pr_finalized'"));
+assert(bugAutomation.skipIfLabels.includes('test_pr_finalized'));
 
 assert(storyRetry);
 assert.strictEqual(storyStart.targetStatus, 'Ready For Testing');
@@ -40,6 +44,16 @@ assert(rules.indexOf(bugRetry) < rules.indexOf(bugGenerator));
 assert(!bugGenerator.jql.includes('sm_bug_test_cases_triggered'));
 assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_triggered'));
 assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_done'));
+assert.strictEqual(require('../../bug_development.json').params.customParams.prTitleTemplate, 'bugDevelopment');
+
+const bugDevelopment = rule('agents/bug_development.json',
+  'Backlog / To Do / Ready For Development / In Development Bugs → trigger bug_development');
+const prRework = rule('agents/pr_rework.json',
+  'In Rework Stories & Bugs → trigger pr_rework');
+assert(bugDevelopment);
+assert(prRework);
+assert(!bugDevelopment.jql.includes("'In Rework'"));
+assert(prRework.jql.includes("status in ('In Rework')"));
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'smAgent.js'), 'utf8');
 const workflow = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'ai-teammate.yml'), 'utf8');

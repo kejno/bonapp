@@ -80,6 +80,14 @@ function action(params) {
 
         console.log('=== Bug development post-action for', ticketKey, '===');
 
+        // Entering bug development starts a genuinely new fix/test cycle.
+        // Remove the persistent guard left by the previous completed cycle so
+        // the new fix can proceed through test automation after it is merged.
+        try {
+            jira_remove_label({ key: ticketKey, label: LABELS.TEST_PR_FINALIZED });
+            console.log('Removed stale test-cycle finalization label from', ticketKey);
+        } catch (e) {}
+
         // ── Path 0: PR already open — skip re-development ───────────────────
         // If a PR already exists for this ticket's branch, the previous run created
         // it but failed to move the ticket to In Review (e.g. was interrupted).

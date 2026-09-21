@@ -102,24 +102,13 @@ function action(params) {
 
     console.log('Found', blockers.length, 'blocker(s) for', ticketKey);
 
-    // If no blockers exist, the ticket shouldn't be in Blocked status
+    // This agent only resolves dependency-driven blocks. A ticket may also be
+    // deliberately Blocked for manual triage without an "is blocked by" link.
+    // Treating zero links as resolved re-opens those tickets immediately and
+    // can restart an already exhausted automation cycle.
     if (blockers.length === 0) {
-        console.log('No active blockers found — resuming', ticketKey);
-        try {
-            var noBlockersMove = moveToResumeStatus(ticketKey, ticket, jiraConfig);
-            if (!noBlockersMove.success) return noBlockersMove;
-            jira_post_comment({
-                key: ticketKey,
-                comment: 'h3. ✅ Auto-unblocked — No Active Blockers\n\n' +
-                    'This ticket was in *Blocked* status but no active "is blocked by" dependencies were found.\n\n' +
-                    'Automatically moved to *' + noBlockersMove.status + '*.'
-            });
-            console.log('✅ Moved', ticketKey, 'to', noBlockersMove.status, '(no blockers)');
-            return { success: true, action: 'moved_to_resume_status_no_blockers', ticketKey: ticketKey };
-        } catch (e) {
-            console.warn('Failed to resume ticket:', e.message || e);
-            return { success: false, action: 'move_failed', error: e.toString() };
-        }
+        console.log('No dependency links found — leaving', ticketKey, 'Blocked for manual triage');
+        return { success: true, action: 'manual_block_no_dependencies', ticketKey: ticketKey };
     }
 
     // Check if all blockers are resolved
