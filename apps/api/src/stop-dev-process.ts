@@ -14,10 +14,12 @@ type ExecuteCommand = (
   callback: (error: unknown) => void,
 ) => unknown;
 
+type KillProcess = (pid: number, signal?: NodeJS.Signals) => boolean;
+
 interface StopDevProcessOptions {
   platform?: NodeJS.Platform;
   executeCommand?: ExecuteCommand;
-  killProcess?: typeof process.kill;
+  killProcess?: KillProcess;
 }
 
 const executeCommand: ExecuteCommand = (file, args, callback) => {
@@ -25,8 +27,10 @@ const executeCommand: ExecuteCommand = (file, args, callback) => {
 };
 
 const terminateWindowsProcessTree = (pid: number, runCommand: ExecuteCommand) =>
-  new Promise<void>((resolve) => {
-    runCommand('taskkill', ['/pid', String(pid), '/t', '/f'], () => resolve());
+  new Promise<boolean>((resolve) => {
+    runCommand('taskkill', ['/pid', String(pid), '/t', '/f'], (error) => {
+      resolve(!error);
+    });
   });
 
 export const stopDevProcess = async (
@@ -34,7 +38,7 @@ export const stopDevProcess = async (
   {
     platform = process.platform,
     executeCommand: runCommand = executeCommand,
-    killProcess = process.kill,
+    killProcess = (targetPid, signal) => process.kill(targetPid, signal),
   }: StopDevProcessOptions = {},
 ) => {
   if (
@@ -46,12 +50,17 @@ export const stopDevProcess = async (
   }
 
   const pid = apiProcess.pid;
-  const closed = new Promise<void>((resolve) => {
+  let rejectClose: (error: Error) => void;
+  const closed = new Promise<void>((resolve, reject) => {
+    rejectClose = reject;
     apiProcess.once('close', () => resolve());
   });
   const terminate = async (signal: NodeJS.Signals) => {
     if (platform === 'win32') {
-      await terminateWindowsProcessTree(pid, runCommand);
+      const terminated = await terminateWindowsProcessTree(pid, runCommand);
+      if (!terminated) {
+        apiProcess.kill(signal);
+      }
       return;
     }
 
@@ -64,8 +73,15 @@ export const stopDevProcess = async (
   const forceStopTimeout = setTimeout(() => {
     void terminate('SIGKILL');
   }, 10_000);
+  const closeTimeout = setTimeout(() => {
+    rejectClose(new Error(`Dev process ${pid} did not close after termination`));
+  }, 11_000);
 
-  await terminate('SIGTERM');
-  await closed;
-  clearTimeout(forceStopTimeout);
+  try {
+    await terminate('SIGTERM');
+    await closed;
+  } finally {
+    clearTimeout(forceStopTimeout);
+    clearTimeout(closeTimeout);
+  }
 };

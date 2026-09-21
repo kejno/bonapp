@@ -33,4 +33,32 @@ describe('stopDevProcess', () => {
     );
     expect(process.kill).not.toHaveBeenCalled();
   });
+
+  it('falls back to the direct process signal when taskkill fails', async () => {
+    const process = new EventEmitter() as EventEmitter & {
+      pid: number;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      kill: jest.Mock;
+    };
+    process.pid = 1234;
+    process.exitCode = null;
+    process.signalCode = null;
+    process.kill = jest.fn(() => {
+      process.emit('close');
+      return true;
+    });
+    const executeCommand = jest.fn(
+      (_file: string, _args: string[], callback: (error: unknown) => void) => {
+        callback(new Error('taskkill failed'));
+      },
+    );
+
+    await stopDevProcess(process, {
+      platform: 'win32',
+      executeCommand,
+    });
+
+    expect(process.kill).toHaveBeenCalledWith('SIGTERM');
+  });
 });
