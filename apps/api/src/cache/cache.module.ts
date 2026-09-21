@@ -1,4 +1,4 @@
-import { Global, Inject, Module, OnModuleDestroy } from '@nestjs/common';
+import { Global, Inject, Logger, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './cache.constants';
@@ -19,6 +19,7 @@ class RedisLifecycle implements OnModuleDestroy {
       provide: REDIS_CLIENT,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        const logger = new Logger('CacheModule');
         const client = new Redis({
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: Number(config.get<string>('REDIS_PORT', '6379')),
@@ -26,7 +27,9 @@ class RedisLifecycle implements OnModuleDestroy {
           enableOfflineQueue: false,
           maxRetriesPerRequest: 0,
         });
-        client.on('error', () => undefined);
+        client.on('error', (err: Error) => {
+          logger.warn(`Redis connection error: ${err.message}`);
+        });
         return client;
       },
     },

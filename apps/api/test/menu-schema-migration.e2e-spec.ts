@@ -7,6 +7,10 @@ const migration = resolve(
   '../prisma/migrations/20260921000000_add_menu_catalog/migration.sql',
 );
 
+const describeWithDocker = process.env.SKIP_DOCKER_TESTS
+  ? describe.skip
+  : describe;
+
 describe('menu catalog migration', () => {
   it('creates every menu table and its tenant-scoped foreign keys', () => {
     expect(existsSync(migration)).toBe(true);
@@ -27,7 +31,7 @@ describe('menu catalog migration', () => {
   });
 });
 
-describe('menu catalog migration deployment', () => {
+describeWithDocker('menu catalog migration deployment', () => {
   let container: string;
   let port: string;
 

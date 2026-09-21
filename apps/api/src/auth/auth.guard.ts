@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Request } from 'express';
 
@@ -18,6 +19,12 @@ interface JwtPayload {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  private readonly secret: string;
+
+  constructor(config: ConfigService) {
+    this.secret = config.getOrThrow<string>('JWT_SECRET');
+  }
+
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
@@ -44,9 +51,6 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new UnauthorizedException();
-
     try {
       const header = JSON.parse(
         Buffer.from(encodedHeader, 'base64url').toString('utf8'),
@@ -54,7 +58,7 @@ export class AuthGuard implements CanActivate {
       const payload = JSON.parse(
         Buffer.from(encodedPayload, 'base64url').toString('utf8'),
       ) as JwtPayload;
-      const expectedSignature = createHmac('sha256', secret)
+      const expectedSignature = createHmac('sha256', this.secret)
         .update(`${encodedHeader}.${encodedPayload}`)
         .digest();
       const providedSignature = Buffer.from(signature, 'base64url');

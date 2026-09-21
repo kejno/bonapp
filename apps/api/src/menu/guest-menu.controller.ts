@@ -7,9 +7,10 @@ export class GuestMenuController {
 
   @Get()
   getMenu(@Query('tenantId') tenantId?: string) {
-    if (!tenantId?.trim()) {
+    const tid = tenantId?.trim();
+    if (!tid) {
       throw new BadRequestException('tenantId is required');
     }
-    return this.menuService.getGuestMenu(tenantId);
+    return this.menuService.getGuestMenu(tid);
   }
 }

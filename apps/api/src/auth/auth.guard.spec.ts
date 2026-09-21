@@ -1,4 +1,5 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { AuthGuard } from './auth.guard';
 
@@ -31,12 +32,16 @@ function createToken(payload: Record<string, unknown>, secret: string): string {
   return `${header}.${body}.${signature}`;
 }
 
+function makeGuard(secret = 'test-jwt-secret'): AuthGuard {
+  const config = { getOrThrow: () => secret } as unknown as ConfigService;
+  return new AuthGuard(config);
+}
+
 describe('AuthGuard', () => {
   let guard: AuthGuard;
 
   beforeEach(() => {
-    process.env.JWT_SECRET = 'test-jwt-secret';
-    guard = new AuthGuard();
+    guard = makeGuard();
   });
 
   it('validates a JWT and assigns its tenant context to the request', () => {
@@ -65,5 +70,14 @@ describe('AuthGuard', () => {
     expect(() =>
       guard.canActivate(mockContext(`Bearer ${noTenant}`).context),
     ).toThrow(UnauthorizedException);
+  });
+
+  it('throws at construction when JWT_SECRET is not configured', () => {
+    const config = {
+      getOrThrow: (key: string) => {
+        throw new Error(`Config key "${key}" not found`);
+      },
+    } as unknown as ConfigService;
+    expect(() => new AuthGuard(config)).toThrow('Config key "JWT_SECRET" not found');
   });
 });
