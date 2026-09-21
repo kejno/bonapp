@@ -50,20 +50,6 @@ describe('local development infrastructure', () => {
     );
   });
 
-  it('stops the API development process safely on POSIX and Windows', () => {
-    const startupCheck = readFileSync(
-      resolve(repositoryRoot, 'apps/api/test/BNP-325.e2e-spec.ts'),
-      'utf8',
-    );
-
-    expect(startupCheck).toContain("detached: process.platform !== 'win32'");
-    expect(startupCheck).toContain("if (process.platform !== 'win32')");
-    expect(startupCheck).toContain('process.kill(-pid, signal);');
-    expect(startupCheck).toContain('apiProcess.kill(signal);');
-    expect(startupCheck).toContain("apiProcess.once('close', () =>");
-    expect(startupCheck).toContain("fetch('http://127.0.0.1:3000/api/v1')");
-  });
-
   it('does not modify a developer .env while preparing isolated connections', () => {
     const startupCheck = readFileSync(
       resolve(repositoryRoot, 'apps/api/test/BNP-325.e2e-spec.ts'),

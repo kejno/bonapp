@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import * as net from 'node:net';
 import { resolve as pathResolve } from 'node:path';
 
+import { stopDevProcess } from '../src/stop-dev-process';
+
 const repositoryRoot = pathResolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
 const HEALTHCHECK_TIMEOUT = 120_000;
@@ -63,51 +65,13 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-const stopProcessGroup = (apiProcess: ChildProcess) =>
-  new Promise<void>((resolve) => {
-    if (
-      !apiProcess.pid ||
-      apiProcess.exitCode !== null ||
-      apiProcess.signalCode !== null
-    ) {
-      resolve();
-      return;
-    }
-
-    const pid = apiProcess.pid;
-    const sendSignal = (signal: NodeJS.Signals) => {
-      if (process.platform !== 'win32') {
-        try {
-          process.kill(-pid, signal);
-          return;
-        } catch {
-          // Fall back to the child process when its group is unavailable.
-        }
-      }
-
-      apiProcess.kill(signal);
-    };
-    const forceStopTimeout = setTimeout(() => {
-      sendSignal('SIGKILL');
-    }, 10_000);
-
-    apiProcess.once('close', () => {
-      clearTimeout(forceStopTimeout);
-      resolve();
-    });
-
-    sendSignal('SIGTERM');
-  });
-
 const waitForApiStartup = (apiProcess: ChildProcess) =>
   new Promise<void>((resolve, reject) => {
     let output = '';
     const startTimeout = setTimeout(() => {
       clearInterval(readinessCheck);
       reject(
-        new Error(
-          `API did not become ready within 30 s. Output:\n${output}`,
-        ),
+        new Error(`API did not become ready within 30 s. Output:\n${output}`),
       );
     }, 30_000);
 
@@ -170,12 +134,13 @@ describe('BNP-325: local start guide', () => {
   let runtimeEnvironment: NodeJS.ProcessEnv;
 
   beforeAll(async () => {
-    [postgresPort, redisPort, minioApiPort, minioConsolePort] = await Promise.all([
-      getAvailablePort(),
-      getAvailablePort(),
-      getAvailablePort(),
-      getAvailablePort(),
-    ]);
+    [postgresPort, redisPort, minioApiPort, minioConsolePort] =
+      await Promise.all([
+        getAvailablePort(),
+        getAvailablePort(),
+        getAvailablePort(),
+        getAvailablePort(),
+      ]);
     const environmentTemplate = readFileSync(envExamplePath, 'utf8');
     const templateEnvironment = Object.fromEntries(
       environmentTemplate.split('\n').flatMap((line) => {
@@ -289,7 +254,7 @@ describe('BNP-325: local start guide', () => {
         await waitForApiStartup(apiProcess);
       } finally {
         if (apiProcess) {
-          await stopProcessGroup(apiProcess);
+          await stopDevProcess(apiProcess);
         }
       }
     },
