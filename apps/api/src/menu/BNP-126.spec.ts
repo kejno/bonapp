@@ -5,7 +5,7 @@ const repositoryRoot = resolve(__dirname, '../../../..');
 const schemaPath = resolve(repositoryRoot, 'apps/api/prisma/schema.prisma');
 const migrationPath = resolve(
   repositoryRoot,
-  'apps/api/prisma/migrations/20260918000000_menu_schema/migration.sql',
+  'apps/api/prisma/migrations/20260921140000_menu_schema/migration.sql',
 );
 
 describe('BNP-126: menu schema — Prisma models and migration', () => {
@@ -43,8 +43,8 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
       expect(schema).toContain('cookingTimeMinutes');
     });
 
-    it('uses Decimal(10,2) for monetary fields', () => {
-      expect(schema).toContain('@db.Decimal(10,2)');
+    it('uses Decimal(10, 2) for monetary fields', () => {
+      expect(schema).toContain('@db.Decimal(10, 2)');
     });
 
     it('uses String[] for allergens field', () => {
@@ -89,23 +89,38 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
         '@relation(fields: [tenantId, itemId], references: [tenantId, id])',
       );
     });
+
+    it('maps menu models and multiword fields to the physical snake_case contract', () => {
+      expect(schema).toContain('@@map("menu_categories")');
+      expect(schema).toContain('@@map("menu_items")');
+      expect(schema).toContain('@@map("modifier_groups")');
+      expect(schema).toContain('@@map("modifier_options")');
+      expect(schema).toContain('@map("tenant_id")');
+      expect(schema).toContain('@map("price_byn")');
+    });
   });
 
   describe('migration SQL — DDL correctness', () => {
+    it('is ordered after the core schema migrations and targets the renamed tenants table', () => {
+      expect(migrationPath).toContain('20260921140000_menu_schema');
+      expect(migration).toContain('REFERENCES "tenants"("id")');
+      expect(migration).not.toContain('REFERENCES "Tenant"');
+    });
+
     it('creates MenuCategory table', () => {
-      expect(migration).toContain('CREATE TABLE "MenuCategory"');
+      expect(migration).toContain('CREATE TABLE "menu_categories"');
     });
 
     it('creates MenuItem table', () => {
-      expect(migration).toContain('CREATE TABLE "MenuItem"');
+      expect(migration).toContain('CREATE TABLE "menu_items"');
     });
 
     it('creates ModifierGroup table', () => {
-      expect(migration).toContain('CREATE TABLE "ModifierGroup"');
+      expect(migration).toContain('CREATE TABLE "modifier_groups"');
     });
 
     it('creates ModifierOption table', () => {
-      expect(migration).toContain('CREATE TABLE "ModifierOption"');
+      expect(migration).toContain('CREATE TABLE "modifier_options"');
     });
 
     it('uses DECIMAL(10,2) for price_byn and cost_price_byn', () => {
@@ -117,27 +132,33 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
       expect(migration).toContain('TEXT[]');
     });
 
-    it('creates partial index on (tenantId, categoryId) WHERE isActive = TRUE', () => {
+    it('creates partial index on (tenant_id, category_id) WHERE is_active = TRUE', () => {
       expect(migration).toMatch(
-        /CREATE INDEX "idx_menu_items_tenant_cat".*WHERE "isActive" = TRUE/s,
+        /CREATE INDEX "idx_menu_items_tenant_cat".*WHERE "is_active" = TRUE/s,
       );
     });
 
     it('adds foreign keys for all relations', () => {
-      expect(migration).toContain('MenuCategory_tenantId_fkey');
-      expect(migration).toContain('MenuItem_tenantId_fkey');
-      expect(migration).toContain('MenuItem_tenantId_categoryId_fkey');
-      expect(migration).toContain('ModifierGroup_tenantId_itemId_fkey');
-      expect(migration).toContain('ModifierOption_groupId_fkey');
+      expect(migration).toContain('menu_categories_tenant_id_fkey');
+      expect(migration).toContain('menu_items_tenant_id_fkey');
+      expect(migration).toContain('menu_items_tenant_id_category_id_fkey');
+      expect(migration).toContain('modifier_groups_tenant_id_item_id_fkey');
+      expect(migration).toContain('modifier_options_group_id_fkey');
     });
 
     it('uses composite foreign keys for tenant-scoped category and item references', () => {
       expect(migration).toContain(
-        'FOREIGN KEY ("tenantId", "categoryId") REFERENCES "MenuCategory"("tenantId", "id")',
+        'FOREIGN KEY ("tenant_id", "category_id") REFERENCES "menu_categories"("tenant_id", "id")',
       );
       expect(migration).toContain(
-        'FOREIGN KEY ("tenantId", "itemId") REFERENCES "MenuItem"("tenantId", "id")',
+        'FOREIGN KEY ("tenant_id", "item_id") REFERENCES "menu_items"("tenant_id", "id")',
       );
+    });
+
+    it('protects all menu monetary values from negative writes', () => {
+      expect(migration).toContain('menu_items_price_byn_non_negative_check');
+      expect(migration).toContain('menu_items_cost_price_byn_non_negative_check');
+      expect(migration).toContain('modifier_options_extra_price_byn_non_negative_check');
     });
   });
 });

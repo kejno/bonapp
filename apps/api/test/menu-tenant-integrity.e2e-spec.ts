@@ -89,6 +89,74 @@ describe('menu tenant integrity (e2e)', () => {
     ).rejects.toThrow();
   });
 
+  it('rejects negative menu prices at the database boundary', async () => {
+    const category = await prisma.menuCategory.create({
+      data: {
+        id: 'menu-tenant-integrity-category-prices',
+        tenantId: 'menu-tenant-integrity-a',
+        name: 'Price category',
+        sortOrder: 2,
+      },
+    });
+
+    await expect(
+      prisma.menuItem.create({
+        data: {
+          id: 'menu-tenant-integrity-item-negative-price',
+          tenantId: 'menu-tenant-integrity-a',
+          categoryId: category.id,
+          name: 'Negative price item',
+          priceByn: -1,
+          allergens: [],
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.menuItem.create({
+        data: {
+          id: 'menu-tenant-integrity-item-negative-cost',
+          tenantId: 'menu-tenant-integrity-a',
+          categoryId: category.id,
+          name: 'Negative cost item',
+          priceByn: 1,
+          costPriceByn: -1,
+          allergens: [],
+        },
+      }),
+    ).rejects.toThrow();
+
+    const item = await prisma.menuItem.create({
+      data: {
+        id: 'menu-tenant-integrity-item-price-option',
+        tenantId: 'menu-tenant-integrity-a',
+        categoryId: category.id,
+        name: 'Modifier item',
+        priceByn: 1,
+        allergens: [],
+      },
+    });
+    const group = await prisma.modifierGroup.create({
+      data: {
+        id: 'menu-tenant-integrity-group-price-option',
+        tenantId: 'menu-tenant-integrity-a',
+        itemId: item.id,
+        name: 'Price group',
+      },
+    });
+
+    await expect(
+      prisma.modifierOption.create({
+        data: {
+          id: 'menu-tenant-integrity-option-negative-price',
+          groupId: group.id,
+          name: 'Negative option',
+          extraPriceByn: -1,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   afterAll(async () => {
     await prisma.modifierOption.deleteMany({
       where: { id: { startsWith: 'menu-tenant-integrity-' } },
