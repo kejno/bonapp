@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import * as net from 'node:net';
 import { resolve as pathResolve } from 'node:path';
 
@@ -7,6 +7,25 @@ const repositoryRoot = pathResolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
 const HEALTHCHECK_TIMEOUT = 120_000;
 const STARTUP_SCENARIO_TIMEOUT = 420_000;
+let postgresPort: number;
+let redisPort: number;
+let minioApiPort: number;
+let minioConsolePort: number;
+
+const getAvailablePort = () =>
+  new Promise<number>((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Could not allocate an isolated test port'));
+        return;
+      }
+      server.close((error) => (error ? reject(error) : resolve(address.port)));
+    });
+  });
 
 const compose = (...args: string[]) =>
   execFileSync('docker', ['compose', ...args], {
@@ -14,6 +33,14 @@ const compose = (...args: string[]) =>
     encoding: 'utf8',
     stdio: 'pipe',
     timeout: COMPOSE_TIMEOUT,
+    env: {
+      ...process.env,
+      BONAPP_POSTGRES_PORT: String(postgresPort),
+      BONAPP_REDIS_PORT: String(redisPort),
+      BONAPP_MINIO_API_PORT: String(minioApiPort),
+      BONAPP_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      COMPOSE_PROJECT_NAME: `bonapp-bnp325-${process.pid}`,
+    },
   });
 
 interface ServiceStatus {
@@ -35,18 +62,6 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
-
-function isPortBound(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => resolve(true));
-    server.once('listening', () => {
-      server.close();
-      resolve(false);
-    });
-    server.listen(port, '127.0.0.1');
-  });
-}
 
 async function waitForServicesHealthy() {
   const deadline = Date.now() + HEALTHCHECK_TIMEOUT;
@@ -73,20 +88,35 @@ describe('BNP-325: local start guide', () => {
   const envPath = pathResolve(repositoryRoot, 'apps/api/.env');
   const envExamplePath = pathResolve(repositoryRoot, 'apps/api/.env.example');
   let envCreatedByTest = false;
+  let originalEnvContent: string | null = null;
 
-  beforeAll(() => {
-    if (!existsSync(envPath)) {
-      copyFileSync(envExamplePath, envPath);
-      envCreatedByTest = true;
-    }
+  beforeAll(async () => {
+    [postgresPort, redisPort, minioApiPort, minioConsolePort] = await Promise.all([
+      getAvailablePort(),
+      getAvailablePort(),
+      getAvailablePort(),
+      getAvailablePort(),
+    ]);
+    originalEnvContent = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null;
+    envCreatedByTest = originalEnvContent === null;
+    const sourceEnv = originalEnvContent ?? readFileSync(envExamplePath, 'utf8');
+    const isolatedEnv = sourceEnv
+      .replace(
+        /^DATABASE_URL=.*$/m,
+        `DATABASE_URL=postgresql://postgres:postgres@localhost:${postgresPort}/bonapp`,
+      )
+      .replace(/^REDIS_URL=.*$/m, `REDIS_URL=redis://localhost:${redisPort}`);
+    writeFileSync(envPath, isolatedEnv);
   });
 
   afterAll(() => {
-    if (envCreatedByTest && existsSync(envPath)) {
+    if (originalEnvContent !== null) {
+      writeFileSync(envPath, originalEnvContent);
+    } else if (envCreatedByTest && existsSync(envPath)) {
       unlinkSync(envPath);
     }
     try {
-      compose('down');
+      compose('down', '--volumes');
     } catch {
       // Cleanup must not hide the assertion result.
     }
@@ -128,13 +158,6 @@ describe('BNP-325: local start guide', () => {
   it(
     'executes the documented startup sequence: services become healthy, migration succeeds, API starts without connection errors',
     async () => {
-      if (await isPortBound(5432)) {
-        console.warn(
-          'Port 5432 is already allocated — Docker Compose integration test skipped (infrastructure constraint, not a product defect).',
-        );
-        return;
-      }
-
       // Step 1: execute the documented command exactly, then poll healthchecks.
       compose('up', '-d');
       await waitForServicesHealthy();
@@ -150,7 +173,10 @@ describe('BNP-325: local start guide', () => {
       const createdEnvContent = readFileSync(envPath, 'utf8');
       const dbUrlMatch = createdEnvContent.match(/^DATABASE_URL=(.+)$/m);
       expect(dbUrlMatch).not.toBeNull();
-      const databaseUrl = dbUrlMatch![1].trim();
+      const databaseUrl = dbUrlMatch![1]
+        .trim()
+        .replace(/localhost:\d+/, `localhost:${postgresPort}`);
+      const redisUrl = `redis://localhost:${redisPort}`;
 
       // Step 2: execute the exact documented migration command.
       const migrateOutput = execFileSync(
@@ -180,7 +206,11 @@ describe('BNP-325: local start guide', () => {
         const apiProcess = spawn('npm', ['run', 'dev'], {
           cwd: repositoryRoot,
           stdio: 'pipe',
-          env: { ...process.env },
+          env: {
+            ...process.env,
+            DATABASE_URL: databaseUrl,
+            REDIS_URL: redisUrl,
+          },
         });
 
         let output = '';
