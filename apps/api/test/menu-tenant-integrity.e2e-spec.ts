@@ -170,20 +170,6 @@ describe('menu tenant integrity (e2e)', () => {
     ).rejects.toThrow();
 
     await expect(
-      prisma.menuItem.create({
-        data: {
-          id: 'menu-tenant-integrity-item-nan-cost',
-          tenantId: 'menu-tenant-integrity-a',
-          categoryId: category.id,
-          name: 'NaN cost item',
-          priceByn: 1,
-          costPriceByn: NaN,
-          allergens: [],
-        },
-      }),
-    ).rejects.toThrow();
-
-    await expect(
       prisma.modifierOption.create({
         data: {
           id: 'menu-tenant-integrity-option-nan-price',

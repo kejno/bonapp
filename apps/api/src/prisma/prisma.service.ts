@@ -10,7 +10,16 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Order',
   'OrderItem',
   'Payment',
+  'MenuCategory',
+  'MenuItem',
+  'ModifierGroup',
+  'ModifierOption',
 ]);
+
+const RELATION_SCOPED_MODELS: Record<string, string> = {
+  OrderItem: 'order',
+  ModifierOption: 'group',
+};
 
 // Operations that accept a WHERE clause and must be filtered by tenantId.
 const TENANT_FILTERED_OPS = new Set([
@@ -34,11 +43,11 @@ type ModelDelegate = Record<string, (args: QueryArgs) => Promise<unknown>>;
 
 /**
  * Prisma's findUnique accepts only a WhereUniqueInput, which cannot express
- * the owning-order tenant predicate required for OrderItem. Use its
+ * the owning-record tenant predicate required for relation-scoped models. Use its
  * filter-capable equivalent after adding that predicate.
  */
 export function scopedDelegateOperation(model: string, operation: string) {
-  if (model !== 'OrderItem') return operation;
+  if (!RELATION_SCOPED_MODELS[model]) return operation;
   if (operation === 'findUnique') return 'findFirst';
   if (operation === 'findUniqueOrThrow') return 'findFirstOrThrow';
   return operation;
@@ -58,10 +67,11 @@ export function scopeTenantQueryArgs(
   if (!TENANT_SCOPED_MODELS.has(model)) return input;
 
   const args = { ...input };
-  if (model === 'OrderItem') {
+  const owningRelation = RELATION_SCOPED_MODELS[model];
+  if (owningRelation) {
     if (operation === 'upsert') {
       throw new Error(
-        'OrderItem upsert is not supported because its unique lookup cannot be tenant-scoped',
+        `${model} upsert is not supported because its unique lookup cannot be tenant-scoped`,
       );
     }
 
@@ -69,7 +79,7 @@ export function scopeTenantQueryArgs(
       args['where'] = {
         AND: [
           asRecord(args['where']),
-          { order: { is: { tenantId } } },
+          { [owningRelation]: { is: { tenantId } } },
         ],
       };
     }
@@ -126,8 +136,7 @@ export function scopeTenantQueryArgs(
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly client = new PrismaClient();
 
-  constructor(private readonly tenantContextService: TenantContextService) {
-  }
+  constructor(private readonly tenantContextService: TenantContextService) {}
 
   async onModuleInit() {
     await this.client.$connect();
@@ -143,9 +152,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * The GUC and the query run inside one interactive transaction so RLS sees
    * the transaction-local value on the same database connection.
    *
-   * OrderItem is scoped through its owning Order relation. Its create and
-   * createMany operations are protected by the matching RLS policy; upsert is
-   * rejected because Prisma's unique lookup cannot include that relation.
+   * Relation-scoped models are protected by their owning records' RLS policies;
+   * their upserts are rejected because Prisma's unique lookup cannot include the
+   * owner tenant predicate.
    */
   forTenant(tenantId: string) {
     return this.client.$extends({
@@ -175,7 +184,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
               const delegate = tx[
                 `${model.charAt(0).toLowerCase()}${model.slice(1)}` as keyof typeof tx
               ] as unknown as ModelDelegate;
-              const delegateOperation = scopedDelegateOperation(model, operation);
+              const delegateOperation = scopedDelegateOperation(
+                model,
+                operation,
+              );
               const execute = delegate[delegateOperation];
               if (!execute) {
                 throw new Error(
@@ -196,8 +208,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * Throws when no tenant context is active so request handlers cannot
    * accidentally read or write across tenants.
    *
-   * This client supports only models in TENANT_SCOPED_MODELS. OrderItem is
-   * constrained through its tenant-scoped owner relation.
+   * This client supports only models in TENANT_SCOPED_MODELS. Relation-scoped
+   * models are constrained through their tenant-scoped owner relation.
    */
   get db(): ReturnType<typeof this.forTenant> {
     const tenantId = this.tenantContextService.getTenantId();

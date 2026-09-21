@@ -25,6 +25,14 @@ describe('Tenant isolation (e2e)', () => {
   const orderBId = '20000000-0000-4000-a000-000000000012';
   const orderItemAId = '10000000-0000-4000-a000-000000000021';
   const orderItemBId = '20000000-0000-4000-a000-000000000022';
+  const menuCategoryAId = '10000000-0000-4000-a000-000000000051';
+  const menuCategoryBId = '20000000-0000-4000-a000-000000000052';
+  const menuItemAId = '10000000-0000-4000-a000-000000000061';
+  const menuItemBId = '20000000-0000-4000-a000-000000000062';
+  const modifierGroupAId = '10000000-0000-4000-a000-000000000071';
+  const modifierGroupBId = '20000000-0000-4000-a000-000000000072';
+  const modifierOptionAId = '10000000-0000-4000-a000-000000000081';
+  const modifierOptionBId = '20000000-0000-4000-a000-000000000082';
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -153,11 +161,107 @@ describe('Tenant isolation (e2e)', () => {
         },
       });
     });
+
+    await tenantContext.run(tenantAId, async () => {
+      await prisma.db.menuCategory.create({
+        data: {
+          id: menuCategoryAId,
+          tenantId: tenantAId,
+          name: 'Menu category A',
+          sortOrder: 1,
+        },
+      });
+      await prisma.db.menuItem.create({
+        data: {
+          id: menuItemAId,
+          tenantId: tenantAId,
+          categoryId: menuCategoryAId,
+          name: 'Menu item A',
+          priceByn: 1,
+          allergens: [],
+        },
+      });
+      await prisma.db.modifierGroup.create({
+        data: {
+          id: modifierGroupAId,
+          tenantId: tenantAId,
+          itemId: menuItemAId,
+          name: 'Group A',
+        },
+      });
+      await prisma.db.modifierOption.create({
+        data: {
+          id: modifierOptionAId,
+          groupId: modifierGroupAId,
+          name: 'Option A',
+        },
+      });
+    });
+
+    await tenantContext.run(tenantBId, async () => {
+      await prisma.db.menuCategory.create({
+        data: {
+          id: menuCategoryBId,
+          tenantId: tenantBId,
+          name: 'Menu category B',
+          sortOrder: 1,
+        },
+      });
+      await prisma.db.menuItem.create({
+        data: {
+          id: menuItemBId,
+          tenantId: tenantBId,
+          categoryId: menuCategoryBId,
+          name: 'Menu item B',
+          priceByn: 1,
+          allergens: [],
+        },
+      });
+      await prisma.db.modifierGroup.create({
+        data: {
+          id: modifierGroupBId,
+          tenantId: tenantBId,
+          itemId: menuItemBId,
+          name: 'Group B',
+        },
+      });
+      await prisma.db.modifierOption.create({
+        data: {
+          id: modifierOptionBId,
+          groupId: modifierGroupBId,
+          name: 'Option B',
+        },
+      });
+    });
   });
 
   afterAll(async () => {
     if (!app || !prisma || !tenantContext) return;
 
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.modifierOption.deleteMany({ where: { id: modifierOptionAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.modifierOption.deleteMany({ where: { id: modifierOptionBId } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.modifierGroup.deleteMany({ where: { id: modifierGroupAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.modifierGroup.deleteMany({ where: { id: modifierGroupBId } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.menuItem.deleteMany({ where: { id: menuItemAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.menuItem.deleteMany({ where: { id: menuItemBId } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.menuCategory.deleteMany({ where: { id: menuCategoryAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.menuCategory.deleteMany({ where: { id: menuCategoryBId } }),
+    );
     await tenantContext.run(tenantAId, () =>
       prisma.db.order.deleteMany({ where: { id: orderAId } }),
     );
@@ -165,16 +269,24 @@ describe('Tenant isolation (e2e)', () => {
       prisma.db.order.deleteMany({ where: { id: orderBId } }),
     );
     await tenantContext.run(tenantAId, () =>
-      prisma.db.table.deleteMany({ where: { id: '10000000-0000-4000-a000-000000000041' } }),
+      prisma.db.table.deleteMany({
+        where: { id: '10000000-0000-4000-a000-000000000041' },
+      }),
     );
     await tenantContext.run(tenantBId, () =>
-      prisma.db.table.deleteMany({ where: { id: '20000000-0000-4000-a000-000000000042' } }),
+      prisma.db.table.deleteMany({
+        where: { id: '20000000-0000-4000-a000-000000000042' },
+      }),
     );
     await tenantContext.run(tenantAId, () =>
-      prisma.db.diningArea.deleteMany({ where: { id: '10000000-0000-4000-a000-000000000031' } }),
+      prisma.db.diningArea.deleteMany({
+        where: { id: '10000000-0000-4000-a000-000000000031' },
+      }),
     );
     await tenantContext.run(tenantBId, () =>
-      prisma.db.diningArea.deleteMany({ where: { id: '20000000-0000-4000-a000-000000000032' } }),
+      prisma.db.diningArea.deleteMany({
+        where: { id: '20000000-0000-4000-a000-000000000032' },
+      }),
     );
     await tenantContext.run(tenantAId, () =>
       prisma.db.user.deleteMany({ where: { email: '__user@tenant-a.test__' } }),
@@ -306,5 +418,48 @@ describe('Tenant isolation (e2e)', () => {
       prisma.db.orderItem.findUnique({ where: { id: orderItemBId } }),
     );
     expect(tenantBItem?.status).toBe('NEW');
+  });
+
+  it('does not expose or modify tenant B menu data from tenant A or without a GUC', async () => {
+    const unscopedCategories = await unscopedClient.menuCategory.findMany({
+      where: { id: { in: [menuCategoryAId, menuCategoryBId] } },
+    });
+    const unscopedOptions = await unscopedClient.modifierOption.findMany({
+      where: { id: { in: [modifierOptionAId, modifierOptionBId] } },
+    });
+    expect(unscopedCategories).toEqual([]);
+    expect(unscopedOptions).toEqual([]);
+
+    const tenantACategories = await tenantContext.run(tenantAId, () =>
+      prisma.db.menuCategory.findMany(),
+    );
+    const tenantAOptions = await tenantContext.run(tenantAId, () =>
+      prisma.db.modifierOption.findMany(),
+    );
+    expect(tenantACategories.map((category) => category.id)).toContain(
+      menuCategoryAId,
+    );
+    expect(tenantACategories.map((category) => category.id)).not.toContain(
+      menuCategoryBId,
+    );
+    expect(tenantAOptions.map((option) => option.id)).toContain(
+      modifierOptionAId,
+    );
+    expect(tenantAOptions.map((option) => option.id)).not.toContain(
+      modifierOptionBId,
+    );
+
+    const updated = await tenantContext.run(tenantAId, () =>
+      prisma.db.modifierOption.updateMany({
+        where: { id: modifierOptionBId },
+        data: { name: 'Cross-tenant update' },
+      }),
+    );
+    expect(updated.count).toBe(0);
+
+    const tenantBOption = await tenantContext.run(tenantBId, () =>
+      prisma.db.modifierOption.findUnique({ where: { id: modifierOptionBId } }),
+    );
+    expect(tenantBOption?.name).toBe('Option B');
   });
 });
