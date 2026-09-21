@@ -51,7 +51,9 @@ CREATE TABLE "modifier_groups" (
     "min_selection" INTEGER NOT NULL DEFAULT 0,
     "max_selection" INTEGER,
 
-    CONSTRAINT "modifier_groups_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "modifier_groups_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "modifier_groups_min_selection_non_negative_check" CHECK ("min_selection" >= 0),
+    CONSTRAINT "modifier_groups_selection_range_check" CHECK ("max_selection" IS NULL OR "max_selection" >= "min_selection")
 );
 
 -- CreateTable

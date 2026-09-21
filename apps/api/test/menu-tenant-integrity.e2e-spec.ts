@@ -157,6 +157,64 @@ describe('menu tenant integrity (e2e)', () => {
     ).rejects.toThrow();
   });
 
+  it('rejects invalid modifier selection ranges at the database boundary', async () => {
+    const category = await prisma.menuCategory.create({
+      data: {
+        id: 'menu-tenant-integrity-category-selection',
+        tenantId: 'menu-tenant-integrity-a',
+        name: 'Selection category',
+        sortOrder: 3,
+      },
+    });
+    const item = await prisma.menuItem.create({
+      data: {
+        id: 'menu-tenant-integrity-item-selection',
+        tenantId: 'menu-tenant-integrity-a',
+        categoryId: category.id,
+        name: 'Selection item',
+        priceByn: 1,
+        allergens: [],
+      },
+    });
+
+    await expect(
+      prisma.modifierGroup.create({
+        data: {
+          id: 'menu-tenant-integrity-group-negative-min',
+          tenantId: 'menu-tenant-integrity-a',
+          itemId: item.id,
+          name: 'Negative minimum',
+          minSelection: -1,
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.modifierGroup.create({
+        data: {
+          id: 'menu-tenant-integrity-group-negative-max',
+          tenantId: 'menu-tenant-integrity-a',
+          itemId: item.id,
+          name: 'Negative maximum',
+          maxSelection: -1,
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.modifierGroup.create({
+        data: {
+          id: 'menu-tenant-integrity-group-reversed-range',
+          tenantId: 'menu-tenant-integrity-a',
+          itemId: item.id,
+          name: 'Reversed range',
+          minSelection: 2,
+          maxSelection: 1,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   afterAll(async () => {
     await prisma.modifierOption.deleteMany({
       where: { id: { startsWith: 'menu-tenant-integrity-' } },
