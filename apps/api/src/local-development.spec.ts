@@ -30,4 +30,23 @@ describe('local development infrastructure', () => {
     expect(environment).toContain('PAYMENT_PUBLIC_KEY=');
     expect(environment).toContain('PAYMENT_SECRET_KEY=');
   });
+
+  it('keeps the initial migration safe when a legacy database already has its tables', () => {
+    const migration = readFileSync(
+      resolve(
+        repositoryRoot,
+        'apps/api/prisma/migrations/20260916000000_init/migration.sql',
+      ),
+      'utf8',
+    );
+
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "Tenant"');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "User"');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key"',
+    );
+    expect(migration).toContain(
+      'CREATE INDEX IF NOT EXISTS "User_tenantId_idx"',
+    );
+  });
 });
