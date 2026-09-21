@@ -51,8 +51,13 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
       expect(schema).toMatch(/allergens\s+String\[\]/);
     });
 
-    it('defines partial index on (tenantId, categoryId)', () => {
-      expect(schema).toContain('idx_menu_items_tenant_cat');
+    it('leaves the partial menu item index under manual SQL migration management', () => {
+      expect(schema).toContain(
+        'idx_menu_items_tenant_cat is managed in migration SQL because Prisma does not support partial indexes.',
+      );
+      expect(schema).not.toContain(
+        '@@index([tenantId, categoryId], map: "idx_menu_items_tenant_cat")',
+      );
     });
 
     it('defines ModifierGroup model', () => {

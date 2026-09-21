@@ -247,7 +247,7 @@ model MenuItem {
   modifierGroups ModifierGroup[]
 
   @@unique([tenantId, id])
-  @@index([tenantId, categoryId], map: "idx_menu_items_tenant_cat")
+  // idx_menu_items_tenant_cat is managed in migration SQL because Prisma does not support partial indexes.
   @@map("menu_items")
 }
 

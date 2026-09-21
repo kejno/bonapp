@@ -21,7 +21,7 @@ describe('CI workflow', () => {
     expect(workflow).toContain('bonapp_app:bonapp_app');
     expect(workflow).toContain('tenant-isolation.e2e-spec.ts');
     expect(workflow).toContain(
-      'npm --workspace @bonapp/api run test:e2e -- menu-tenant-integrity.e2e-spec.ts',
+      'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm --workspace @bonapp/api run test:e2e -- menu-tenant-integrity.e2e-spec.ts',
     );
   });
 
