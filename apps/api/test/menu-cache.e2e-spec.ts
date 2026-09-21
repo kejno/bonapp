@@ -8,6 +8,8 @@ import { MenuAdminService } from '../src/menu/menu-admin.service';
 import { MenuService } from '../src/menu/menu.service';
 import { StopListController } from '../src/menu/stop-list.controller';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { AuthGuard } from '../src/auth/auth.guard';
+import { TenantContextGuard } from '../src/auth/tenant-context.guard';
 
 describe('menu cache (e2e)', () => {
   let app: INestApplication<App>;
@@ -31,6 +33,7 @@ describe('menu cache (e2e)', () => {
     stopListItem: {
       upsert: jest.fn(() => Promise.resolve({ id: 'stop-list-1' })),
     },
+    menuItem: { findUnique: jest.fn(() => Promise.resolve({ id: 'item-1' })) },
   };
 
   beforeEach(async () => {
@@ -46,7 +49,17 @@ describe('menu cache (e2e)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: cache },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(TenantContextGuard)
+      .useValue({
+        canActivate: (context: { switchToHttp: () => { getRequest: () => { user: { tenantId: string } } } }) => {
+          context.switchToHttp().getRequest().user = { tenantId: 'tenant-1' };
+          return true;
+        },
+      })
+      .compile();
 
     app = module.createNestApplication();
     await app.init();
@@ -55,6 +68,14 @@ describe('menu cache (e2e)', () => {
   afterEach(async () => {
     await app.close();
   });
+
+  it.each(['/api/v1/guest/menu', '/api/v1/guest/menu?tenantId=%20%20'])(
+    'rejects a guest menu request without a tenant (%s)',
+    async (url) => {
+      await request(app.getHttpServer()).get(url).expect(400);
+      expect(prisma.menuCategory.findMany).not.toHaveBeenCalled();
+    },
+  );
 
   it('serves a cached menu and reloads it from the database after a stop-list update', async () => {
     await request(app.getHttpServer())
@@ -71,7 +92,7 @@ describe('menu cache (e2e)', () => {
     menu = [{ id: 'category-1', items: [{ id: 'item-1', isStopped: true }] }];
     await request(app.getHttpServer())
       .patch('/api/v1/stop-list')
-      .send({ tenantId: 'tenant-1', itemId: 'item-1', isStopped: true })
+      .send({ itemId: 'item-1', isStopped: true })
       .expect(200);
 
     await request(app.getHttpServer())

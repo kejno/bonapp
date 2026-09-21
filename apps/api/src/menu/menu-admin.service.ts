@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { menuCacheKey } from '../cache/cache.constants';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,7 +13,11 @@ export class MenuAdminService {
     private readonly cache: CacheService,
   ) {}
 
-  async updateItem(tenantId: string, itemId: string, data: { name?: string }) {
+  async updateItem(
+    tenantId: string,
+    itemId: string,
+    data: Prisma.MenuItemUpdateInput,
+  ) {
     const item = await this.prisma.menuItem.update({
       where: { id_tenantId: { id: itemId, tenantId } },
       data,
@@ -24,7 +29,7 @@ export class MenuAdminService {
   async updateCategory(
     tenantId: string,
     categoryId: string,
-    data: { name?: string },
+    data: Prisma.MenuCategoryUpdateInput,
   ) {
     const category = await this.prisma.menuCategory.update({
       where: { id_tenantId: { id: categoryId, tenantId } },
@@ -37,7 +42,7 @@ export class MenuAdminService {
   async updateModifierGroup(
     tenantId: string,
     modifierGroupId: string,
-    data: { name?: string },
+    data: Prisma.ModifierGroupUpdateInput,
   ) {
     const modifierGroup = await this.prisma.modifierGroup.update({
       where: { id_tenantId: { id: modifierGroupId, tenantId } },
@@ -50,7 +55,7 @@ export class MenuAdminService {
   async updateModifier(
     tenantId: string,
     modifierId: string,
-    data: { name?: string },
+    data: Prisma.ModifierUpdateInput,
   ) {
     const modifier = await this.prisma.modifier.update({
       where: { id_tenantId: { id: modifierId, tenantId } },
@@ -61,8 +66,16 @@ export class MenuAdminService {
   }
 
   async updateStopList(tenantId: string, itemId: string, isStopped: boolean) {
+    const item = await this.prisma.menuItem.findUnique({
+      where: { id_tenantId: { id: itemId, tenantId } },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new NotFoundException(`Menu item ${itemId} not found for tenant`);
+    }
+
     const stopListItem = await this.prisma.stopListItem.upsert({
-      where: { menuItemId: itemId },
+      where: { menuItemId_tenantId: { menuItemId: itemId, tenantId } },
       create: { tenantId, menuItemId: itemId, isStopped },
       update: { isStopped },
     });

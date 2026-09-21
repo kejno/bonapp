@@ -10,6 +10,7 @@ datasource db {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
+  logoUrl   String?
   createdAt DateTime @default(now())
 
   users User[]
@@ -38,7 +39,7 @@ model MenuItem {
   tenantId       String
   tenant         Tenant                 @relation(fields: [tenantId], references: [id])
   categoryId     String
-  category       MenuCategory           @relation(fields: [categoryId], references: [id])
+  category       MenuCategory           @relation(fields: [categoryId, tenantId], references: [id, tenantId])
   name           String
   price          Decimal                @db.Decimal(10, 2)
   sortOrder      Int                    @default(0)
@@ -68,7 +69,7 @@ model Modifier {
   tenantId        String
   tenant          Tenant        @relation(fields: [tenantId], references: [id])
   modifierGroupId String
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
   name            String
   price           Decimal       @db.Decimal(10, 2)
   sortOrder       Int           @default(0)
@@ -80,23 +81,26 @@ model Modifier {
 model MenuItemModifierGroup {
   menuItemId      String
   modifierGroupId String
+  tenantId        String
   sortOrder       Int           @default(0)
-  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+  menuItem        MenuItem      @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
 
   @@id([menuItemId, modifierGroupId])
+  @@index([tenantId])
 }
 
 model StopListItem {
   id         String   @id @default(uuid())
   tenantId   String
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  menuItemId String   @unique
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
   isStopped  Boolean  @default(true)
   updatedAt  DateTime @updatedAt
 
   @@index([tenantId])
+  @@unique([menuItemId, tenantId])
 }
 
 model User {

@@ -48,6 +48,43 @@ function getCurrentTicketStatus(ticketKey) {
     }
 }
 
+function applySharedPrVerdicts(reviewData, currentTicketKey, jiraConfig, normalizeRecommendation) {
+    var verdicts = reviewData && reviewData.perTestCase;
+    if (!verdicts || typeof verdicts !== 'object') return null;
+
+    var keys = Object.keys(verdicts).sort();
+    var blockedKeys = keys.filter(function(key) {
+        return normalizeRecommendation(verdicts[key]) !== 'APPROVE';
+    });
+    // Prefer the ticket that initiated this review when it is blocked; otherwise
+    // pick one stable coordinator. A single PR-wide rework must fix every open
+    // thread, so launching one rework per blocked spec only repeats the same work.
+    var coordinator = blockedKeys.indexOf(currentTicketKey) !== -1
+        ? currentTicketKey
+        : (blockedKeys[0] || null);
+
+    keys.forEach(function(key) {
+        if (key === currentTicketKey) return; // handled by the normal path below
+        try {
+            if (key === coordinator) {
+                jira_remove_label({ key: key, label: LABELS.AI_PR_REVIEWED });
+                jira_move_to_status({ key: key, statusName: jiraConfig.statuses.IN_REWORK });
+                console.log('✅ Selected', key, 'as the single shared-PR rework coordinator');
+            } else {
+                // "reviewed" means this revision's verdict was already distributed.
+                // It prevents sibling tickets from launching duplicate PR reviews or
+                // duplicate reworks while the coordinator handles the shared branch.
+                jira_add_label({ key: key, label: LABELS.AI_PR_REVIEWED });
+                console.log('✅ Applied shared-PR review marker to', key,
+                    '(' + normalizeRecommendation(verdicts[key]) + ', coordinator: ' + (coordinator || 'none') + ')');
+            }
+        } catch (e) {
+            console.warn('Could not apply shared-PR verdict to ' + key + ':', e);
+        }
+    });
+    return coordinator;
+}
+
 function getPRNumber(params, ticketKey, repoInfo) {
     let prNumber = null;
     let prUrl = null;
@@ -332,6 +369,12 @@ function action(params) {
         // Step 2: Get current ticket status (to determine Passed vs Failed on approval)
         const currentStatus = getCurrentTicketStatus(ticketKey);
         console.log('Current ticket status:', currentStatus);
+        const sharedReworkCoordinator = applySharedPrVerdicts(
+            reviewData, ticketKey, jiraConfig, normalizeRecommendation
+        );
+        if (sharedReworkCoordinator && sharedReworkCoordinator !== ticketKey) {
+            console.log('Shared PR is blocked; rework will be coordinated by', sharedReworkCoordinator);
+        }
 
         // Step 3: Get repo info + PR number
         const repoInfo = gh.getGitHubRepoInfo();
@@ -428,9 +471,17 @@ function action(params) {
             }
         }
 
-        // Step 7: Add label + remove WIP
+        // Step 7: Remember that this Test Case's verdict was distributed while
+        // another file still blocks the shared PR. Without this durable marker, removing the
+        // transient SM trigger below makes every SM pass review the same approved
+        // ticket again. A later successful rework clears this marker from every
+        // Test Case linked to the Story because the shared PR diff has changed.
         try {
-            jira_add_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            if (isApproved || (sharedReworkCoordinator && sharedReworkCoordinator !== ticketKey)) {
+                jira_add_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            } else {
+                jira_remove_label({ key: ticketKey, label: LABELS.AI_PR_REVIEWED });
+            }
         } catch (e) {}
 
         const wipLabel = params.metadata && params.metadata.contextId
@@ -494,5 +545,8 @@ function action(params) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action };
+    module.exports = {
+        action,
+        applySharedPrVerdicts
+    };
 }

@@ -40,6 +40,8 @@
  *   workflowFile   (optional) — GitHub Actions workflow file  (default: ai-teammate.yml)
  *   workflowRef    (optional) — git ref for dispatch           (default: main)
  *   concurrencyKey (optional) — workflow concurrency key override (default: ticket key)
+ *   concurrencyKeyFromParent (optional) — derive the key from the ticket's parent so
+ *                               sibling Test Cases sharing one test PR cannot overlap
  *   projectKey     (optional) — value passed as the `project_key` workflow input so the runner
  *                               activates the correct project-specific dependency setup (e.g. "myproject",
  *                               "bice"). Auto-derived from configPath basename when not set
@@ -66,6 +68,8 @@
  *                               GitHub Actions secrets.
  *   localTeammateScript (optional) — path to the local runner script
  *                               (default: agents/scripts/run-teammate-local.sh)
+ *   allowBlockedParent (optional) — if true, allow a child issue to run while its
+ *                               parent Epic is Blocked (default: false)
  */
 
 var configLoader = require('./configLoader.js');
@@ -80,6 +84,8 @@ var STALE_NON_RUNNING_WORKFLOW_MS = 6 * 60 * 60 * 1000;
 // jobParams.aiAgentProvider — see defaultProviderList() for why this is NOT
 // read from the OS environment on every call.
 var configuredProviderList = null;
+var parentIssueCache = {};
+var reservedConcurrencyKeys = {};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +100,60 @@ function loadRuleConfig(rule) {
     console.log('  🔧 Rule config: ' + rule.configPath +
         (ruleConfig.jira.project ? ' (project: ' + ruleConfig.jira.project + ')' : ''));
     return ruleConfig;
+}
+
+/**
+ * Prevent child work from advancing while its parent Epic is Blocked.
+ *
+ * Jira JQL cannot reliably express "parent Epic status != Blocked" across all
+ * project types, so enforce the invariant once here for every SM rule. The
+ * explicit opt-out is intended for exceptional maintenance rules only.
+ */
+function isBlockedByParentEpic(ticket, rule, effectiveConfig) {
+    if (!ticket || rule.allowBlockedParent === true) return false;
+
+    var fullTicket = ticket;
+    var fields = fullTicket.fields || {};
+
+    // Search results may be configured by an older dmtools version that ignores
+    // requested fields. Fetch the issue once more before deciding it has no parent.
+    if (!fields.parent) {
+        try {
+            fullTicket = jira_get_ticket({ key: ticket.key, fields: ['parent', 'issuetype'] });
+            if (typeof fullTicket === 'string') fullTicket = JSON.parse(fullTicket);
+            fields = fullTicket && fullTicket.fields || {};
+        } catch (e) {
+            console.warn('  ⚠️  Could not inspect parent for ' + ticket.key + ': ' + (e.message || e));
+            return false;
+        }
+    }
+
+    var parentKey = fields.parent && fields.parent.key;
+    if (!parentKey) return false;
+
+    var parent = parentIssueCache[parentKey];
+    if (!parent) {
+        try {
+            parent = jira_get_ticket({ key: parentKey, fields: ['status', 'issuetype'] });
+            if (typeof parent === 'string') parent = JSON.parse(parent);
+            parentIssueCache[parentKey] = parent;
+        } catch (e) {
+            console.warn('  ⚠️  Could not inspect parent ' + parentKey + ' for ' + ticket.key + ': ' + (e.message || e));
+            return false;
+        }
+    }
+
+    var parentFields = parent && parent.fields || {};
+    var parentType = parentFields.issuetype && parentFields.issuetype.name;
+    var parentStatus = parentFields.status && parentFields.status.name;
+    var configuredBlocked = effectiveConfig && effectiveConfig.jira &&
+        effectiveConfig.jira.statuses && effectiveConfig.jira.statuses.BLOCKED;
+
+    if (parentType === 'Epic' && parentStatus === (configuredBlocked || 'Blocked')) {
+        console.log('  ⏭️  ' + ticket.key + ' skipped (parent Epic ' + parentKey + ' is Blocked)');
+        return true;
+    }
+    return false;
 }
 
 function parseWorkflowRuns(raw) {
@@ -149,11 +209,73 @@ function shouldRecoverStaleTriggerLabel(rule, label) {
     return isRuleTriggerLabel(rule, label);
 }
 
+function linkedStoryKey(fields, storyIssueType) {
+    var links = fields && fields.issuelinks;
+    if (!Array.isArray(links)) return '';
+    for (var i = 0; i < links.length; i++) {
+        var other = links[i] && (links[i].outwardIssue || links[i].inwardIssue);
+        var issueType = other && other.fields && other.fields.issuetype && other.fields.issuetype.name;
+        if (other && other.key && issueType === storyIssueType) return other.key;
+    }
+    return '';
+}
+
+function resolveRuleConcurrencyKey(rule, ticketKey, ticket, effectiveConfig) {
+    if (!rule.concurrencyKeyFromParent) return rule.concurrencyKey || ticketKey;
+
+    var fields = ticket && ticket.fields || {};
+    var parentKey = fields.parent && fields.parent.key;
+    var storyIssueType = effectiveConfig && effectiveConfig.jira && effectiveConfig.jira.issueTypes
+        && effectiveConfig.jira.issueTypes.STORY || 'Story';
+    if (!parentKey) parentKey = linkedStoryKey(fields, storyIssueType);
+    if (!parentKey) {
+        try {
+            // Test Cases in this project are linked to their Story; they are not Jira
+            // subtasks, so fields.parent is normally empty. Fetch the full ticket to
+            // inspect issuelinks, matching prepareTestPRForReview/preCliTestReworkSetup.
+            var freshTicket = jira_get_ticket({ key: ticketKey });
+            if (typeof freshTicket === 'string') freshTicket = JSON.parse(freshTicket);
+            parentKey = freshTicket && freshTicket.fields && freshTicket.fields.parent
+                && freshTicket.fields.parent.key;
+            if (!parentKey) parentKey = linkedStoryKey(freshTicket && freshTicket.fields, storyIssueType);
+        } catch (e) {
+            console.warn('  ⚠️  Could not resolve parent concurrency key for ' + ticketKey + ': ' + (e.message || e));
+        }
+    }
+
+    if (!parentKey) {
+        try {
+            var linkedStories = jira_search_by_jql({
+                jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "' + storyIssueType + '"',
+                fields: ['key'],
+                maxResults: 1
+            }) || [];
+            if (linkedStories.length > 0) parentKey = linkedStories[0].key;
+        } catch (e2) {
+            console.warn('  ⚠️  Could not query linked Story for ' + ticketKey + ': ' + (e2.message || e2));
+        }
+    }
+
+    if (!parentKey) {
+        console.warn('  ⚠️  ' + ticketKey + ' has no parent — falling back to ticket concurrency');
+        return rule.concurrencyKey || ticketKey;
+    }
+    return (rule.concurrencyKeyPrefix || 'parent-') + parentKey;
+}
+
 function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
     if (!scm || typeof scm.listWorkflowRuns !== 'function') return false;
 
     var expectedRunName = configFile + ' : ' + ticketKey;
     var expectedRunNameSuffix = ' : ' + ticketKey;
+    var shortAgentName = configFile.substring(configFile.lastIndexOf('/') + 1).replace(/\.json$/, '');
+    var currentRunNames = [
+        'Team (' + shortAgentName + ':' + ticketKey + ',',
+        'Team (' + configFile + ' · ' + ticketKey + ')',
+        'Team (' + shortAgentName + ' · ' + ticketKey + ')',
+        // Backwards compatibility for runs created before the workflow rename.
+        'AI Teammate (' + configFile + ' · ' + ticketKey + ')'
+    ];
     var statuses = ['queued', 'in_progress', 'waiting', 'pending'];
 
     for (var i = 0; i < statuses.length; i++) {
@@ -168,11 +290,22 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
         for (var j = 0; j < runs.length; j++) {
             var run = runs[j] || {};
             if (isStaleNonRunningWorkflowRun(run, statuses[i])) continue;
-            var runName = run.name || run.display_title || '';
-            var matchesOldName = runName === expectedRunName;
-            var matchesDisplayName = runName.indexOf(configFile + ' : ') === 0 &&
-                runName.substring(runName.length - expectedRunNameSuffix.length) === expectedRunNameSuffix;
-            if (matchesOldName || matchesDisplayName) {
+            // GitHub exposes the workflow's static name and its run-name in
+            // different fields depending on the API/DMTools version. Check
+            // both, including the current "[provider] AI Teammate (...)" form.
+            var runNames = [run.name, run.display_title, run.displayTitle];
+            var matchesTarget = runNames.some(function(runName) {
+                if (!runName) return false;
+                return runName === expectedRunName ||
+                    (runName.indexOf(configFile + ' : ') === 0 &&
+                        runName.substring(runName.length - expectedRunNameSuffix.length) === expectedRunNameSuffix) ||
+                    currentRunNames.some(function(currentRunName) {
+                        return runName.indexOf(currentRunName) !== -1;
+                    }) ||
+                    runName.indexOf('· lock:' + ticketKey + ')') !== -1 ||
+                    runName.indexOf(',lock:' + ticketKey.replace(/^test-pr-/, '') + ')') !== -1;
+            });
+            if (matchesTarget) {
                 console.log('  ⏭️  ' + ticketKey + ' skipped (active workflow already exists: ' + expectedRunName + ')');
                 return true;
             }
@@ -425,11 +558,11 @@ function isWorkflowBudgetExhausted(rule, effectiveConfig, workflowBudget) {
     return providerBudgetBucket(workflowBudget, provider).remaining <= 0;
 }
 
-function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBudget) {
+function triggerWorkflow(repoInfo, ticketKey, ticket, rule, effectiveConfig, workflowBudget) {
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
     var workflowRef  = rule.workflowRef  || 'main';
     var resolvedCf   = buildEncodedConfigModule.resolveConfigFile(rule, effectiveConfig);
-    var concurrencyKey = rule.concurrencyKey || ticketKey;
+    var concurrencyKey = resolveRuleConcurrencyKey(rule, ticketKey, ticket, effectiveConfig);
     var resolvedProvider = resolveRuleProvider(rule, workflowBudget);
 
     // Resolve project_key: explicit rule field takes priority, then auto-derive from configPath
@@ -442,6 +575,10 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
     }
 
     try {
+        if (reservedConcurrencyKeys[concurrencyKey]) {
+            console.log('  ⏭️  ' + ticketKey + ' skipped (workflow lock already reserved in this SM pass: ' + concurrencyKey + ')');
+            return false;
+        }
         var scm = scmModule.createScm(effectiveConfig);
         ensureWorkflowBudgetActiveCount(workflowBudget, scm, workflowFile, resolvedProvider);
         var bucket = providerBudgetBucket(workflowBudget, resolvedProvider);
@@ -472,9 +609,11 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
         // 'claude-code'`) resolving to one concrete provider every time.
         var dispatchPayload = {
             concurrency_key: concurrencyKey,
+            lock_display_key: concurrencyKey.replace(/^test-pr-/, ''),
             display_key:     ticketKey,
             input_jql:       'key = ' + ticketKey,
             config_file:     resolvedCf,
+            agent_name:      resolvedCf.substring(resolvedCf.lastIndexOf('/') + 1).replace(/\.json$/, ''),
             encoded_config:  buildEncodedConfigModule.buildEncodedConfig(ticketKey, rule, effectiveConfig),
             project_key:     projectKey,
             provider:        resolvedProvider
@@ -487,6 +626,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule, effectiveConfig, workflowBud
             JSON.stringify(dispatchPayload),
             workflowRef
         );
+        reservedConcurrencyKeys[concurrencyKey] = true;
         console.log('  ✅ Triggered ' + workflowFile + '@' + workflowRef + ' for ' + ticketKey +
             (projectKey ? ' [project_key=' + projectKey + ']' : ''));
         return true;
@@ -731,7 +871,7 @@ function processRuleLocally(rule, globalRepoInfo, ruleIndex) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype', 'issuelinks'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         throw e;
@@ -755,6 +895,11 @@ function processRuleLocally(rule, globalRepoInfo, ruleIndex) {
 
     tickets.forEach(function(ticket) {
         var key = ticket.key;
+
+        if (isBlockedByParentEpic(ticket, rule, effectiveConfig)) {
+            skippedKeys.push(key);
+            return;
+        }
 
         var skipLabel = firstMatchingLabel(ticket, normalizeLabels(rule.skipIfLabel, rule.skipIfLabels));
         if (skipLabel) {
@@ -853,7 +998,7 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: interpolatedJql, fields: ['key', 'labels', 'parent', 'issuetype'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         throw e;
@@ -899,6 +1044,11 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
         var ticket = tickets[idx];
         var key = ticket.key;
 
+        if (isBlockedByParentEpic(ticket, rule, effectiveConfig)) {
+            skippedKeys.push(key);
+            continue;
+        }
+
         var skipLabel = firstMatchingLabel(ticket, normalizeLabels(rule.skipIfLabel, rule.skipIfLabels));
         if (skipLabel) {
             // Stale-label recovery is based on inspecting active GitHub Actions runs — not
@@ -907,7 +1057,7 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
                 var workflowFile = rule.workflowFile || 'ai-teammate.yml';
                 var resolvedCf = buildEncodedConfigModule.resolveConfigFile(rule, effectiveConfig);
                 var scm = scmModule.createScm(effectiveConfig);
-                var activeKey = rule.concurrencyKey || key;
+                var activeKey = resolveRuleConcurrencyKey(rule, key, ticket, effectiveConfig);
                 if (hasActiveTargetWorkflowRun(scm, workflowFile, resolvedCf, activeKey)) {
                     skippedKeys.push(key);
                     continue;
@@ -939,9 +1089,14 @@ function processRule(rule, globalRepoInfo, ruleIndex, workflowBudget) {
         // stale-label recovery. Only add it when the target job does *not* already self-manage it.
         var triggered = rule.localTeammate
             ? runTeammateLocally(key, rule, effectiveConfig)
-            : triggerWorkflow(effectiveRepoInfo, key, rule, effectiveConfig, workflowBudget);
+            : triggerWorkflow(effectiveRepoInfo, key, ticket, rule, effectiveConfig, workflowBudget);
 
         if (triggered && !ruleSelfManagesLabel) addRuleLabels(key, rule);
+        // A status-changing rule can move the ticket out of its own JQL before
+        // dispatch succeeds. Keep its phase label even when dispatch fails so
+        // a same-status retry rule can pick it up on the next SM pass instead
+        // of letting the downstream stage run prematurely.
+        if (!triggered && rule.targetStatus) addRuleLabels(key, rule);
 
         if (triggered) {
             processedKeys.push(key);
@@ -1027,6 +1182,8 @@ function action(params) {
 
     // Load global project configuration (used as default when rules have no configPath)
     projectConfig = configLoader.loadProjectConfig(p);
+    parentIssueCache = {};
+    reservedConcurrencyKeys = {};
 
     // See defaultProviderList()'s comment for why this is a jobParams field
     // and not an OS environment lookup. sm.json:
@@ -1187,12 +1344,20 @@ function action(params) {
     var allProcessedKeys = [];
     var allSkippedKeys   = [];
     var allStatusChangedKeys = [];
+    var ruleErrors = [];
 
     rules.forEach(function(rule, i) {
-        var result = processRule(rule, globalRepoInfo, i, workflowBudget);
-        allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
-        allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
-        allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        try {
+            var result = processRule(rule, globalRepoInfo, i, workflowBudget);
+            allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
+            allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
+            allStatusChangedKeys = allStatusChangedKeys.concat(result.statusChangedKeys || []);
+        } catch (e) {
+            var error = e && e.message || String(e);
+            var label = rule.description || rule.configFile || ('Rule #' + (i + 1));
+            console.error('  ❌ Rule failed; continuing with remaining rules: ' + label + ' — ' + error);
+            ruleErrors.push({ rule: label, error: error });
+        }
     });
 
     console.log('\n══ SM Agent complete — processed: ' + allProcessedKeys.length + ' ' +
@@ -1210,13 +1375,14 @@ function action(params) {
     }
 
     return {
-        success: true,
+        success: ruleErrors.length === 0,
         processed: allProcessedKeys.length,
         skipped: allSkippedKeys.length,
         processedKeys: allProcessedKeys,
         skippedKeys: allSkippedKeys,
         needsAnotherPass: allStatusChangedKeys.length > 0,
-        statusChangedKeys: allStatusChangedKeys
+        statusChangedKeys: allStatusChangedKeys,
+        ruleErrors: ruleErrors
     };
 }
 

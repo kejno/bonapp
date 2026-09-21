@@ -21,7 +21,8 @@
     "preCliJSAction": "agents/js/preCliDevelopmentSetup.js",
     "postJSAction": "agents/js/developBugAndCreatePR.js",
     "customParams": {
-      "removeLabel": "sm_bug_development_triggered"
+      "removeLabel": "sm_bug_development_triggered",
+      "prTitleTemplate": "bugDevelopment"
     },
     "inputJql": "key = BNP-15",
     "cliPrompts": [

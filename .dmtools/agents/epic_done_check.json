@@ -1,0 +1,9 @@
+{
+  "name": "JSRunner",
+  "params": {
+    "postJSAction": "agents/js/checkEpicDone.js",
+    "metadata": {
+      "descriptionPath": "agents/docs/agents/epic_done_check.md"
+    }
+  }
+}
