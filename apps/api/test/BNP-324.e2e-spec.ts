@@ -261,7 +261,11 @@ describe('BNP-324: API local environment template', () => {
 
         let output = '';
         const startTimeout = setTimeout(() => {
-          apiProcess.kill('SIGTERM');
+          if (apiProcess.pid) {
+            process.kill(-apiProcess.pid, 'SIGTERM');
+          } else {
+            apiProcess.kill('SIGTERM');
+          }
           reject(
             new Error(
               `API did not emit a ready signal within 30 s. Output:\n${output}`,
@@ -280,15 +284,20 @@ describe('BNP-324: API local environment template', () => {
             try {
               expect(output).not.toMatch(/ECONNREFUSED/);
               expect(output).not.toMatch(/connection refused/i);
+              if (!apiProcess.pid) {
+                reject(new Error('API process PID is undefined'));
+                return;
+              }
+              const pid = apiProcess.pid;
               const shutdownTimeout = setTimeout(() => {
-                process.kill(-apiProcess.pid!, 'SIGKILL');
+                process.kill(-pid, 'SIGKILL');
                 reject(new Error('API process did not stop within 5 s.'));
               }, 5_000);
               apiProcess.once('close', () => {
                 clearTimeout(shutdownTimeout);
                 resolve();
               });
-              process.kill(-apiProcess.pid!, 'SIGTERM');
+              process.kill(-pid, 'SIGTERM');
             } catch (e) {
               reject(e instanceof Error ? e : new Error(String(e)));
             }
