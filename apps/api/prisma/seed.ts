@@ -1,10 +1,15 @@
 import { PrismaClient } from '@prisma/client';
+import { createSeedOwnerPasswordHash } from '../src/prisma/seed-password';
 
 const prisma = new PrismaClient();
 
 const SEED_TENANT_ID = 'e1a7f3b0-0001-4000-a000-000000000001';
 
 async function main() {
+  const passwordHash = await createSeedOwnerPasswordHash(
+    process.env.SEED_OWNER_PASSWORD ?? '',
+  );
+
   const tenant = await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(
       "SELECT set_config('app.current_tenant_id', $1, true)",
@@ -33,12 +38,13 @@ async function main() {
       create: {
         tenantId: seededTenant.id,
         email: 'admin@lebistro.by',
-        passwordHash: '',
+        passwordHash,
         fullName: 'Le Bistro Gourmand Owner',
         role: 'OWNER',
       },
       update: {
         tenantId: seededTenant.id,
+        passwordHash,
         role: 'OWNER',
       },
     });
