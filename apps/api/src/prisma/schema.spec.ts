@@ -36,11 +36,19 @@ describe('Prisma core schema', () => {
   });
 
   it('keeps order, table, waiter, and payment references within one tenant', () => {
-    expect(schema).toContain('assignedWaiter   User?          @relation("AssignedWaiterOrders", fields: [assignedWaiterId, tenantId], references: [id, tenantId], onDelete: Restrict)');
-    expect(schema).toContain('order                 Order         @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)');
+    expect(schema).toContain(
+      'assignedWaiter   User?          @relation("AssignedWaiterOrders", fields: [assignedWaiterId, tenantId], references: [id, tenantId], onDelete: Restrict)',
+    );
+    expect(schema).toContain(
+      'order                 Order         @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)',
+    );
     expect(schema).toContain('@@unique([id, tenantId])');
-    expect(ordersMigration).toContain('FOREIGN KEY ("order_id", "tenant_id") REFERENCES "orders"("id", "tenant_id")');
-    expect(ordersMigration).toContain('FOREIGN KEY ("assigned_waiter_id", "tenant_id") REFERENCES "users"("id", "tenant_id")');
+    expect(ordersMigration).toContain(
+      'FOREIGN KEY ("order_id", "tenant_id") REFERENCES "orders"("id", "tenant_id")',
+    );
+    expect(ordersMigration).toContain(
+      'FOREIGN KEY ("assigned_waiter_id", "tenant_id") REFERENCES "users"("id", "tenant_id")',
+    );
   });
 
   it('adds orders incrementally after the core schema migrations', () => {
@@ -52,6 +60,17 @@ describe('Prisma core schema', () => {
   });
 
   it('generates the Prisma client before unit tests', () => {
-    expect(packageJson.scripts.pretest).toBe('prisma generate --schema prisma/schema.prisma');
+    expect(packageJson.scripts.pretest).toBe(
+      'prisma generate --schema prisma/schema.prisma',
+    );
+  });
+
+  it('protects order and payment monetary values with database constraints', () => {
+    expect(ordersMigration).toContain('CHECK ("daily_order_number" > 0)');
+    expect(ordersMigration).toContain('CHECK ("total_amount_byn" >= 0)');
+    expect(ordersMigration).toContain('CHECK ("tips_amount_byn" >= 0)');
+    expect(ordersMigration).toContain('CHECK ("quantity" > 0)');
+    expect(ordersMigration).toContain('CHECK ("unit_price_byn" >= 0)');
+    expect(ordersMigration).toContain('CHECK ("amount_byn" >= 0)');
   });
 });

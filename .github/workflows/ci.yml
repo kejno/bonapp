@@ -81,9 +81,40 @@ jobs:
             turbo-${{ runner.os }}-
       - run: npm test
 
+  e2e:
+    name: E2E tests (PostgreSQL)
+    needs: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: bonapp
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bonapp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bonapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - run: npm --workspace @bonapp/api run test:e2e
+
   build:
     name: Build (Node ${{ matrix.node-version }})
-    needs: test
+    needs: e2e
     runs-on: ubuntu-latest
     strategy:
       matrix:

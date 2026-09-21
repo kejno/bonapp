@@ -26,6 +26,36 @@ describe('order tenant integrity (e2e)', () => {
     await expect(
       prisma.$executeRaw`INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "assigned_waiter_id", "updated_at") VALUES ('tenant-integrity-order-cross-waiter', 'tenant-integrity-a', 'tenant-integrity-table-a', 2, 'tenant-integrity-waiter-b', CURRENT_TIMESTAMP)`,
     ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "updated_at") VALUES ('tenant-integrity-order-cross-table', 'tenant-integrity-a', 'tenant-integrity-table-b', 2, CURRENT_TIMESTAMP)`,
+    ).rejects.toThrow();
+  });
+
+  it('rejects non-positive quantities and negative monetary amounts', async () => {
+    await expect(
+      prisma.$executeRaw`INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "total_amount_byn", "updated_at") VALUES ('tenant-integrity-order-negative-total', 'tenant-integrity-a', 'tenant-integrity-table-a', 0, -1, CURRENT_TIMESTAMP)`,
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "tips_amount_byn", "updated_at") VALUES ('tenant-integrity-order-negative-tips', 'tenant-integrity-a', 'tenant-integrity-table-a', 2, -1, CURRENT_TIMESTAMP)`,
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "order_items" ("id", "order_id", "item_id", "quantity", "unit_price_byn", "selected_modifiers", "status", "kitchen_department") VALUES ('tenant-integrity-item-zero-quantity', 'tenant-integrity-order-a', 'item', 0, 1, '[]', 'NEW', 'kitchen')`,
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "order_items" ("id", "order_id", "item_id", "quantity", "unit_price_byn", "selected_modifiers", "status", "kitchen_department") VALUES ('tenant-integrity-item-negative-price', 'tenant-integrity-order-a', 'item', 1, -1, '[]', 'NEW', 'kitchen')`,
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "payments" ("id", "tenant_id", "order_id", "amount_byn", "tips_amount_byn", "provider") VALUES ('tenant-integrity-payment-negative-amount', 'tenant-integrity-a', 'tenant-integrity-order-a', -1, 0, 'test')`,
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.$executeRaw`INSERT INTO "payments" ("id", "tenant_id", "order_id", "amount_byn", "tips_amount_byn", "provider") VALUES ('tenant-integrity-payment-negative-tips', 'tenant-integrity-a', 'tenant-integrity-order-a', 1, -1, 'test')`,
+    ).rejects.toThrow();
   });
 
   afterAll(async () => {

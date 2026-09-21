@@ -26,7 +26,10 @@ CREATE TABLE "orders" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "orders_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "orders_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "orders_daily_order_number_positive_check" CHECK ("daily_order_number" > 0),
+    CONSTRAINT "orders_total_amount_byn_non_negative_check" CHECK ("total_amount_byn" >= 0),
+    CONSTRAINT "orders_tips_amount_byn_non_negative_check" CHECK ("tips_amount_byn" >= 0)
 );
 
 -- CreateTable
@@ -41,7 +44,9 @@ CREATE TABLE "order_items" (
     "status" TEXT NOT NULL,
     "kitchen_department" TEXT NOT NULL,
 
-    CONSTRAINT "order_items_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "order_items_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "order_items_quantity_positive_check" CHECK ("quantity" > 0),
+    CONSTRAINT "order_items_unit_price_byn_non_negative_check" CHECK ("unit_price_byn" >= 0)
 );
 
 -- CreateTable
@@ -59,7 +64,9 @@ CREATE TABLE "payments" (
     "payload" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "payments_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "payments_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "payments_amount_byn_non_negative_check" CHECK ("amount_byn" >= 0),
+    CONSTRAINT "payments_tips_amount_byn_non_negative_check" CHECK ("tips_amount_byn" >= 0)
 );
 
 -- CreateIndex
