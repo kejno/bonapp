@@ -948,9 +948,12 @@ function action(params) {
         const issueTypeName = actualParams.ticket && actualParams.ticket.fields &&
             actualParams.ticket.fields.issuetype && actualParams.ticket.fields.issuetype.name;
         const isBug = jiraConfig.issueTypes && issueTypeName === jiraConfig.issueTypes.BUG;
-        const prTitleTemplate = isBug && config.formats.prTitle.bugDevelopment
-            ? config.formats.prTitle.bugDevelopment
-            : config.formats.prTitle.development;
+        const explicitPrTitleTemplate = _customParams && _customParams.prTitleTemplate &&
+            config.formats.prTitle[_customParams.prTitleTemplate];
+        const prTitleTemplate = explicitPrTitleTemplate ||
+            (isBug && config.formats.prTitle.bugDevelopment
+                ? config.formats.prTitle.bugDevelopment
+                : config.formats.prTitle.development);
         const prTitle = configLoader.formatTemplate(prTitleTemplate, {ticketKey: ticketKey, ticketSummary: ticketSummary});
         const prResult = createPullRequest(prTitle, branchName, prTarget);
 
