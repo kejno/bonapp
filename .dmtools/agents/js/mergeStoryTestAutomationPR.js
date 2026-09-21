@@ -108,6 +108,14 @@ function moveLinkedTestCases(storyKey, testCaseType, jiraConfig) {
     return { moved: moved, skipped: skipped, total: testCases.length };
 }
 
+// Used when a newly-created shared test PR has no diff because its commits are
+// already present in main. There is nothing to merge, but the linked Test Case
+// tickets still need the same status reconciliation as a normal PR merge.
+function reconcileLinkedTestCases(storyKey, jiraConfig) {
+    var testCaseType = jiraConfig.issueTypes.TEST_CASE || 'Test Case';
+    return moveLinkedTestCases(storyKey, testCaseType, jiraConfig);
+}
+
 function finalizeAlreadyMergedPR(params, scm, storyKey, pr, testCaseType, customParams, jiraConfig) {
     const prNumber = pr.number;
     const prUrl = pr.html_url;
@@ -412,5 +420,5 @@ function action(params) {
 action.attemptMerge = attemptMerge;
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action, attemptMerge };
+module.exports = { action, attemptMerge, reconcileLinkedTestCases };
 }

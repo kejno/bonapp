@@ -214,6 +214,11 @@ function markTestPrFinalized(ticketKey) {
 
 function finalizeAlreadyMergedTestCase(ticketKey, branchName, issueType, jiraConfig) {
     try {
+        if (issueType === jiraConfig.issueTypes.STORY || issueType === jiraConfig.issueTypes.BUG) {
+            const tcResult = storyTestMerge.reconcileLinkedTestCases(ticketKey, jiraConfig);
+            console.log('Reconciled linked Test Cases for zero-diff shared PR:',
+                tcResult.moved, 'moved,', tcResult.skipped, 'skipped');
+        }
         markTestPrMerged(ticketKey);
         const ticket = jira_get_ticket({ key: ticketKey });
         const currentStatus = ticket && ticket.fields && ticket.fields.status
