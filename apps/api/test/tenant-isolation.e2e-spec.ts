@@ -28,30 +28,60 @@ describe('Tenant isolation (e2e)', () => {
     await app.init();
 
     prisma = moduleFixture.get<PrismaService>(PrismaService);
-    tenantContext = moduleFixture.get<TenantContextService>(TenantContextService);
+    tenantContext =
+      moduleFixture.get<TenantContextService>(TenantContextService);
 
-    const tenantA = await prisma.tenant.create({ data: { name: '__test_tenant_A__' } });
-    tenantAId = tenantA.id;
-    await prisma.user.create({
-      data: { tenantId: tenantAId, email: '__user@tenant-a.test__', role: 'STAFF' },
+    tenantAId = '10000000-0000-4000-a000-000000000001';
+    tenantBId = '20000000-0000-4000-a000-000000000002';
+
+    await prisma.adminDb.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        tenantAId,
+      );
+      await tx.tenant.create({
+        data: { id: tenantAId, name: '__test_tenant_A__' },
+      });
+      await tx.user.create({
+        data: {
+          tenantId: tenantAId,
+          email: '__user@tenant-a.test__',
+          role: 'STAFF',
+        },
+      });
     });
 
-    const tenantB = await prisma.tenant.create({ data: { name: '__test_tenant_B__' } });
-    tenantBId = tenantB.id;
-    await prisma.user.create({
-      data: { tenantId: tenantBId, email: '__user@tenant-b.test__', role: 'STAFF' },
+    await prisma.adminDb.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        tenantBId,
+      );
+      await tx.tenant.create({
+        data: { id: tenantBId, name: '__test_tenant_B__' },
+      });
+      await tx.user.create({
+        data: {
+          tenantId: tenantBId,
+          email: '__user@tenant-b.test__',
+          role: 'STAFF',
+        },
+      });
     });
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany({
-      where: {
-        email: { in: ['__user@tenant-a.test__', '__user@tenant-b.test__'] },
-      },
-    });
-    await prisma.tenant.deleteMany({
-      where: { id: { in: [tenantAId, tenantBId] } },
-    });
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.user.deleteMany({ where: { email: '__user@tenant-a.test__' } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.user.deleteMany({ where: { email: '__user@tenant-b.test__' } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.tenant.delete({ where: { id: tenantAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.tenant.delete({ where: { id: tenantBId } }),
+    );
     await app.close();
   });
 

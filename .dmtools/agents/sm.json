@@ -9,7 +9,7 @@
       "_comment_aiAgentProvider": "Local/default provider list. In GitHub Actions, sm-agent.yml overrides this value from the AI_AGENT_PROVIDER repo variable because dmtools' GraalJS context cannot read OS environment variables directly. See .dmtools/README.md's 'Параллельный запуск Claude + Codex' section.",
       "aiAgentProvider": "claude-code,codex-1,codex-2",
       "_comment_maxTriggeredWorkflows": "Each Codex account has its own single-use rotating refresh token, secret and concurrency group. codex is retained as a backwards-compatible alias for account 1; use codex-1,codex-2 for two-account scheduling.",
-      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1, "codex-1": 1, "codex-2": 1 },
+      "maxTriggeredWorkflows": { "claude-code": 1, "codex": 1, "codex-1": 1, "codex-2": 1 },
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
@@ -75,8 +75,14 @@
           "enabled": true
         },
         {
-          "description": "Backlog / To Do / Ready For Development / In Development / In Rework Bugs → trigger bug_development",
-          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Backlog', 'To Do', 'Ready For Development', 'In Development', 'In Rework')",
+          "description": "In Development Stories with an interrupted development run → retry",
+          "jql": "project = {jiraProject} AND issuetype = Story AND status = 'In Development' AND labels = 'sm_story_development_triggered'",
+          "configFile": "agents/story_development.json",
+          "enabled": true
+        },
+        {
+          "description": "Backlog / To Do / Ready For Development / In Development Bugs → trigger bug_development",
+          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Backlog', 'To Do', 'Ready For Development', 'In Development')",
           "configFile": "agents/bug_development.json",
           "concurrencyKey": "bug_development",
           "skipIfLabel": "sm_bug_development_triggered",
@@ -86,23 +92,31 @@
         },
         {
           "description": "Review/Rework/Blocked Stories & Bugs with already merged PR → recover Merged status",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review', 'In Rework', 'Blocked') ORDER BY updated ASC",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review', 'In Rework', 'Blocked') AND (labels is EMPTY OR labels NOT IN ('test_pr_finalized')) ORDER BY updated ASC",
           "configFile": "agents/recover_merged_pr.json",
           "localExecution": true,
           "enabled": true
         },
         {
-          "description": "Blocked Stories & Bugs with all resolved dependencies → move to Backlog",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('Blocked') AND (labels is EMPTY OR labels NOT IN ('ai_content_blocker')) ORDER BY updated ASC",
+          "description": "In Progress Epics with all child Stories Done → Done",
+          "jql": "project = {jiraProject} AND issuetype = Epic AND status = 'In Progress'",
+          "configFile": "agents/epic_done_check.json",
+          "localExecution": true,
+          "enabled": true
+        },
+        {
+          "description": "Blocked Epics, Stories & Bugs with all resolved dependencies → resume",
+          "jql": "project = {jiraProject} AND issuetype in ('Epic', 'Story', 'Bug') AND status = 'Blocked' ORDER BY updated ASC",
           "configFile": "agents/unblock_resolved_dependencies.json",
+          "skipIfLabel": "ai_content_blocker",
           "localExecution": true,
           "enabled": true
         },
         {
           "description": "In Review Stories & Bugs → trigger pr_review",
-          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Story', 'Bug') AND status = 'In Review'",
           "configFile": "agents/pr_review.json",
-          "skipIfLabel": "sm_story_review_triggered",
+          "skipIfLabels": ["sm_story_review_triggered", "pr_approved"],
           "addLabel": "sm_story_review_triggered",
           "enabled": true
         },
@@ -131,6 +145,12 @@
           "enabled": true
         },
         {
+          "description": "Ready For Testing Stories with unfinished test case generation → retry",
+          "jql": "project = {jiraProject} AND issuetype = Story AND status = 'Ready For Testing' AND labels = 'sm_test_cases_triggered'",
+          "configFile": "agents/test_cases_generator.json",
+          "enabled": true
+        },
+        {
           "description": "Merged Bugs → Ready For Testing + RCA/prevention summary",
           "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Merged')",
           "targetStatus": "Ready For Testing",
@@ -140,10 +160,16 @@
           "enabled": true
         },
         {
+          "description": "Ready For Testing Bugs with unfinished merge summary → retry",
+          "jql": "project = {jiraProject} AND issuetype = Bug AND status = 'Ready For Testing' AND labels = 'sm_bug_merged_triggered'",
+          "configFile": "agents/bug_merged.json",
+          "enabled": true
+        },
+        {
           "description": "Ready For Testing Bugs → generate test cases",
-          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('Ready For Testing') AND (labels is EMPTY OR labels NOT IN ('sm_bug_test_cases_triggered', 'sm_bug_test_cases_done'))",
+          "jql": "project = {jiraProject} AND issuetype = Bug AND status = 'Ready For Testing'",
           "configFile": "agents/bug_test_cases_generator.json",
-          "skipIfLabel": "sm_bug_test_cases_triggered",
+          "skipIfLabels": ["sm_bug_test_cases_done", "sm_bug_merged_triggered", "sm_bug_test_cases_triggered"],
           "addLabel": "sm_bug_test_cases_triggered",
           "enabled": true
         },
@@ -164,7 +190,9 @@
           "configFile": "agents/bug_test_automation.json",
           "skipIfLabel": "sm_bug_test_automation_triggered",
           "skipIfLabels": [
-            "sm_bug_test_cases_triggered"
+            "sm_bug_merged_triggered",
+            "sm_bug_test_cases_triggered",
+            "test_pr_finalized"
           ],
           "addLabel": "sm_bug_test_automation_triggered",
           "enabled": true
@@ -173,6 +201,8 @@
           "description": "In Rework Test Cases → trigger pr_test_automation_rework",
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Rework')",
           "configFile": "agents/pr_test_automation_rework.json",
+          "concurrencyKeyFromParent": true,
+          "concurrencyKeyPrefix": "test-pr-",
           "skipIfLabel": "sm_test_rework_triggered",
           "addLabel": "sm_test_rework_triggered",
           "enabled": true
@@ -181,7 +211,9 @@
           "description": "In Review Test Cases → trigger pr_test_automation_review",
           "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
           "configFile": "agents/pr_test_automation_review.json",
-          "skipIfLabel": "sm_test_review_triggered",
+          "concurrencyKeyFromParent": true,
+          "concurrencyKeyPrefix": "test-pr-",
+          "skipIfLabels": ["sm_test_review_triggered", "ai_pr_reviewed"],
           "addLabel": "sm_test_review_triggered",
           "enabled": true
         },
@@ -200,19 +232,19 @@
           "enabled": true
         },
         {
-          "description": "In Testing Stories with an open test PR → review the story test automation PR",
-          "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
-          "configFile": "agents/pr_story_test_automation_review.json",
-          "skipIfLabel": "sm_story_test_review_triggered",
-          "addLabel": "sm_story_test_review_triggered",
-          "enabled": true
-        },
-        {
           "description": "In Testing Stories with test PR needing rework → trigger story_test_automation_rework",
           "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND labels = 'test_pr_rework_needed'",
           "configFile": "agents/story_test_automation_rework.json",
           "skipIfLabel": "sm_story_test_rework_triggered",
           "addLabel": "sm_story_test_rework_triggered",
+          "enabled": true
+        },
+        {
+          "description": "In Testing Stories with an open test PR → review the story test automation PR",
+          "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved', 'test_pr_finalized', 'test_pr_rework_needed'))",
+          "configFile": "agents/pr_story_test_automation_review.json",
+          "skipIfLabel": "sm_story_test_review_triggered",
+          "addLabel": "sm_story_test_review_triggered",
           "enabled": true
         },
         {
@@ -224,7 +256,7 @@
         },
         {
           "description": "In Testing Bugs with an open test PR → review the bug test automation PR",
-          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Bug') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved', 'test_pr_finalized'))",
           "configFile": "agents/pr_bug_test_automation_review.json",
           "skipIfLabel": "sm_bug_test_review_triggered",
           "addLabel": "sm_bug_test_review_triggered",

@@ -5,6 +5,12 @@
 - Must be a valid JSON array with no trailing commas.
 - Each item may represent an Epic, Story, or Bug.
 
+### Epic intake mode
+
+- If the source Epic has label `umbrella_epic`, output **only Epic entries** with `parent: null`. Never output Story or Bug entries in that run.
+- If the source is a regular Epic, output **only Story entries** with `parent` equal to the source Epic key. Never create another Epic in that run.
+- This is a two-stage process: the umbrella intake creates product Epics; later, each product Epic's own intake creates its Stories.
+
 | Field | Type | Notes |
 |-------|------|-------|
 | `type` | string | `Epic`, `Story`, or `Bug` |

@@ -174,6 +174,7 @@ function action(params) {
                 var reworkAttempted = labels.indexOf('sm_bug_rework_attempted') !== -1;
                 if (reworkAttempted) {
                     console.log('Test PR finalized and one rework already attempted — moving', ticketKey, 'to Blocked for triage');
+                    jira_add_label({ key: ticketKey, label: LABELS.CONTENT_BLOCKER });
                     jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.BLOCKED });
                     jira_post_comment({
                         key: ticketKey,

@@ -450,6 +450,20 @@ function createPullRequest(title, branchName, baseBranch) {
     });
 }
 
+function resolvePrTitleTemplate(config, customParams, ticket) {
+    const explicitTemplate = customParams && customParams.prTitleTemplate &&
+        config.formats.prTitle[customParams.prTitleTemplate];
+    if (explicitTemplate) return explicitTemplate;
+
+    const issueTypeName = ticket && ticket.fields && ticket.fields.issuetype &&
+        ticket.fields.issuetype.name;
+    const issueTypes = config.jira && config.jira.issueTypes;
+    const isBug = issueTypes && issueTypeName === issueTypes.BUG;
+    return isBug && config.formats.prTitle.bugDevelopment
+        ? config.formats.prTitle.bugDevelopment
+        : config.formats.prTitle.development;
+}
+
 /**
  * Post comment to Jira ticket with PR details
  *
@@ -945,7 +959,8 @@ function action(params) {
         console.log('Using outputs/response.md as PR body (' + responseContent.length + ' characters)');
 
         // Create Pull Request
-        const prTitle = configLoader.formatTemplate(config.formats.prTitle.development, {ticketKey: ticketKey, ticketSummary: ticketSummary});
+        const prTitleTemplate = resolvePrTitleTemplate(config, _customParams, actualParams.ticket);
+        const prTitle = configLoader.formatTemplate(prTitleTemplate, {ticketKey: ticketKey, ticketSummary: ticketSummary});
         const prResult = createPullRequest(prTitle, branchName, prTarget);
 
         if (!prResult.success) {
@@ -1106,5 +1121,5 @@ function action(params) {
 }
 // Export for dmtools standalone execution
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action };
+    module.exports = { action, resolvePrTitleTemplate };
 }
