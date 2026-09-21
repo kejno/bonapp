@@ -13,7 +13,10 @@ model Tenant {
   logoUrl   String?
   createdAt DateTime @default(now())
 
-  users User[]
+  users           User[]
+  menuCategories  MenuCategory[]
+  menuItems       MenuItem[]
+  modifierGroups  ModifierGroup[]
 }
 
 model User {
@@ -24,4 +27,78 @@ model User {
   role     String
 
   @@index([tenantId])
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  menuItems MenuItem[]
+
+  @@index([tenantId])
+}
+
+model MenuItem {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenant             Tenant       @relation(fields: [tenantId], references: [id])
+  categoryId         String
+  category           MenuCategory @relation(fields: [categoryId], references: [id])
+  name               String
+  description        String?
+  priceByn           Decimal  @db.Decimal(10,2)
+  costPriceByn       Decimal? @db.Decimal(10,2)
+  imageUrl           String?
+  weightGrams        Int?
+  calories           Int?
+  proteins           Decimal? @db.Decimal(7,2)
+  fats               Decimal? @db.Decimal(7,2)
+  carbs              Decimal? @db.Decimal(7,2)
+  allergens          String[]
+  kitchenDepartment  String?
+  cookingTimeMinutes Int?
+  isInStopList       Boolean  @default(false)
+  posItemId          String?
+  isHit              Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  modifierGroups ModifierGroup[]
+
+  @@index([tenantId, categoryId], map: "idx_menu_items_tenant_cat")
+}
+
+model ModifierGroup {
+  id           String  @id @default(uuid())
+  tenantId     String
+  tenant       Tenant  @relation(fields: [tenantId], references: [id])
+  itemId       String
+  menuItem     MenuItem @relation(fields: [itemId], references: [id])
+  name         String
+  isRequired   Boolean @default(false)
+  minSelection Int     @default(0)
+  maxSelection Int?
+
+  modifierOptions ModifierOption[]
+
+  @@index([tenantId])
+  @@index([itemId])
+}
+
+model ModifierOption {
+  id            String  @id @default(uuid())
+  groupId       String
+  group         ModifierGroup @relation(fields: [groupId], references: [id])
+  name          String
+  extraPriceByn Decimal @default(0) @db.Decimal(10,2)
+  isDefault     Boolean @default(false)
+
+  @@index([groupId])
 }
