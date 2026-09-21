@@ -90,7 +90,7 @@ DROP INDEX "User_tenantId_idx";
 ALTER TABLE "users" DROP CONSTRAINT "User_tenantId_fkey";
 
 CREATE UNIQUE INDEX "tenants_slug_key" ON "tenants"("slug");
-CREATE UNIQUE INDEX "users_tenant_id_email_key" ON "users"("tenant_id", "email");
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 CREATE INDEX "users_tenant_id_idx" ON "users"("tenant_id");
 CREATE INDEX "dining_areas_tenant_id_idx" ON "dining_areas"("tenant_id");
 CREATE UNIQUE INDEX "tables_qr_token_key" ON "tables"("qr_token");

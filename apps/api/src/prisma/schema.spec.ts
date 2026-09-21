@@ -7,7 +7,7 @@ const rlsMigrationPath = join(
   process.cwd(),
   'prisma',
   'migrations',
-  '20260921130000_enable_rls_for_dining_areas_and_tables',
+  '20260922010000_enable_rls_for_dining_areas_and_tables',
   'migration.sql',
 );
 const ordersMigrationPath = join(
@@ -22,7 +22,7 @@ const orderRlsMigrationPath = join(
   process.cwd(),
   'prisma',
   'migrations',
-  '20260921140000_enable_rls_for_orders_and_payments',
+  '20260922020000_enable_rls_for_orders_and_payments',
   'migration.sql',
 );
 const packageJson = JSON.parse(

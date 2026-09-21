@@ -1,19 +1,19 @@
--- Order and payment rows are tenant-owned and must remain in the RLS registry.
+-- Dining areas and tables are tenant-owned.
 
-ALTER TABLE "orders" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "orders" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "dining_areas" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "dining_areas" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation ON "orders"
+CREATE POLICY tenant_isolation ON "dining_areas"
   AS PERMISSIVE
   FOR ALL
   TO PUBLIC
   USING ("tenant_id" = current_setting('app.current_tenant_id', true))
   WITH CHECK ("tenant_id" = current_setting('app.current_tenant_id', true));
 
-ALTER TABLE "payments" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "payments" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "tables" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "tables" FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation ON "payments"
+CREATE POLICY tenant_isolation ON "tables"
   AS PERMISSIVE
   FOR ALL
   TO PUBLIC
