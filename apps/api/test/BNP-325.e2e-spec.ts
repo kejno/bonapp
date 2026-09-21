@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import * as net from 'node:net';
 import { resolve as pathResolve } from 'node:path';
 
@@ -75,12 +75,20 @@ const stopProcessGroup = (apiProcess: ChildProcess) =>
     }
 
     const pid = apiProcess.pid;
-    const forceStopTimeout = setTimeout(() => {
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {
-        // The process group has already stopped.
+    const sendSignal = (signal: NodeJS.Signals) => {
+      if (process.platform !== 'win32') {
+        try {
+          process.kill(-pid, signal);
+          return;
+        } catch {
+          // Fall back to the child process when its group is unavailable.
+        }
       }
+
+      apiProcess.kill(signal);
+    };
+    const forceStopTimeout = setTimeout(() => {
+      sendSignal('SIGKILL');
     }, 10_000);
 
     apiProcess.once('close', () => {
@@ -88,12 +96,50 @@ const stopProcessGroup = (apiProcess: ChildProcess) =>
       resolve();
     });
 
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      clearTimeout(forceStopTimeout);
-      resolve();
-    }
+    sendSignal('SIGTERM');
+  });
+
+const waitForApiStartup = (apiProcess: ChildProcess) =>
+  new Promise<void>((resolve, reject) => {
+    let output = '';
+    const startTimeout = setTimeout(() => {
+      clearInterval(readinessCheck);
+      reject(
+        new Error(
+          `API did not become ready within 30 s. Output:\n${output}`,
+        ),
+      );
+    }, 30_000);
+
+    const handleData = (data: Buffer) => {
+      output += data.toString();
+    };
+    const checkReadiness = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:3000/api/v1');
+        if (response.ok) {
+          clearTimeout(startTimeout);
+          clearInterval(readinessCheck);
+          expect(output).not.toMatch(/ECONNREFUSED/);
+          expect(output).not.toMatch(/connection refused/i);
+          resolve();
+        }
+      } catch {
+        // The API is still starting.
+      }
+    };
+    const readinessCheck = setInterval(() => {
+      void checkReadiness();
+    }, 250);
+
+    apiProcess.stdout?.on('data', handleData);
+    apiProcess.stderr?.on('data', handleData);
+    apiProcess.once('error', (error) => {
+      clearTimeout(startTimeout);
+      clearInterval(readinessCheck);
+      reject(error);
+    });
+    void checkReadiness();
   });
 
 async function waitForServicesHealthy() {
@@ -118,10 +164,10 @@ async function waitForServicesHealthy() {
 }
 
 describe('BNP-325: local start guide', () => {
-  const envPath = pathResolve(repositoryRoot, 'apps/api/.env');
   const envExamplePath = pathResolve(repositoryRoot, 'apps/api/.env.example');
-  let envCreatedByTest = false;
-  let originalEnvContent: string | null = null;
+  let databaseUrl: string;
+  let redisUrl: string;
+  let runtimeEnvironment: NodeJS.ProcessEnv;
 
   beforeAll(async () => {
     [postgresPort, redisPort, minioApiPort, minioConsolePort] = await Promise.all([
@@ -130,24 +176,34 @@ describe('BNP-325: local start guide', () => {
       getAvailablePort(),
       getAvailablePort(),
     ]);
-    originalEnvContent = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null;
-    envCreatedByTest = originalEnvContent === null;
-    const sourceEnv = originalEnvContent ?? readFileSync(envExamplePath, 'utf8');
-    const isolatedEnv = sourceEnv
-      .replace(
-        /^DATABASE_URL=.*$/m,
-        `DATABASE_URL=postgresql://postgres:postgres@localhost:${postgresPort}/bonapp`,
-      )
-      .replace(/^REDIS_URL=.*$/m, `REDIS_URL=redis://localhost:${redisPort}`);
-    writeFileSync(envPath, isolatedEnv);
+    const environmentTemplate = readFileSync(envExamplePath, 'utf8');
+    const templateEnvironment = Object.fromEntries(
+      environmentTemplate.split('\n').flatMap((line) => {
+        const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+        return match ? [[match[1], match[2]]] : [];
+      }),
+    );
+    const databaseUrlMatch = environmentTemplate.match(/^DATABASE_URL=(.+)$/m);
+    const redisUrlMatch = environmentTemplate.match(/^REDIS_URL=(.+)$/m);
+    if (!databaseUrlMatch || !redisUrlMatch) {
+      throw new Error('.env.example must define DATABASE_URL and REDIS_URL');
+    }
+
+    databaseUrl = databaseUrlMatch[1]
+      .trim()
+      .replace(/localhost:\d+/, `localhost:${postgresPort}`);
+    redisUrl = redisUrlMatch[1]
+      .trim()
+      .replace(/localhost:\d+/, `localhost:${redisPort}`);
+    runtimeEnvironment = {
+      ...process.env,
+      ...templateEnvironment,
+      DATABASE_URL: databaseUrl,
+      REDIS_URL: redisUrl,
+    };
   });
 
   afterAll(() => {
-    if (originalEnvContent !== null) {
-      writeFileSync(envPath, originalEnvContent);
-    } else if (envCreatedByTest && existsSync(envPath)) {
-      unlinkSync(envPath);
-    }
     try {
       compose('down', '--volumes');
     } catch {
@@ -201,16 +257,6 @@ describe('BNP-325: local start guide', () => {
       expect(postgres?.Health).toBe('healthy');
       expect(redis?.Health).toBe('healthy');
 
-      // Load DATABASE_URL from the .env created from .env.example so the migration
-      // runs in the documented environment rather than a hardcoded override.
-      const createdEnvContent = readFileSync(envPath, 'utf8');
-      const dbUrlMatch = createdEnvContent.match(/^DATABASE_URL=(.+)$/m);
-      expect(dbUrlMatch).not.toBeNull();
-      const databaseUrl = dbUrlMatch![1]
-        .trim()
-        .replace(/localhost:\d+/, `localhost:${postgresPort}`);
-      const redisUrl = `redis://localhost:${redisPort}`;
-
       // Step 2: execute the exact documented migration command.
       const migrateOutput = execFileSync(
         'npx',
@@ -226,10 +272,7 @@ describe('BNP-325: local start guide', () => {
           encoding: 'utf8',
           stdio: 'pipe',
           timeout: 60_000,
-          env: {
-            ...process.env,
-            DATABASE_URL: databaseUrl,
-          },
+          env: runtimeEnvironment,
         },
       );
       expect(migrateOutput).not.toMatch(/error/i);
@@ -237,53 +280,13 @@ describe('BNP-325: local start guide', () => {
       // Step 3: execute the documented workspace startup command and verify the API boots.
       let apiProcess: ChildProcess | undefined;
       try {
-        await new Promise<void>((resolve, reject) => {
-          apiProcess = spawn('npm', ['run', 'dev'], {
-            cwd: repositoryRoot,
-            detached: true,
-            stdio: 'pipe',
-            env: {
-              ...process.env,
-              DATABASE_URL: databaseUrl,
-              REDIS_URL: redisUrl,
-            },
-          });
-
-          let output = '';
-          const startTimeout = setTimeout(() => {
-            reject(
-              new Error(
-                `API did not emit a ready signal within 30 s. Output:\n${output}`,
-              ),
-            );
-          }, 30_000);
-
-          const handleData = (data: Buffer) => {
-            const chunk = data.toString();
-            output += chunk;
-            if (
-              /Nest application successfully started/i.test(output) ||
-              /Application is running on/i.test(output)
-            ) {
-              clearTimeout(startTimeout);
-              try {
-                expect(output).not.toMatch(/ECONNREFUSED/);
-                expect(output).not.toMatch(/connection refused/i);
-                resolve();
-              } catch (error) {
-                reject(error instanceof Error ? error : new Error(String(error)));
-              }
-            }
-          };
-
-          apiProcess.stdout?.on('data', handleData);
-          apiProcess.stderr?.on('data', handleData);
-
-          apiProcess.once('error', (error) => {
-            clearTimeout(startTimeout);
-            reject(error);
-          });
+        apiProcess = spawn('npm', ['run', 'dev'], {
+          cwd: repositoryRoot,
+          detached: process.platform !== 'win32',
+          stdio: 'pipe',
+          env: runtimeEnvironment,
         });
+        await waitForApiStartup(apiProcess);
       } finally {
         if (apiProcess) {
           await stopProcessGroup(apiProcess);
