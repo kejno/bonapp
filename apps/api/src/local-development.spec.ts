@@ -49,4 +49,15 @@ describe('local development infrastructure', () => {
       'CREATE INDEX IF NOT EXISTS "User_tenantId_idx"',
     );
   });
+
+  it('stops the complete API development process group after the startup check', () => {
+    const startupCheck = readFileSync(
+      resolve(repositoryRoot, 'apps/api/test/BNP-325.e2e-spec.ts'),
+      'utf8',
+    );
+
+    expect(startupCheck).toContain('detached: true');
+    expect(startupCheck).toContain("process.kill(-pid, 'SIGTERM')");
+    expect(startupCheck).toContain("apiProcess.once('close', () =>");
+  });
 });

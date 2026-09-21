@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import * as net from 'node:net';
 import { resolve as pathResolve } from 'node:path';
@@ -62,6 +62,39 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const stopProcessGroup = (apiProcess: ChildProcess) =>
+  new Promise<void>((resolve) => {
+    if (
+      !apiProcess.pid ||
+      apiProcess.exitCode !== null ||
+      apiProcess.signalCode !== null
+    ) {
+      resolve();
+      return;
+    }
+
+    const pid = apiProcess.pid;
+    const forceStopTimeout = setTimeout(() => {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        // The process group has already stopped.
+      }
+    }, 10_000);
+
+    apiProcess.once('close', () => {
+      clearTimeout(forceStopTimeout);
+      resolve();
+    });
+
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      clearTimeout(forceStopTimeout);
+      resolve();
+    }
+  });
 
 async function waitForServicesHealthy() {
   const deadline = Date.now() + HEALTHCHECK_TIMEOUT;
@@ -202,54 +235,60 @@ describe('BNP-325: local start guide', () => {
       expect(migrateOutput).not.toMatch(/error/i);
 
       // Step 3: execute the documented workspace startup command and verify the API boots.
-      await new Promise<void>((resolve, reject) => {
-        const apiProcess = spawn('npm', ['run', 'dev'], {
-          cwd: repositoryRoot,
-          stdio: 'pipe',
-          env: {
-            ...process.env,
-            DATABASE_URL: databaseUrl,
-            REDIS_URL: redisUrl,
-          },
-        });
+      let apiProcess: ChildProcess | undefined;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          apiProcess = spawn('npm', ['run', 'dev'], {
+            cwd: repositoryRoot,
+            detached: true,
+            stdio: 'pipe',
+            env: {
+              ...process.env,
+              DATABASE_URL: databaseUrl,
+              REDIS_URL: redisUrl,
+            },
+          });
 
-        let output = '';
-        const startTimeout = setTimeout(() => {
-          apiProcess.kill('SIGTERM');
-          reject(
-            new Error(
-              `API did not emit a ready signal within 30 s. Output:\n${output}`,
-            ),
-          );
-        }, 30_000);
+          let output = '';
+          const startTimeout = setTimeout(() => {
+            reject(
+              new Error(
+                `API did not emit a ready signal within 30 s. Output:\n${output}`,
+              ),
+            );
+          }, 30_000);
 
-        const handleData = (data: Buffer) => {
-          const chunk = data.toString();
-          output += chunk;
-          if (
-            /Nest application successfully started/i.test(output) ||
-            /Application is running on/i.test(output)
-          ) {
-            clearTimeout(startTimeout);
-            apiProcess.kill('SIGTERM');
-            try {
-              expect(output).not.toMatch(/ECONNREFUSED/);
-              expect(output).not.toMatch(/connection refused/i);
-              resolve();
-            } catch (e) {
-              reject(e instanceof Error ? e : new Error(String(e)));
+          const handleData = (data: Buffer) => {
+            const chunk = data.toString();
+            output += chunk;
+            if (
+              /Nest application successfully started/i.test(output) ||
+              /Application is running on/i.test(output)
+            ) {
+              clearTimeout(startTimeout);
+              try {
+                expect(output).not.toMatch(/ECONNREFUSED/);
+                expect(output).not.toMatch(/connection refused/i);
+                resolve();
+              } catch (error) {
+                reject(error instanceof Error ? error : new Error(String(error)));
+              }
             }
-          }
-        };
+          };
 
-        apiProcess.stdout?.on('data', handleData);
-        apiProcess.stderr?.on('data', handleData);
+          apiProcess.stdout?.on('data', handleData);
+          apiProcess.stderr?.on('data', handleData);
 
-        apiProcess.on('error', (err) => {
-          clearTimeout(startTimeout);
-          reject(err);
+          apiProcess.once('error', (error) => {
+            clearTimeout(startTimeout);
+            reject(error);
+          });
         });
-      });
+      } finally {
+        if (apiProcess) {
+          await stopProcessGroup(apiProcess);
+        }
+      }
     },
     STARTUP_SCENARIO_TIMEOUT,
   );
