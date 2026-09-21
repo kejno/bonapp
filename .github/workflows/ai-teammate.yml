@@ -276,6 +276,17 @@ jobs:
             dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi
 
+          # bug_merged is intentionally post-action-only: it updates Jira but
+          # never invokes the configured coding-agent CLI. Tell the validation
+          # steps that the missing provider transcript is expected for this
+          # job, without weakening validation for real agent runs.
+          if [ "${{ inputs.config_file }}" = "agents/bug_merged.json" ]; then
+            mkdir -p outputs
+            printf '%s\n' \
+              '{"reason":"bug_merged uses only postJSAction; agent CLI is not required"}' \
+              > outputs/agent_cli_intentionally_skipped.json
+          fi
+
       # Codex's refresh token is single-use: the CLI rotates it in place during
       # the run, which invalidates the copy currently held in CODEX_AUTH_JSON.
       # Unless the rotated file is written back to that secret, the NEXT run
