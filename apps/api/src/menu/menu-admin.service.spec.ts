@@ -4,6 +4,7 @@ import { MenuAdminService } from './menu-admin.service';
 
 describe('MenuAdminService', () => {
   let prisma: {
+    forTenant: jest.Mock;
     menuItem: { update: jest.Mock; findUnique: jest.Mock };
     menuCategory: { update: jest.Mock };
     modifierGroup: { update: jest.Mock };
@@ -15,12 +16,14 @@ describe('MenuAdminService', () => {
 
   beforeEach(() => {
     prisma = {
+      forTenant: jest.fn(),
       menuItem: { update: jest.fn(), findUnique: jest.fn() },
       menuCategory: { update: jest.fn() },
       modifierGroup: { update: jest.fn() },
       modifier: { update: jest.fn() },
       stopListItem: { upsert: jest.fn() },
     };
+    prisma.forTenant.mockReturnValue(prisma);
     cache = { del: jest.fn() };
     service = new MenuAdminService(
       prisma as unknown as PrismaService,
@@ -33,6 +36,7 @@ describe('MenuAdminService', () => {
 
     await service.updateItem('tenant-1', 'item-1', { name: 'New name' });
 
+    expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
 

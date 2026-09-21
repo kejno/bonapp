@@ -10,6 +10,14 @@ const renameMigration = resolve(
   __dirname,
   '../prisma/migrations/20260921140000_rename_menu_tables_to_snake_case/migration.sql',
 );
+const renameColumnsMigration = resolve(
+  __dirname,
+  '../prisma/migrations/20260921150000_rename_menu_columns_to_snake_case/migration.sql',
+);
+const menuConstraintsMigration = resolve(
+  __dirname,
+  '../prisma/migrations/20260922040000_harden_menu_catalog_constraints/migration.sql',
+);
 
 const describeWithDocker = process.env.SKIP_DOCKER_TESTS
   ? describe.skip
@@ -21,6 +29,7 @@ describe('menu catalog migration', () => {
 
     const sql = readFileSync(migration, 'utf8');
     const renamedTablesSql = readFileSync(renameMigration, 'utf8');
+    const renamedColumnsSql = readFileSync(renameColumnsMigration, 'utf8');
     for (const table of [
       'menu_categories',
       'menu_items',
@@ -33,6 +42,29 @@ describe('menu catalog migration', () => {
     }
     expect(sql).toContain('MenuItem_categoryId_tenantId_fkey');
     expect(sql).toContain('StopListItem_menuItemId_tenantId_fkey');
+    expect(renamedColumnsSql).toContain(
+      'RENAME COLUMN "tenantId" TO "tenant_id"',
+    );
+    expect(renamedColumnsSql).toContain(
+      'RENAME COLUMN "sortOrder" TO "sort_order"',
+    );
+  });
+
+  it('enforces non-negative prices and gives menu database objects snake_case names', () => {
+    const sql = readFileSync(menuConstraintsMigration, 'utf8');
+
+    expect(sql).toContain(
+      'ADD CONSTRAINT "menu_items_price_check" CHECK ("price" >= 0)',
+    );
+    expect(sql).toContain(
+      'ADD CONSTRAINT "modifiers_price_check" CHECK ("price" >= 0)',
+    );
+    expect(sql).toContain(
+      'RENAME CONSTRAINT "menu_categories_tenantId_fkey" TO "menu_categories_tenant_id_fkey"',
+    );
+    expect(sql).toContain(
+      'RENAME TO "menu_items_tenant_id_category_id_sort_order_idx"',
+    );
   });
 });
 

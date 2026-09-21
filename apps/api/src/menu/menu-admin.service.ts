@@ -16,7 +16,7 @@ export class MenuAdminService {
     itemId: string,
     data: Prisma.MenuItemUpdateInput,
   ) {
-    const item = await this.prisma.menuItem.update({
+    const item = await this.prisma.forTenant(tenantId).menuItem.update({
       where: { id_tenantId: { id: itemId, tenantId } },
       data,
     });
@@ -29,7 +29,7 @@ export class MenuAdminService {
     categoryId: string,
     data: Prisma.MenuCategoryUpdateInput,
   ) {
-    const category = await this.prisma.menuCategory.update({
+    const category = await this.prisma.forTenant(tenantId).menuCategory.update({
       where: { id_tenantId: { id: categoryId, tenantId } },
       data,
     });
@@ -42,7 +42,7 @@ export class MenuAdminService {
     modifierGroupId: string,
     data: Prisma.ModifierGroupUpdateInput,
   ) {
-    const modifierGroup = await this.prisma.modifierGroup.update({
+    const modifierGroup = await this.prisma.forTenant(tenantId).modifierGroup.update({
       where: { id_tenantId: { id: modifierGroupId, tenantId } },
       data,
     });
@@ -55,7 +55,7 @@ export class MenuAdminService {
     modifierId: string,
     data: Prisma.ModifierUpdateInput,
   ) {
-    const modifier = await this.prisma.modifier.update({
+    const modifier = await this.prisma.forTenant(tenantId).modifier.update({
       where: { id_tenantId: { id: modifierId, tenantId } },
       data,
     });
@@ -64,7 +64,8 @@ export class MenuAdminService {
   }
 
   async updateStopList(tenantId: string, itemId: string, isStopped: boolean) {
-    const item = await this.prisma.menuItem.findUnique({
+    const db = this.prisma.forTenant(tenantId);
+    const item = await db.menuItem.findUnique({
       where: { id_tenantId: { id: itemId, tenantId } },
       select: { id: true },
     });
@@ -72,7 +73,7 @@ export class MenuAdminService {
       throw new NotFoundException(`Menu item ${itemId} not found for tenant`);
     }
 
-    const stopListItem = await this.prisma.stopListItem.upsert({
+    const stopListItem = await db.stopListItem.upsert({
       where: { menuItemId_tenantId: { menuItemId: itemId, tenantId } },
       create: { tenantId, menuItemId: itemId, isStopped },
       update: { isStopped },

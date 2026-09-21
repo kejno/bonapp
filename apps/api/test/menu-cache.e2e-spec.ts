@@ -32,12 +32,14 @@ describe('menu cache (e2e)', () => {
     items: Array<{ id: string; isStopped?: boolean }>;
   }> = [{ id: 'category-1', items: [{ id: 'item-1' }] }];
   const prisma = {
+    forTenant: jest.fn(),
     menuCategory: { findMany: jest.fn(() => Promise.resolve(menu)) },
     stopListItem: {
       upsert: jest.fn(() => Promise.resolve({ id: 'stop-list-1' })),
     },
     menuItem: { findUnique: jest.fn(() => Promise.resolve({ id: 'item-1' })) },
   };
+  prisma.forTenant.mockImplementation(() => prisma);
 
   beforeEach(async () => {
     storedMenus.clear();
@@ -95,6 +97,7 @@ describe('menu cache (e2e)', () => {
       .expect(200)
       .expect(menu);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
 
     menu = [{ id: 'category-1', items: [{ id: 'item-1', isStopped: true }] }];
     await request(app.getHttpServer())

@@ -9,12 +9,19 @@ describe('MenuService', () => {
     { id: 'category-2', items: [{ id: 'item-2', modifierGroups: [] }] },
   ];
 
-  let prisma: { menuCategory: { findMany: jest.Mock } };
+  let prisma: {
+    forTenant: jest.Mock;
+    menuCategory: { findMany: jest.Mock };
+  };
   let cache: { getJson: jest.Mock; setJson: jest.Mock };
   let service: MenuService;
 
   beforeEach(() => {
-    prisma = { menuCategory: { findMany: jest.fn() } };
+    prisma = {
+      forTenant: jest.fn(),
+      menuCategory: { findMany: jest.fn() },
+    };
+    prisma.forTenant.mockReturnValue(prisma);
     cache = { getJson: jest.fn(), setJson: jest.fn() };
     service = new MenuService(
       prisma as unknown as PrismaService,
@@ -27,6 +34,7 @@ describe('MenuService', () => {
 
     await expect(service.getGuestMenu(tenantId)).resolves.toEqual(catalog);
     expect(prisma.menuCategory.findMany).not.toHaveBeenCalled();
+    expect(prisma.forTenant).not.toHaveBeenCalled();
   });
 
   it('loads and caches all categories, items, and modifiers for 60 seconds on a miss', async () => {
@@ -34,6 +42,7 @@ describe('MenuService', () => {
     prisma.menuCategory.findMany.mockResolvedValue(catalog);
 
     await expect(service.getGuestMenu(tenantId)).resolves.toEqual(catalog);
+    expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
