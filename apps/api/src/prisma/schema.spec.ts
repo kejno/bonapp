@@ -57,6 +57,14 @@ describe('Prisma core schema', () => {
     expect(migration).toMatch(/"tenant_id" = current_setting/);
   });
 
+  it('requires tables to reference a dining area owned by the current tenant', () => {
+    const migration = readFileSync(rlsMigrationPath, 'utf8');
+
+    expect(migration).toMatch(
+      /WITH CHECK \(\s*"tenant_id" = current_setting\('app\.current_tenant_id', true\)\s*AND EXISTS \(\s*SELECT 1\s*FROM "dining_areas"\s*WHERE "dining_areas"\."id" = "tables"\."area_id"\s*AND "dining_areas"\."tenant_id" = current_setting\('app\.current_tenant_id', true\)/s,
+    );
+  });
+
   it('keeps order, table, waiter, and payment references within one tenant', () => {
     expect(schema).toContain(
       'assignedWaiter   User?          @relation("AssignedWaiterOrders", fields: [assignedWaiterId, tenantId], references: [id, tenantId], onDelete: Restrict)',

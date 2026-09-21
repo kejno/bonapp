@@ -18,4 +18,12 @@ CREATE POLICY tenant_isolation ON "tables"
   FOR ALL
   TO PUBLIC
   USING ("tenant_id" = current_setting('app.current_tenant_id', true))
-  WITH CHECK ("tenant_id" = current_setting('app.current_tenant_id', true));
+  WITH CHECK (
+    "tenant_id" = current_setting('app.current_tenant_id', true)
+    AND EXISTS (
+      SELECT 1
+      FROM "dining_areas"
+      WHERE "dining_areas"."id" = "tables"."area_id"
+        AND "dining_areas"."tenant_id" = current_setting('app.current_tenant_id', true)
+    )
+  );

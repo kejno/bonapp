@@ -243,6 +243,45 @@ describe('Tenant isolation (e2e)', () => {
     expect(tenants.some((t) => t.id === tenantBId)).toBe(false);
   });
 
+  it('rejects a tenant A table that references a dining area owned by tenant B', async () => {
+    await expect(
+      tenantContext.run(tenantAId, () =>
+        prisma.db.table.create({
+          data: {
+            id: '10000000-0000-4000-a000-000000000043',
+            tenantId: tenantAId,
+            areaId: '20000000-0000-4000-a000-000000000032',
+            tableNumber: 2,
+            qrToken: '__cross-tenant-area-table__',
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const tables = await tenantContext.run(tenantAId, () =>
+      prisma.db.table.findMany({
+        where: { qrToken: '__cross-tenant-area-table__' },
+      }),
+    );
+    expect(tables).toEqual([]);
+
+    await expect(
+      tenantContext.run(tenantAId, () =>
+        prisma.db.table.update({
+          where: { id: '10000000-0000-4000-a000-000000000041' },
+          data: { areaId: '20000000-0000-4000-a000-000000000032' },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const table = await tenantContext.run(tenantAId, () =>
+      prisma.db.table.findUnique({
+        where: { id: '10000000-0000-4000-a000-000000000041' },
+      }),
+    );
+    expect(table?.areaId).toBe('10000000-0000-4000-a000-000000000031');
+  });
+
   it('does not expose or modify tenant B order items from tenant A or without a GUC', async () => {
     const unscopedItems = await unscopedClient.orderItem.findMany({
       where: { id: { in: [orderItemAId, orderItemBId] } },
