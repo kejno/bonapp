@@ -3,6 +3,13 @@ import { join } from 'node:path';
 
 const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma');
 const schema = readFileSync(schemaPath, 'utf8');
+const rlsMigrationPath = join(
+  process.cwd(),
+  'prisma',
+  'migrations',
+  '20260922010000_enable_rls_for_dining_areas_and_tables',
+  'migration.sql',
+);
 const ordersMigrationPath = join(
   process.cwd(),
   'prisma',
@@ -11,6 +18,13 @@ const ordersMigrationPath = join(
   'migration.sql',
 );
 const ordersMigration = readFileSync(ordersMigrationPath, 'utf8');
+const orderRlsMigrationPath = join(
+  process.cwd(),
+  'prisma',
+  'migrations',
+  '20260922020000_enable_rls_for_orders_and_payments',
+  'migration.sql',
+);
 const packageJson = JSON.parse(
   readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
 ) as { scripts: Record<string, string> };
@@ -33,6 +47,22 @@ describe('Prisma core schema', () => {
     expect(schema).toMatch(/takeaway\s+Boolean\s+@default\(false\)/);
     expect(schema).toMatch(/delivery\s+Boolean\s+@default\(false\)/);
     expect(schema).toMatch(/subscriptionPlan\s+String/);
+  });
+
+  it('enables RLS for every new tenant-dependent table', () => {
+    const migration = readFileSync(rlsMigrationPath, 'utf8');
+
+    expect(migration).toContain('ALTER TABLE "dining_areas" ENABLE ROW LEVEL SECURITY');
+    expect(migration).toContain('ALTER TABLE "tables" ENABLE ROW LEVEL SECURITY');
+    expect(migration).toMatch(/"tenant_id" = current_setting/);
+  });
+
+  it('requires tables to reference a dining area owned by the current tenant', () => {
+    const migration = readFileSync(rlsMigrationPath, 'utf8');
+
+    expect(migration).toMatch(
+      /WITH CHECK \(\s*"tenant_id" = current_setting\('app\.current_tenant_id', true\)\s*AND EXISTS \(\s*SELECT 1\s*FROM "dining_areas"\s*WHERE "dining_areas"\."id" = "tables"\."area_id"\s*AND "dining_areas"\."tenant_id" = current_setting\('app\.current_tenant_id', true\)/s,
+    );
   });
 
   it('keeps order, table, waiter, and payment references within one tenant', () => {
@@ -72,5 +102,13 @@ describe('Prisma core schema', () => {
     expect(ordersMigration).toContain('CHECK ("quantity" > 0)');
     expect(ordersMigration).toContain('CHECK ("unit_price_byn" >= 0)');
     expect(ordersMigration).toContain('CHECK ("amount_byn" >= 0)');
+  });
+
+  it('enables RLS for orders and payments', () => {
+    const migration = readFileSync(orderRlsMigrationPath, 'utf8');
+
+    expect(migration).toContain('ALTER TABLE "orders" ENABLE ROW LEVEL SECURITY');
+    expect(migration).toContain('ALTER TABLE "payments" ENABLE ROW LEVEL SECURITY');
+    expect(migration).toMatch(/"tenant_id" = current_setting/);
   });
 });

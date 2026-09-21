@@ -155,6 +155,44 @@ describe('menu tenant integrity (e2e)', () => {
         },
       }),
     ).rejects.toThrow();
+
+    await expect(
+      prisma.menuItem.create({
+        data: {
+          id: 'menu-tenant-integrity-item-nan-price',
+          tenantId: 'menu-tenant-integrity-a',
+          categoryId: category.id,
+          name: 'NaN price item',
+          priceByn: NaN,
+          allergens: [],
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.menuItem.create({
+        data: {
+          id: 'menu-tenant-integrity-item-nan-cost',
+          tenantId: 'menu-tenant-integrity-a',
+          categoryId: category.id,
+          name: 'NaN cost item',
+          priceByn: 1,
+          costPriceByn: NaN,
+          allergens: [],
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.modifierOption.create({
+        data: {
+          id: 'menu-tenant-integrity-option-nan-price',
+          groupId: group.id,
+          name: 'NaN option',
+          extraPriceByn: NaN,
+        },
+      }),
+    ).rejects.toThrow();
   });
 
   it('rejects invalid modifier selection ranges at the database boundary', async () => {

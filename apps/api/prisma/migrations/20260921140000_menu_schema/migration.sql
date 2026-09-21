@@ -37,8 +37,8 @@ CREATE TABLE "menu_items" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "menu_items_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "menu_items_price_byn_non_negative_check" CHECK ("price_byn" >= 0),
-    CONSTRAINT "menu_items_cost_price_byn_non_negative_check" CHECK ("cost_price_byn" >= 0)
+    CONSTRAINT "menu_items_price_byn_non_negative_check" CHECK ("price_byn" >= 0 AND "price_byn" <> 'NaN'::numeric),
+    CONSTRAINT "menu_items_cost_price_byn_non_negative_check" CHECK ("cost_price_byn" >= 0 AND "cost_price_byn" <> 'NaN'::numeric)
 );
 
 -- CreateTable
@@ -65,7 +65,7 @@ CREATE TABLE "modifier_options" (
     "is_default" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "modifier_options_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "modifier_options_extra_price_byn_non_negative_check" CHECK ("extra_price_byn" >= 0)
+    CONSTRAINT "modifier_options_extra_price_byn_non_negative_check" CHECK ("extra_price_byn" >= 0 AND "extra_price_byn" <> 'NaN'::numeric)
 );
 
 -- CreateIndex
