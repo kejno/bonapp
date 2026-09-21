@@ -46,6 +46,15 @@ assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_triggered'));
 assert(bugGenerator.skipIfLabels.includes('sm_bug_test_cases_done'));
 assert.strictEqual(require('../../bug_development.json').params.customParams.prTitleTemplate, 'bugDevelopment');
 
+const bugDevelopment = rule('agents/bug_development.json',
+  'Backlog / To Do / Ready For Development / In Development Bugs → trigger bug_development');
+const prRework = rule('agents/pr_rework.json',
+  'In Rework Stories & Bugs → trigger pr_rework');
+assert(bugDevelopment);
+assert(prRework);
+assert(!bugDevelopment.jql.includes("'In Rework'"));
+assert(prRework.jql.includes("status in ('In Rework')"));
+
 const source = fs.readFileSync(path.join(__dirname, '..', 'smAgent.js'), 'utf8');
 const workflow = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'ai-teammate.yml'), 'utf8');
 assert(workflow.includes("startsWith(inputs.concurrency_key, 'test-pr-')"));
