@@ -21,4 +21,10 @@ describe('CI workflow', () => {
     expect(workflow).toContain('bonapp_app:bonapp_app');
     expect(workflow).toContain('tenant-isolation.e2e-spec.ts');
   });
+
+  it('runs the logo-upload regression scenario with MinIO', () => {
+    expect(workflow).toContain('docker run --detach --name minio');
+    expect(workflow).toContain('quay.io/minio/minio');
+    expect(workflow).toContain('BNP-319.e2e-spec.ts');
+  });
 });

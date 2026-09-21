@@ -116,16 +116,16 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
       .post('/api/v1/admin/tenant/logo')
       .set('Authorization', `Bearer ${createJwt(TENANT_ID)}`)
       .field('tenantId', TENANT_ID)
-      .attach('file', PNG_CONTENT, {
+      .attach('logo', PNG_CONTENT, {
         filename: 'logo.png',
         contentType: 'image/png',
       });
 
     expect([200, 201]).toContain(uploadResponse.status);
-    const body = uploadResponse.body as { url: string };
-    expect(body.url).toEqual(expect.stringMatching(/^http/));
+    const body = uploadResponse.body as { logoUrl: string };
+    expect(body.logoUrl).toEqual(expect.stringMatching(/^http/));
 
-    const downloadResponse = await fetch(body.url);
+    const downloadResponse = await fetch(body.logoUrl);
 
     expect(downloadResponse.status).toBe(200);
     expect(downloadResponse.headers.get('content-type')).toMatch(/^image\/png/);

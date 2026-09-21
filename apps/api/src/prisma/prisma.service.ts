@@ -32,6 +32,18 @@ const TENANT_WRITE_OPS = new Set(['create', 'createMany', 'upsert']);
 type QueryArgs = Record<string, unknown>;
 type ModelDelegate = Record<string, (args: QueryArgs) => Promise<unknown>>;
 
+/**
+ * Prisma's findUnique accepts only a WhereUniqueInput, which cannot express
+ * the owning-order tenant predicate required for OrderItem. Use its
+ * filter-capable equivalent after adding that predicate.
+ */
+export function scopedDelegateOperation(model: string, operation: string) {
+  if (model !== 'OrderItem') return operation;
+  if (operation === 'findUnique') return 'findFirst';
+  if (operation === 'findUniqueOrThrow') return 'findFirstOrThrow';
+  return operation;
+}
+
 function asRecord(value: unknown): QueryArgs {
   return value !== null && typeof value === 'object' ? { ...value } : {};
 }
@@ -152,9 +164,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
               const delegate = tx[
                 `${model.charAt(0).toLowerCase()}${model.slice(1)}` as keyof typeof tx
               ] as unknown as ModelDelegate;
-              const execute = delegate[operation];
+              const delegateOperation = scopedDelegateOperation(model, operation);
+              const execute = delegate[delegateOperation];
               if (!execute) {
-                throw new Error(`Unsupported Prisma operation: ${operation}`);
+                throw new Error(
+                  `Unsupported Prisma operation: ${delegateOperation}`,
+                );
               }
               return execute.call(delegate, scopedArgs);
             });

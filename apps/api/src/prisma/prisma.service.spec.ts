@@ -1,5 +1,6 @@
 import {
   PrismaService,
+  scopedDelegateOperation,
   scopeTenantQueryArgs,
   TENANT_SCOPED_MODELS,
 } from './prisma.service';
@@ -183,6 +184,16 @@ describe('PrismaService tenant query scope', () => {
         ],
       },
     });
+  });
+
+  it('uses a filter-capable delegate for uniquely addressed order items', () => {
+    expect(scopedDelegateOperation('OrderItem', 'findUnique')).toBe(
+      'findFirst',
+    );
+    expect(scopedDelegateOperation('OrderItem', 'findUniqueOrThrow')).toBe(
+      'findFirstOrThrow',
+    );
+    expect(scopedDelegateOperation('User', 'findUnique')).toBe('findUnique');
   });
 
   it('rejects order item upserts because Prisma cannot scope its unique lookup', () => {
