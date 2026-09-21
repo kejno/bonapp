@@ -1,4 +1,4 @@
-name: AI Teammate
+name: Team
 
 # Without this the run list is 840 identically-titled "AI Teammate" rows.
 # GitHub's expression syntax has no replace/split, so config_file keeps its
@@ -15,7 +15,7 @@ name: AI Teammate
 # run-agent.sh's case branches, sm.json's maxTriggeredWorkflows keys) stays
 # "claude-code" — smAgent.js's parseProviderFromRunName() maps the display
 # label back to it. If you change the label here, update that mapping too.
-run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] AI Teammate (${{ inputs.config_file }}${{ inputs.display_key && format(' · {0}', inputs.display_key) || '' }})"
+run-name: "[${{ (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') == 'claude-code' && 'claude' || (inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code') }}] Team (${{ inputs.agent_name || inputs.config_file }}${{ inputs.display_key && format(':{0}', inputs.display_key) || '' }}${{ inputs.concurrency_key && format(',lock:{0}', inputs.lock_display_key || inputs.concurrency_key) || '' }})"
 
 on:
   workflow_dispatch:
@@ -23,6 +23,9 @@ on:
       config_file:
         description: 'Path to config (relative to .dmtools/, e.g. agents/story_development.json)'
         required: true
+      agent_name:
+        description: 'Short agent name shown in the run title (set by SM agent)'
+        required: false
       encoded_config:
         description: 'Encoded or JSON Agent Config override'
         required: false
@@ -31,6 +34,9 @@ on:
         required: false
       concurrency_key:
         description: 'Concurrency group override (set by SM agent)'
+        required: false
+      lock_display_key:
+        description: 'Short lock key for the run title; does not affect concurrency'
         required: false
       input_jql:
         description: 'JQL that selected the ticket (set by SM agent)'
@@ -60,7 +66,13 @@ jobs:
     # other out even though they're unrelated tickets. Fall back to config_file
     # only for the rare dispatch that omits concurrency_key.
     #
-    # EXCEPTION — each Codex account on ChatGPT subscription auth has a
+    # Test Case review/rework rules pass `test-pr-<parent Story>` because all
+    # sibling Test Cases mutate/review the same branch and PR. That shared-resource
+    # lock takes priority over provider auth serialization, preventing codex-1,
+    # codex-2 and Claude from touching one test PR concurrently. Normal SM dispatch
+    # still caps each Codex provider at one active workflow, preserving auth safety.
+    #
+    # Otherwise, each Codex account on ChatGPT subscription auth has a
     # refresh token is SINGLE-USE and rotates on every refresh, and the
     # rotated auth.json has to round-trip through ONE repo secret (see the
     # restore/persist steps below). Two jobs holding the same auth.json at
@@ -78,7 +90,7 @@ jobs:
     # (job.concurrency and job.if cannot read job-level `env:`, so there is
     # no single place to define it once).
     concurrency:
-      group: ${{ startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') && format('ai-teammate-agent-{0}-auth', (inputs.provider || vars.AI_AGENT_PROVIDER || 'codex') == 'codex-2' && 'codex-2' || 'codex-1') || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
+      group: ${{ startsWith(inputs.concurrency_key, 'test-pr-') && format('ai-teammate-agent-{0}', inputs.concurrency_key) || startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') && format('ai-teammate-agent-{0}-auth', (inputs.provider || vars.AI_AGENT_PROVIDER || 'codex') == 'codex-2' && 'codex-2' || 'codex-1') || format('ai-teammate-agent-{0}', inputs.concurrency_key || inputs.config_file) }}
       cancel-in-progress: false
 
     # apps/api/test/*.e2e-spec.ts bootstraps the real Nest app with a live
@@ -109,6 +121,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The teammate can legitimately add/update CI workflows. The default
+          # GITHUB_TOKEN is a GitHub App token and GitHub rejects pushes that
+          # modify .github/workflows/*. Use the project PAT (repo + workflow)
+          # for the persisted git credential as well as for API operations.
+          token: ${{ secrets.GH_PROJECT_TOKEN }}
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -259,6 +276,17 @@ jobs:
             dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi
 
+          # bug_merged is intentionally post-action-only: it updates Jira but
+          # never invokes the configured coding-agent CLI. Tell the validation
+          # steps that the missing provider transcript is expected for this
+          # job, without weakening validation for real agent runs.
+          if [ "${{ inputs.config_file }}" = "agents/bug_merged.json" ]; then
+            mkdir -p outputs
+            printf '%s\n' \
+              '{"reason":"bug_merged uses only postJSAction; agent CLI is not required"}' \
+              > outputs/agent_cli_intentionally_skipped.json
+          fi
+
       # Codex's refresh token is single-use: the CLI rotates it in place during
       # the run, which invalidates the copy currently held in CODEX_AUTH_JSON.
       # Unless the rotated file is written back to that secret, the NEXT run
@@ -315,6 +343,10 @@ jobs:
         if: ${{ always() && startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
+          if [ -f outputs/agent_cli_intentionally_skipped.json ]; then
+            echo "✅ Agent CLI intentionally skipped by pre-action: $(cat outputs/agent_cli_intentionally_skipped.json)"
+            exit 0
+          fi
           latest_log="$(ls -t .dmtools-logs/cli/agent/codex-*.log 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
             echo "::error::No Codex transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2
@@ -331,6 +363,10 @@ jobs:
         if: ${{ always() && !startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}
         working-directory: .dmtools
         run: |
+          if [ -f outputs/agent_cli_intentionally_skipped.json ]; then
+            echo "✅ Agent CLI intentionally skipped by pre-action: $(cat outputs/agent_cli_intentionally_skipped.json)"
+            exit 0
+          fi
           latest_log="$(ls -t .dmtools-logs/cli/agent/claude-code-*.log 2>/dev/null | head -1)"
           if [ -z "${latest_log}" ]; then
             echo "::error::No Claude Code transcript was produced. The agent CLI did not complete a real invocation, so this run must not be treated as successful." >&2

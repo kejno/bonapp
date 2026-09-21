@@ -35,6 +35,47 @@ function readStoriesJson(ticketKey) {
     }
 }
 
+function getSourceTicket(ticketKey, params) {
+    var ticket = params && params.ticket;
+    var fields = ticket && ticket.fields || {};
+    if (fields.issuetype && Array.isArray(fields.labels)) return ticket;
+    return jira_get_ticket({ key: ticketKey, fields: ['issuetype', 'labels'] });
+}
+
+/**
+ * Enforce two-stage intake:
+ *   umbrella Epic -> Epics only
+ *   regular Epic  -> direct child Stories only
+ *
+ * This is deliberately validated after AI generation and before the first Jira
+ * write, so prompt drift cannot create Stories directly under an umbrella.
+ */
+function validateIntakeStructure(entries, ticketKey, params) {
+    var source = getSourceTicket(ticketKey, params);
+    if (typeof source === 'string') source = JSON.parse(source);
+    var fields = source && source.fields || {};
+    var issueType = fields.issuetype && fields.issuetype.name;
+    var labels = fields.labels || [];
+    var isUmbrella = labels.indexOf('umbrella_epic') !== -1;
+
+    if (issueType !== ISSUE_TYPES.EPIC) return entries;
+
+    for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i] || {};
+        if (isUmbrella) {
+            if (entry.type !== ISSUE_TYPES.EPIC || entry.parent) {
+                throw new Error('Umbrella Epic ' + ticketKey +
+                    ' may create only Epics with parent=null; invalid entry: ' + (entry.summary || ('#' + i)));
+            }
+        } else if (entry.type !== ISSUE_TYPES.STORY || entry.parent !== ticketKey) {
+            throw new Error('Regular Epic ' + ticketKey +
+                ' may create only direct child Stories with parent=' + ticketKey +
+                '; invalid entry: ' + (entry.summary || ('#' + i)));
+        }
+    }
+    return entries;
+}
+
 /**
  * Read outputs/comment.md, with fallback text
  * @returns {string} Comment text
@@ -317,7 +358,7 @@ function action(params) {
         console.log('Processing intake ticket creation for:', ticketKey);
 
         // 1. Read stories.json
-        var stories = readStoriesJson(ticketKey);
+        var stories = validateIntakeStructure(readStoriesJson(ticketKey), ticketKey, params);
         console.log('Found ' + stories.length + ' entries in stories.json');
 
         var results = [];

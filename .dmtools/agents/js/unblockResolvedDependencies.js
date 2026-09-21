@@ -4,12 +4,16 @@
  * Runs on every SM cycle for each ticket in "Blocked" status.
  * - Reads issuelinks to find all "is blocked by" dependencies (inwardIssue with Blocks link type).
  * - If all blockers are in a terminal status (Done, Merged, Passed, Closed, Irrelevant)
- *   or the blocker was deleted (inwardIssue === null), moves the ticket to Backlog.
+ *   or the blocker was deleted (inwardIssue === null), resumes the ticket.
+ * - An Epic with existing child Stories moves to In Progress. A Story whose
+ *   test automation has already started returns to In Testing; an empty Epic
+ *   or other ticket moves to Backlog for normal intake/processing.
  * - Otherwise leaves the ticket in Blocked.
  */
 
 const configLoader = require('./configLoader.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
+const { LABELS } = require('./config.js');
 
 function isResolved(blocker, terminalStatuses) {
     // Deleted ticket — no inwardIssue object at all
@@ -19,6 +23,41 @@ function isResolved(blocker, terminalStatuses) {
     if (!statusName) return false;
 
     return terminalStatuses.indexOf(statusName) !== -1;
+}
+
+function resumeStatus(ticketKey, ticket, jiraConfig) {
+    var issueType = ticket && ticket.fields && ticket.fields.issuetype &&
+        ticket.fields.issuetype.name;
+    var labels = ticket && ticket.fields && ticket.fields.labels || [];
+    // A blocked Story can already be deep in the test-automation lifecycle.
+    // Sending it to Backlog would bypass the In Testing review/merge/done rules.
+    if (issueType === 'Story' && labels.indexOf(LABELS.AI_TEST_AUTOMATION) !== -1) {
+        return jiraConfig.statuses.IN_TESTING;
+    }
+    if (issueType !== 'Epic') return jiraConfig.statuses.BACKLOG;
+
+    try {
+        var children = jira_search_by_jql({
+            jql: 'parent = ' + ticketKey + ' AND issuetype = Story',
+            fields: ['key'],
+            maxResults: 1
+        }) || [];
+        return children.length > 0
+            ? jiraConfig.statuses.IN_PROGRESS
+            : jiraConfig.statuses.BACKLOG;
+    } catch (e) {
+        // Fail safely: an Epic must not re-enter intake when we cannot prove it
+        // is empty, because that could create duplicate Stories.
+        console.warn('Failed to inspect child Stories for Epic ' + ticketKey + ':', e.message || e);
+        return null;
+    }
+}
+
+function moveToResumeStatus(ticketKey, ticket, jiraConfig) {
+    var status = resumeStatus(ticketKey, ticket, jiraConfig);
+    if (!status) return { success: false, action: 'child_check_failed' };
+    jira_move_to_status({ key: ticketKey, statusName: status });
+    return { success: true, status: status };
 }
 
 function action(params) {
@@ -43,7 +82,7 @@ function action(params) {
 
     var ticket;
     try {
-        ticket = jira_get_ticket({ key: ticketKey, fields: ['issuelinks'] });
+        ticket = jira_get_ticket({ key: ticketKey, fields: ['issuelinks', 'issuetype', 'labels'] });
     } catch (e) {
         console.warn('Failed to fetch ticket details:', e.message || e);
         return { success: false, action: 'fetch_failed', error: e.toString() };
@@ -63,23 +102,13 @@ function action(params) {
 
     console.log('Found', blockers.length, 'blocker(s) for', ticketKey);
 
-    // If no blockers exist, the ticket shouldn't be in Blocked status
+    // This agent only resolves dependency-driven blocks. A ticket may also be
+    // deliberately Blocked for manual triage without an "is blocked by" link.
+    // Treating zero links as resolved re-opens those tickets immediately and
+    // can restart an already exhausted automation cycle.
     if (blockers.length === 0) {
-        console.log('No active blockers found — moving', ticketKey, 'to Backlog');
-        try {
-            jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.BACKLOG });
-            jira_post_comment({
-                key: ticketKey,
-                comment: 'h3. ✅ Auto-unblocked — No Active Blockers\n\n' +
-                    'This ticket was in *Blocked* status but no active "is blocked by" dependencies were found.\n\n' +
-                    'Automatically moved back to *Backlog* for re-processing.'
-            });
-            console.log('✅ Moved', ticketKey, 'to Backlog (no blockers)');
-            return { success: true, action: 'moved_to_backlog_no_blockers', ticketKey };
-        } catch (e) {
-            console.warn('Failed to move ticket to Backlog:', e.message || e);
-            return { success: false, action: 'move_failed', error: e.toString() };
-        }
+        console.log('No dependency links found — leaving', ticketKey, 'Blocked for manual triage');
+        return { success: true, action: 'manual_block_no_dependencies', ticketKey: ticketKey };
     }
 
     // Check if all blockers are resolved
@@ -101,12 +130,14 @@ function action(params) {
         return { success: true, action: 'still_blocked', unresolved: unresolved, ticketKey };
     }
 
-    // All blockers resolved → move to Backlog
-    console.log('All', blockers.length, 'blocker(s) resolved — moving', ticketKey, 'to Backlog');
+    // All blockers resolved → resume according to issue type/intake state.
+    console.log('All', blockers.length, 'blocker(s) resolved — resuming', ticketKey);
+    var resumeMove;
     try {
-        jira_move_to_status({ key: ticketKey, statusName: jiraConfig.statuses.BACKLOG });
+        resumeMove = moveToResumeStatus(ticketKey, ticket, jiraConfig);
+        if (!resumeMove.success) return resumeMove;
     } catch (e) {
-        console.warn('Failed to move ticket to Backlog:', e.message || e);
+        console.warn('Failed to resume ticket:', e.message || e);
         return { success: false, action: 'move_failed', error: e.toString() };
     }
 
@@ -120,14 +151,14 @@ function action(params) {
             comment: 'h3. ✅ Auto-unblocked — All Dependencies Resolved\n\n' +
                 'All *' + blockers.length + '* blocker(s) are now in a terminal status:\n' +
                 resolvedKeys.split(', ').map(function(k) { return '- ' + k; }).join('\n') + '\n\n' +
-                'Automatically moved back to *Backlog* for re-processing.'
+                'Automatically moved to *' + resumeMove.status + '*.'
         });
         console.log('✅ Posted unblock comment to Jira');
     } catch (e) {
         console.warn('Failed to post comment:', e.message || e);
     }
 
-    console.log('✅ Moved', ticketKey, 'to Backlog');
+    console.log('✅ Moved', ticketKey, 'to', resumeMove.status);
 
     // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
     // wrote outputs/*_usage.json during the agent run.
@@ -137,7 +168,7 @@ function action(params) {
         console.warn('Failed to post token usage comments:', e);
     }
 
-    return { success: true, action: 'moved_to_backlog', blockersResolved: blockers.length, ticketKey };
+    return { success: true, action: 'moved_to_resume_status', blockersResolved: blockers.length, ticketKey: ticketKey };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

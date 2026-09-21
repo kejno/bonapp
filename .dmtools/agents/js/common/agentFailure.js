@@ -61,8 +61,8 @@ function readAgentFailure(ticketKey) {
  * genuine and the caller should proceed normally.
  *
  * Deliberately makes NO other Jira change: no labels, no status transition,
- * no assignment. Leaving the ticket untouched is what lets sm-agent.yml's
- * next cycle pick it up again and retry it for real.
+ * no assignment. An SM rule may already have changed the status before this
+ * post-action runs; the next pass can retry only if a rule matches that state.
  *
  * The comment body is in Russian per the project's Jira language rule
  * (agents/instructions/common/language.md); agentName is the agent config
@@ -85,13 +85,13 @@ function abortIfAgentFailed(ticketKey, agentName) {
     try {
         jira_post_comment({
             key: ticketKey,
-            comment: 'h3. ⚠️ Агент {{' + name + '}} не отработал — тикет оставлен без изменений\n\n' +
+            comment: 'h3. ⚠️ Агент {{' + name + '}} не отработал — дальнейшее продвижение остановлено\n\n' +
                 '|Провайдер|{{' + failure.provider + '}}|\n' +
                 '|Причина|' + failure.reason + '|\n\n' +
-                'Статус, лейблы и исполнитель НЕ менялись: агент не выполнил работу, ' +
-                'и двигать тикет дальше было бы неверно.\n\n' +
-                'Следующий цикл SM-агента подхватит тикет сам. Если это лимит подписки — ' +
-                'дождитесь его сброса.'
+                'Этот post-action не менял статус, лейблы или исполнителя. SM мог изменить статус ' +
+                'до запуска агента, поэтому работа не считается завершённой.\n\n' +
+                'Следующий цикл SM-агента повторит попытку, если тикет подходит под правило повтора. ' +
+                'Если это лимит подписки — дождитесь его сброса и проверьте следующий ран.'
         });
     } catch (error) {
         console.warn('Failed to post agent-failure comment:', error);
