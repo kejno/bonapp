@@ -270,6 +270,7 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
     var expectedRunNameSuffix = ' : ' + ticketKey;
     var shortAgentName = configFile.substring(configFile.lastIndexOf('/') + 1).replace(/\.json$/, '');
     var currentRunNames = [
+        'Team (' + shortAgentName + ':' + ticketKey + ',',
         'Team (' + configFile + ' · ' + ticketKey + ')',
         'Team (' + shortAgentName + ' · ' + ticketKey + ')',
         // Backwards compatibility for runs created before the workflow rename.
@@ -301,7 +302,8 @@ function hasActiveTargetWorkflowRun(scm, workflowFile, configFile, ticketKey) {
                     currentRunNames.some(function(currentRunName) {
                         return runName.indexOf(currentRunName) !== -1;
                     }) ||
-                    runName.indexOf('· lock:' + ticketKey + ')') !== -1;
+                    runName.indexOf('· lock:' + ticketKey + ')') !== -1 ||
+                    runName.indexOf(',lock:' + ticketKey.replace(/^test-pr-/, '') + ')') !== -1;
             });
             if (matchesTarget) {
                 console.log('  ⏭️  ' + ticketKey + ' skipped (active workflow already exists: ' + expectedRunName + ')');
@@ -607,6 +609,7 @@ function triggerWorkflow(repoInfo, ticketKey, ticket, rule, effectiveConfig, wor
         // 'claude-code'`) resolving to one concrete provider every time.
         var dispatchPayload = {
             concurrency_key: concurrencyKey,
+            lock_display_key: concurrencyKey.replace(/^test-pr-/, ''),
             display_key:     ticketKey,
             input_jql:       'key = ' + ticketKey,
             config_file:     resolvedCf,

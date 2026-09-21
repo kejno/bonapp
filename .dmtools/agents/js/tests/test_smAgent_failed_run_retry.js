@@ -17,6 +17,10 @@ const storyStart = rule(generator, 'Merged Stories → Ready For Testing + gener
 const storyRetry = rule(generator, 'Ready For Testing Stories with unfinished test case generation → retry');
 const storyAutomation = rule('agents/story_test_automation.json',
   'Ready For Testing Stories → automate linked test cases in bulk');
+const storyReview = rules.find((r) => r.configFile === 'agents/pr_story_test_automation_review.json');
+const bugReview = rules.find((r) => r.configFile === 'agents/pr_bug_test_automation_review.json');
+assert(storyReview.jql.includes("'test_pr_finalized'"));
+assert(bugReview.jql.includes("'test_pr_finalized'"));
 
 assert(storyRetry);
 assert.strictEqual(storyStart.targetStatus, 'Ready For Testing');
@@ -43,6 +47,9 @@ assert(workflow.includes("startsWith(inputs.concurrency_key, 'test-pr-')"));
 assert(workflow.includes("format('ai-teammate-agent-{0}', inputs.concurrency_key)"));
 assert(workflow.includes('name: Team'));
 assert(workflow.includes('inputs.agent_name || inputs.config_file'));
+assert(workflow.includes("format(':{0}', inputs.display_key)"));
+assert(workflow.includes("format(',lock:{0}', inputs.lock_display_key || inputs.concurrency_key)"));
+assert(source.includes("lock_display_key: concurrencyKey.replace(/^test-pr-/, '')"));
 const context = {
   module: { exports: {} },
   console,
@@ -89,6 +96,9 @@ assert(!context.hasActiveTargetWorkflowRun(active({
 assert(context.hasActiveTargetWorkflowRun(active({
   display_title: '[codex-2] AI Teammate (agents/pr_test_automation_review.json · BNP-329 · lock:test-pr-BNP-122)'
 }), 'ai-teammate.yml', 'agents/pr_test_automation_rework.json', 'test-pr-BNP-122'));
+assert(context.hasActiveTargetWorkflowRun(active({
+  display_title: '[claude] Team (pr_test_automation_rework:BNP-313,lock:BNP-121)'
+}), 'ai-teammate.yml', 'agents/pr_test_automation_review.json', 'test-pr-BNP-121'));
 
 const reworkConfig = require('../../pr_test_automation_rework.json');
 const qualityGates = reworkConfig.params.customParams.feedbackLoop.qualityGates.gates;
