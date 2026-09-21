@@ -67,6 +67,16 @@ function action(params) {
         return { success: false, action: 'missing_ticket' };
     }
 
+    // A finalized test PR means the development merge has already gone through
+    // the complete post-merge/testing pipeline. Do not rediscover an older
+    // development PR and send the ticket back to Merged, which would restart
+    // bug_merged and test automation indefinitely.
+    var ticketLabels = (params.ticket.fields && params.ticket.fields.labels) || [];
+    if (ticketLabels.indexOf(LABELS.TEST_PR_FINALIZED) !== -1) {
+        console.log('Test PR already finalized for', ticketKey, '— skipping merged development PR recovery');
+        return { success: true, action: 'test_pr_already_finalized' };
+    }
+
     var config = configLoader.loadProjectConfig(params.jobParams || params);
     var jiraConfig = config.jira;
     var scm = scmModule.createScm(config);

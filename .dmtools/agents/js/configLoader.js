@@ -81,6 +81,7 @@ var DEFAULTS = {
         },
         prTitle: {
             development: '{ticketKey} {ticketSummary}',
+            bugDevelopment: '[BUGFIX] {ticketKey} {ticketSummary}',
             testAutomation: '[QA] {ticketKey} {ticketSummary}',
             rework: '{ticketKey} {ticketSummary} (rework)'
         }
