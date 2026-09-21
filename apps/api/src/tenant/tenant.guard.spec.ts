@@ -1,11 +1,15 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { SKIP_TENANT_GUARD_KEY } from './tenant.constants';
 import { TenantContextService } from './tenant-context.service';
 import { TenantGuard } from './tenant.guard';
 
 describe('TenantGuard', () => {
+  const getAllAndOverride = jest
+    .fn<boolean, [string, unknown[]]>()
+    .mockReturnValue(false);
   const reflector = {
-    getAllAndOverride: jest.fn<boolean, [string, unknown[]]>().mockReturnValue(false),
+    getAllAndOverride,
   } as unknown as Reflector;
   const context = {
     getHandler: () => undefined,
@@ -17,5 +21,9 @@ describe('TenantGuard', () => {
     const guard = new TenantGuard(service, reflector);
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
     expect(service.run('tenant-a', () => guard.canActivate(context))).toBe(true);
+    expect(getAllAndOverride).toHaveBeenLastCalledWith(
+      SKIP_TENANT_GUARD_KEY,
+      [context.getHandler(), context.getClass()],
+    );
   });
 });

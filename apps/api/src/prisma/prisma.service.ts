@@ -68,6 +68,8 @@ export function scopeTenantQueryArgs(
       args['where'] = {
         tenantId_email: { tenantId, email: where['email'] },
       };
+    } else {
+      args['where'] = { ...where, [tenantField]: tenantId };
     }
     args['create'] = { ...asRecord(args['create']), [tenantField]: tenantId };
     args['update'] = { ...asRecord(args['update']), [tenantField]: tenantId };
@@ -98,6 +100,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * WHERE tenantId = <tenantId> into all operations on tenant-scoped models.
    * The GUC and the query run inside one interactive transaction so RLS sees
    * the transaction-local value on the same database connection.
+   *
+   * Only models in TENANT_SCOPED_MODELS are supported. Models without a
+   * direct tenantId, such as OrderItem, must be accessed through a dedicated
+   * tenant-scoped parent query that enforces the owning relation.
    */
   forTenant(tenantId: string) {
     return this.client.$extends({
@@ -131,7 +137,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
               if (!execute) {
                 throw new Error(`Unsupported Prisma operation: ${operation}`);
               }
-              return execute(scopedArgs);
+              return execute.call(delegate, scopedArgs);
             });
           },
         },
@@ -144,6 +150,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * AsyncLocalStorage context set by TenantContextMiddleware.
    * Throws when no tenant context is active so request handlers cannot
    * accidentally read or write across tenants.
+   *
+   * This client supports only models in TENANT_SCOPED_MODELS. Models without
+   * a direct tenantId require a dedicated query through their tenant-scoped
+   * owner relation.
    */
   get db(): ReturnType<typeof this.forTenant> {
     const tenantId = this.tenantContextService.getTenantId();

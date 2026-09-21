@@ -64,6 +64,46 @@ describe('PrismaService tenant query scope', () => {
     );
   });
 
+  it('adds tenantId to the lookup and payload of a non-user upsert', () => {
+    const input = {
+      where: { id: 'area-a' },
+      create: { id: 'area-a', name: 'Main hall' },
+      update: { name: 'Updated hall' },
+    };
+
+    expect(
+      scopeTenantQueryArgs('DiningArea', 'upsert', input, 'tenant-a'),
+    ).toEqual({
+      where: { id: 'area-a', tenantId: 'tenant-a' },
+      create: { id: 'area-a', name: 'Main hall', tenantId: 'tenant-a' },
+      update: { name: 'Updated hall', tenantId: 'tenant-a' },
+    });
+    expect(input).toEqual({
+      where: { id: 'area-a' },
+      create: { id: 'area-a', name: 'Main hall' },
+      update: { name: 'Updated hall' },
+    });
+  });
+
+  it('replaces a tenant lookup id with the active tenant for tenant upserts', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'Tenant',
+        'upsert',
+        {
+          where: { id: 'other-tenant' },
+          create: { slug: 'tenant-a' },
+          update: { name: 'Updated tenant' },
+        },
+        'tenant-a',
+      ),
+    ).toEqual({
+      where: { id: 'tenant-a' },
+      create: { slug: 'tenant-a', id: 'tenant-a' },
+      update: { name: 'Updated tenant', id: 'tenant-a' },
+    });
+  });
+
   it('adds the tenant filter to reads and does not mutate caller arguments', () => {
     const args = { where: { email: 'a@test' } };
 

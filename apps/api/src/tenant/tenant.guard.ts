@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { SKIP_TENANT_GUARD_KEY } from './tenant.constants';
 import { TenantContextService } from './tenant-context.service';
 
 @Injectable()
@@ -16,7 +17,7 @@ export class TenantGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const skipTenantGuard = this.reflector.getAllAndOverride<boolean>(
-      'skipTenantGuard',
+      SKIP_TENANT_GUARD_KEY,
       [context.getHandler(), context.getClass()],
     );
     if (skipTenantGuard) return true;
