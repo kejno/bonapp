@@ -49,4 +49,17 @@ describe('local development infrastructure', () => {
       'CREATE INDEX IF NOT EXISTS "User_tenantId_idx"',
     );
   });
+
+  it('does not modify a developer .env while preparing isolated connections', () => {
+    const startupCheck = readFileSync(
+      resolve(repositoryRoot, 'apps/api/test/BNP-325.e2e-spec.ts'),
+      'utf8',
+    );
+
+    expect(startupCheck).toContain("readFileSync(envExamplePath, 'utf8')");
+    expect(startupCheck).toContain('runtimeEnvironment = {');
+    expect(startupCheck).toContain('env: runtimeEnvironment');
+    expect(startupCheck).not.toContain('writeFileSync(envPath');
+    expect(startupCheck).not.toContain('unlinkSync(envPath');
+  });
 });

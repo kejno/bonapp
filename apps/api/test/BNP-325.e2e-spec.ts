@@ -1,11 +1,33 @@
-import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import * as net from 'node:net';
 import { resolve as pathResolve } from 'node:path';
+
+import { stopDevProcess } from '../src/stop-dev-process';
 
 const repositoryRoot = pathResolve(__dirname, '../../..');
 const COMPOSE_TIMEOUT = 120_000;
 const HEALTHCHECK_TIMEOUT = 120_000;
 const STARTUP_SCENARIO_TIMEOUT = 420_000;
+let postgresPort: number;
+let redisPort: number;
+let minioApiPort: number;
+let minioConsolePort: number;
+
+const getAvailablePort = () =>
+  new Promise<number>((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Could not allocate an isolated test port'));
+        return;
+      }
+      server.close((error) => (error ? reject(error) : resolve(address.port)));
+    });
+  });
 
 const compose = (...args: string[]) =>
   execFileSync('docker', ['compose', ...args], {
@@ -13,6 +35,14 @@ const compose = (...args: string[]) =>
     encoding: 'utf8',
     stdio: 'pipe',
     timeout: COMPOSE_TIMEOUT,
+    env: {
+      ...process.env,
+      BONAPP_POSTGRES_PORT: String(postgresPort),
+      BONAPP_REDIS_PORT: String(redisPort),
+      BONAPP_MINIO_API_PORT: String(minioApiPort),
+      BONAPP_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      COMPOSE_PROJECT_NAME: `bonapp-bnp325-${process.pid}`,
+    },
   });
 
 interface ServiceStatus {
@@ -34,6 +64,47 @@ function parseServiceStatuses(raw: string): ServiceStatus[] {
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const waitForApiStartup = (apiProcess: ChildProcess) =>
+  new Promise<void>((resolve, reject) => {
+    let output = '';
+    const startTimeout = setTimeout(() => {
+      clearInterval(readinessCheck);
+      reject(
+        new Error(`API did not become ready within 30 s. Output:\n${output}`),
+      );
+    }, 30_000);
+
+    const handleData = (data: Buffer) => {
+      output += data.toString();
+    };
+    const checkReadiness = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:3000/api/v1');
+        if (response.ok) {
+          clearTimeout(startTimeout);
+          clearInterval(readinessCheck);
+          expect(output).not.toMatch(/ECONNREFUSED/);
+          expect(output).not.toMatch(/connection refused/i);
+          resolve();
+        }
+      } catch {
+        // The API is still starting.
+      }
+    };
+    const readinessCheck = setInterval(() => {
+      void checkReadiness();
+    }, 250);
+
+    apiProcess.stdout?.on('data', handleData);
+    apiProcess.stderr?.on('data', handleData);
+    apiProcess.once('error', (error) => {
+      clearTimeout(startTimeout);
+      clearInterval(readinessCheck);
+      reject(error);
+    });
+    void checkReadiness();
+  });
 
 async function waitForServicesHealthy() {
   const deadline = Date.now() + HEALTHCHECK_TIMEOUT;
@@ -57,23 +128,49 @@ async function waitForServicesHealthy() {
 }
 
 describe('BNP-325: local start guide', () => {
-  const envPath = pathResolve(repositoryRoot, 'apps/api/.env');
   const envExamplePath = pathResolve(repositoryRoot, 'apps/api/.env.example');
-  let envCreatedByTest = false;
+  let databaseUrl: string;
+  let redisUrl: string;
+  let runtimeEnvironment: NodeJS.ProcessEnv;
 
-  beforeAll(() => {
-    if (!existsSync(envPath)) {
-      copyFileSync(envExamplePath, envPath);
-      envCreatedByTest = true;
+  beforeAll(async () => {
+    [postgresPort, redisPort, minioApiPort, minioConsolePort] =
+      await Promise.all([
+        getAvailablePort(),
+        getAvailablePort(),
+        getAvailablePort(),
+        getAvailablePort(),
+      ]);
+    const environmentTemplate = readFileSync(envExamplePath, 'utf8');
+    const templateEnvironment = Object.fromEntries(
+      environmentTemplate.split('\n').flatMap((line) => {
+        const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+        return match ? [[match[1], match[2]]] : [];
+      }),
+    );
+    const databaseUrlMatch = environmentTemplate.match(/^DATABASE_URL=(.+)$/m);
+    const redisUrlMatch = environmentTemplate.match(/^REDIS_URL=(.+)$/m);
+    if (!databaseUrlMatch || !redisUrlMatch) {
+      throw new Error('.env.example must define DATABASE_URL and REDIS_URL');
     }
+
+    databaseUrl = databaseUrlMatch[1]
+      .trim()
+      .replace(/localhost:\d+/, `localhost:${postgresPort}`);
+    redisUrl = redisUrlMatch[1]
+      .trim()
+      .replace(/localhost:\d+/, `localhost:${redisPort}`);
+    runtimeEnvironment = {
+      ...process.env,
+      ...templateEnvironment,
+      DATABASE_URL: databaseUrl,
+      REDIS_URL: redisUrl,
+    };
   });
 
   afterAll(() => {
-    if (envCreatedByTest && existsSync(envPath)) {
-      unlinkSync(envPath);
-    }
     try {
-      compose('down');
+      compose('down', '--volumes');
     } catch {
       // Cleanup must not hide the assertion result.
     }
@@ -125,13 +222,6 @@ describe('BNP-325: local start guide', () => {
       expect(postgres?.Health).toBe('healthy');
       expect(redis?.Health).toBe('healthy');
 
-      // Load DATABASE_URL from the .env created from .env.example so the migration
-      // runs in the documented environment rather than a hardcoded override.
-      const createdEnvContent = readFileSync(envPath, 'utf8');
-      const dbUrlMatch = createdEnvContent.match(/^DATABASE_URL=(.+)$/m);
-      expect(dbUrlMatch).not.toBeNull();
-      const databaseUrl = dbUrlMatch![1].trim();
-
       // Step 2: execute the exact documented migration command.
       const migrateOutput = execFileSync(
         'npx',
@@ -147,59 +237,26 @@ describe('BNP-325: local start guide', () => {
           encoding: 'utf8',
           stdio: 'pipe',
           timeout: 60_000,
-          env: {
-            ...process.env,
-            DATABASE_URL: databaseUrl,
-          },
+          env: runtimeEnvironment,
         },
       );
       expect(migrateOutput).not.toMatch(/error/i);
 
       // Step 3: execute the documented workspace startup command and verify the API boots.
-      await new Promise<void>((resolve, reject) => {
-        const apiProcess = spawn('npm', ['run', 'dev'], {
+      let apiProcess: ChildProcess | undefined;
+      try {
+        apiProcess = spawn('npm', ['run', 'dev'], {
           cwd: repositoryRoot,
+          detached: process.platform !== 'win32',
           stdio: 'pipe',
-          env: { ...process.env },
+          env: runtimeEnvironment,
         });
-
-        let output = '';
-        const startTimeout = setTimeout(() => {
-          apiProcess.kill('SIGTERM');
-          reject(
-            new Error(
-              `API did not emit a ready signal within 30 s. Output:\n${output}`,
-            ),
-          );
-        }, 30_000);
-
-        const handleData = (data: Buffer) => {
-          const chunk = data.toString();
-          output += chunk;
-          if (
-            /Nest application successfully started/i.test(output) ||
-            /Application is running on/i.test(output)
-          ) {
-            clearTimeout(startTimeout);
-            apiProcess.kill('SIGTERM');
-            try {
-              expect(output).not.toMatch(/ECONNREFUSED/);
-              expect(output).not.toMatch(/connection refused/i);
-              resolve();
-            } catch (e) {
-              reject(e instanceof Error ? e : new Error(String(e)));
-            }
-          }
-        };
-
-        apiProcess.stdout?.on('data', handleData);
-        apiProcess.stderr?.on('data', handleData);
-
-        apiProcess.on('error', (err) => {
-          clearTimeout(startTimeout);
-          reject(err);
-        });
-      });
+        await waitForApiStartup(apiProcess);
+      } finally {
+        if (apiProcess) {
+          await stopDevProcess(apiProcess);
+        }
+      }
     },
     STARTUP_SCENARIO_TIMEOUT,
   );
