@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { StorageService } from '../src/storage/storage.service';
 import { TenantContextService } from '../src/tenant/tenant-context.service';
 
 /**
@@ -22,7 +23,10 @@ describe('Tenant isolation (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(StorageService)
+      .useValue({})
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -34,42 +38,48 @@ describe('Tenant isolation (e2e)', () => {
     tenantAId = '10000000-0000-4000-a000-000000000001';
     tenantBId = '20000000-0000-4000-a000-000000000002';
 
-    await prisma.adminDb.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        "SELECT set_config('app.current_tenant_id', $1, true)",
-        tenantAId,
-      );
-      await tx.tenant.create({
-        data: { id: tenantAId, name: '__test_tenant_A__' },
+    await tenantContext.run(tenantAId, async () => {
+      await prisma.db.tenant.create({
+        data: {
+          id: tenantAId,
+          slug: '__test-tenant-a__',
+          name: '__test_tenant_A__',
+        },
       });
-      await tx.user.create({
+      await prisma.db.user.create({
         data: {
           tenantId: tenantAId,
           email: '__user@tenant-a.test__',
-          role: 'STAFF',
+          passwordHash: 'test-password-hash',
+          fullName: 'Tenant A Test User',
+          role: 'WAITER',
         },
       });
     });
 
-    await prisma.adminDb.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        "SELECT set_config('app.current_tenant_id', $1, true)",
-        tenantBId,
-      );
-      await tx.tenant.create({
-        data: { id: tenantBId, name: '__test_tenant_B__' },
+    await tenantContext.run(tenantBId, async () => {
+      await prisma.db.tenant.create({
+        data: {
+          id: tenantBId,
+          slug: '__test-tenant-b__',
+          name: '__test_tenant_B__',
+        },
       });
-      await tx.user.create({
+      await prisma.db.user.create({
         data: {
           tenantId: tenantBId,
           email: '__user@tenant-b.test__',
-          role: 'STAFF',
+          passwordHash: 'test-password-hash',
+          fullName: 'Tenant B Test User',
+          role: 'WAITER',
         },
       });
     });
   });
 
   afterAll(async () => {
+    if (!app || !prisma || !tenantContext) return;
+
     await tenantContext.run(tenantAId, () =>
       prisma.db.user.deleteMany({ where: { email: '__user@tenant-a.test__' } }),
     );

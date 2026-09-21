@@ -2,7 +2,12 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 
-export const TENANT_SCOPED_MODELS = new Set(['User', 'Tenant']);
+export const TENANT_SCOPED_MODELS = new Set([
+  'User',
+  'Tenant',
+  'DiningArea',
+  'Table',
+]);
 
 // Operations that accept a WHERE clause and must be filtered by tenantId.
 const TENANT_FILTERED_OPS = new Set([
@@ -72,20 +77,18 @@ export function scopeTenantQueryArgs(
 }
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService implements OnModuleInit, OnModuleDestroy {
+  private readonly client = new PrismaClient();
+
   constructor(private readonly tenantContextService: TenantContextService) {
-    super();
   }
 
   async onModuleInit() {
-    await this.$connect();
+    await this.client.$connect();
   }
 
   async onModuleDestroy() {
-    await this.$disconnect();
+    await this.client.$disconnect();
   }
 
   /**
@@ -95,7 +98,7 @@ export class PrismaService
    * the transaction-local value on the same database connection.
    */
   forTenant(tenantId: string) {
-    return this.$extends({
+    return this.client.$extends({
       query: {
         $allModels: {
           $allOperations: async (params: unknown): Promise<unknown> => {
@@ -114,7 +117,7 @@ export class PrismaService
               args,
               tenantId,
             );
-            return this.$transaction(async (tx) => {
+            return this.client.$transaction(async (tx) => {
               await tx.$executeRawUnsafe(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 tenantId,
@@ -146,10 +149,5 @@ export class PrismaService
       throw new Error('PrismaService.db called outside tenant context');
     }
     return this.forTenant(tenantId);
-  }
-
-  /** Unscoped client for explicitly privileged setup and administration work. */
-  get adminDb(): this {
-    return this;
   }
 }

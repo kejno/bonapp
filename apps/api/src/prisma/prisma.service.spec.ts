@@ -1,11 +1,21 @@
 import {
+  PrismaService,
   scopeTenantQueryArgs,
   TENANT_SCOPED_MODELS,
 } from './prisma.service';
+import { PrismaClient } from '@prisma/client';
 
 describe('PrismaService tenant query scope', () => {
-  it('registers User and Tenant as tenant-scoped models', () => {
-    expect(TENANT_SCOPED_MODELS).toEqual(new Set(['User', 'Tenant']));
+  it('does not expose PrismaClient delegates through the injectable service', () => {
+    expect(Object.getPrototypeOf(PrismaService.prototype)).not.toBe(
+      PrismaClient.prototype,
+    );
+  });
+
+  it('registers every model that contains tenant data', () => {
+    expect(TENANT_SCOPED_MODELS).toEqual(
+      new Set(['User', 'Tenant', 'DiningArea', 'Table']),
+    );
   });
 
   it('adds tenantId to every create payload, including multiple rows', () => {
@@ -61,5 +71,25 @@ describe('PrismaService tenant query scope', () => {
       where: { email: 'a@test', tenantId: 'tenant-a' },
     });
     expect(args).toEqual({ where: { email: 'a@test' } });
+  });
+
+  it('scopes dining areas and tables by tenantId', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'DiningArea',
+        'findMany',
+        { where: { isActive: true } },
+        'tenant-a',
+      ),
+    ).toEqual({ where: { isActive: true, tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs(
+        'Table',
+        'create',
+        { data: { tableNumber: 1, tenantId: 'other' } },
+        'tenant-a',
+      ),
+    ).toEqual({ data: { tableNumber: 1, tenantId: 'tenant-a' } });
   });
 });
