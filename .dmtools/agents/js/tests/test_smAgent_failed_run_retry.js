@@ -19,8 +19,12 @@ const storyAutomation = rule('agents/story_test_automation.json',
   'Ready For Testing Stories → automate linked test cases in bulk');
 const storyReview = rules.find((r) => r.configFile === 'agents/pr_story_test_automation_review.json');
 const bugReview = rules.find((r) => r.configFile === 'agents/pr_bug_test_automation_review.json');
+const mergedRecovery = rules.find((r) => r.configFile === 'agents/recover_merged_pr.json');
+const bugAutomation = rules.find((r) => r.configFile === 'agents/bug_test_automation.json');
 assert(storyReview.jql.includes("'test_pr_finalized'"));
 assert(bugReview.jql.includes("'test_pr_finalized'"));
+assert(mergedRecovery.jql.includes("'test_pr_finalized'"));
+assert(bugAutomation.skipIfLabels.includes('test_pr_finalized'));
 
 assert(storyRetry);
 assert.strictEqual(storyStart.targetStatus, 'Ready For Testing');
