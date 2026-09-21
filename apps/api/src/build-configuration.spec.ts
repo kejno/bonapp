@@ -7,6 +7,6 @@ describe('API build configuration', () => {
       readFileSync(resolve(__dirname, '../package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
 
-    expect(packageJson.scripts.prebuild).toBe('prisma generate');
+    expect(packageJson.scripts.prebuild).toBe('prisma generate --schema prisma/schema.prisma');
   });
 });

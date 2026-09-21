@@ -51,11 +51,11 @@ model Tenant {
 
 model MenuCategory {
   id        String   @id @default(uuid())
-  tenantId  String
+  tenantId  String   @map("tenant_id")
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   name      String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
   items     MenuItem[]
 
   @@unique([id, tenantId])
@@ -65,14 +65,14 @@ model MenuCategory {
 
 model MenuItem {
   id             String                 @id @default(uuid())
-  tenantId       String
+  tenantId       String                 @map("tenant_id")
   tenant         Tenant                 @relation(fields: [tenantId], references: [id])
-  categoryId     String
+  categoryId     String                 @map("category_id")
   category       MenuCategory           @relation(fields: [categoryId, tenantId], references: [id, tenantId])
   name           String
   price          Decimal                @db.Decimal(10, 2)
-  sortOrder      Int                    @default(0)
-  isActive       Boolean                @default(true)
+  sortOrder      Int                    @default(0) @map("sort_order")
+  isActive       Boolean                @default(true) @map("is_active")
   modifierGroups MenuItemModifierGroup[]
   stopListItem   StopListItem?
 
@@ -83,10 +83,10 @@ model MenuItem {
 
 model ModifierGroup {
   id        String                 @id @default(uuid())
-  tenantId  String
+  tenantId  String                 @map("tenant_id")
   tenant    Tenant                 @relation(fields: [tenantId], references: [id])
   name      String
-  sortOrder Int                    @default(0)
+  sortOrder Int                    @default(0) @map("sort_order")
   modifiers Modifier[]
   menuItems MenuItemModifierGroup[]
 
@@ -97,13 +97,13 @@ model ModifierGroup {
 
 model Modifier {
   id              String        @id @default(uuid())
-  tenantId        String
+  tenantId        String        @map("tenant_id")
   tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  modifierGroupId String
+  modifierGroupId String        @map("modifier_group_id")
   modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
   name            String
   price           Decimal       @db.Decimal(10, 2)
-  sortOrder       Int           @default(0)
+  sortOrder       Int           @default(0) @map("sort_order")
 
   @@unique([id, tenantId])
   @@index([tenantId, modifierGroupId, sortOrder])
@@ -111,10 +111,10 @@ model Modifier {
 }
 
 model MenuItemModifierGroup {
-  menuItemId      String
-  modifierGroupId String
-  tenantId        String
-  sortOrder       Int           @default(0)
+  menuItemId      String        @map("menu_item_id")
+  modifierGroupId String        @map("modifier_group_id")
+  tenantId        String        @map("tenant_id")
+  sortOrder       Int           @default(0) @map("sort_order")
   menuItem        MenuItem      @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
   modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
 
@@ -125,12 +125,12 @@ model MenuItemModifierGroup {
 
 model StopListItem {
   id         String   @id @default(uuid())
-  tenantId   String
+  tenantId   String   @map("tenant_id")
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  menuItemId String
+  menuItemId String   @map("menu_item_id")
   menuItem   MenuItem @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
-  isStopped  Boolean  @default(true)
-  updatedAt  DateTime @updatedAt
+  isStopped  Boolean  @default(true) @map("is_stopped")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@index([tenantId])
   @@unique([menuItemId, tenantId])
