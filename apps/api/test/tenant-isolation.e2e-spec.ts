@@ -27,6 +27,8 @@ describe('Tenant isolation (e2e)', () => {
   const orderItemBId = '20000000-0000-4000-a000-000000000022';
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = 'test-secret-for-e2e';
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
