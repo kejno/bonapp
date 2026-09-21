@@ -45,25 +45,29 @@ model Tenant {
   users            User[]
   diningAreas      DiningArea[]
   tables           Table[]
+  orders           Order[]
+  payments         Payment[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String    @id @default(uuid())
-  tenantId     String    @map("tenant_id")
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
-  email        String
-  passwordHash String    @map("password_hash")
-  fullName     String    @map("full_name")
-  phone        String?
-  role         UserRole
-  pinCode      String?   @map("pin_code")
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  email          String
+  passwordHash   String    @map("password_hash")
+  fullName       String    @map("full_name")
+  phone          String?
+  role           UserRole
+  pinCode        String?   @map("pin_code")
+  isActive       Boolean   @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  assignedOrders Order[]   @relation("AssignedWaiterOrders")
 
   @@unique([tenantId, email])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("users")
 }
@@ -97,9 +101,99 @@ model Table {
   status      TableStatus @default(AVAILABLE)
   createdAt   DateTime    @default(now()) @map("created_at")
 
+  orders      Order[]
+
+  @@unique([id, tenantId])
   @@unique([tenantId, tableNumber])
   @@index([qrToken], map: "idx_tables_qr_token")
   @@index([tenantId])
   @@index([areaId])
   @@map("tables")
+}
+
+enum OrderStatus {
+  NEW
+  COOKING
+  READY
+  SERVED
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  OPLATI_QR
+  ERIP_EPOS
+  BANK_CARD
+  CASH_TO_WAITER
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id               String         @id @default(uuid())
+  tenantId         String         @map("tenant_id")
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  tableId          String         @map("table_id")
+  table            Table          @relation(fields: [tableId, tenantId], references: [id, tenantId])
+  dailyOrderNumber Int            @map("daily_order_number")
+  status           OrderStatus    @default(NEW)
+  guestSessionId   String?        @map("guest_session_id")
+  assignedWaiterId String?        @map("assigned_waiter_id")
+  assignedWaiter   User?          @relation("AssignedWaiterOrders", fields: [assignedWaiterId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  totalAmountByn   Decimal        @default(0) @map("total_amount_byn") @db.Decimal(12, 2)
+  tipsAmountByn    Decimal        @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
+  paymentMethod    PaymentMethod? @map("payment_method")
+  isPaid           Boolean        @default(false) @map("is_paid")
+  paidAt           DateTime?      @map("paid_at")
+  posOrderId       String?        @map("pos_order_id")
+  comment          String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  items            OrderItem[]
+  payments         Payment[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status], map: "idx_orders_tenant_status")
+  @@index([tableId], map: "idx_orders_table_id")
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String  @id @default(uuid())
+  orderId           String  @map("order_id")
+  order             Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId            String  @map("item_id")
+  quantity          Int
+  unitPriceByn      Decimal @map("unit_price_byn") @db.Decimal(12, 2)
+  selectedModifiers Json    @map("selected_modifiers")
+  itemComment       String? @map("item_comment")
+  status            String
+  kitchenDepartment String  @map("kitchen_department")
+
+  @@map("order_items")
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  tenantId              String        @map("tenant_id")
+  tenant                Tenant        @relation(fields: [tenantId], references: [id])
+  orderId               String        @map("order_id")
+  order                 Order         @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  amountByn             Decimal       @map("amount_byn") @db.Decimal(12, 2)
+  tipsAmountByn         Decimal       @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
+  provider              String
+  providerTransactionId String?       @map("provider_transaction_id")
+  eripOrderNumber       String?       @map("erip_order_number")
+  status                PaymentStatus @default(PENDING)
+  fiscalReceiptNumber   String?       @map("fiscal_receipt_number")
+  payload               Json?
+  createdAt             DateTime      @default(now()) @map("created_at")
+
+  @@map("payments")
 }

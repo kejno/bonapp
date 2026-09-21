@@ -14,7 +14,7 @@ describe('PrismaService tenant query scope', () => {
 
   it('registers every model that contains tenant data', () => {
     expect(TENANT_SCOPED_MODELS).toEqual(
-      new Set(['User', 'Tenant', 'DiningArea', 'Table']),
+      new Set(['User', 'Tenant', 'DiningArea', 'Table', 'Order', 'Payment']),
     );
   });
 
@@ -91,5 +91,15 @@ describe('PrismaService tenant query scope', () => {
         'tenant-a',
       ),
     ).toEqual({ data: { tableNumber: 1, tenantId: 'tenant-a' } });
+  });
+
+  it('scopes orders and payments by tenantId', () => {
+    expect(
+      scopeTenantQueryArgs('Order', 'findMany', { where: { status: 'NEW' } }, 'tenant-a'),
+    ).toEqual({ where: { status: 'NEW', tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs('Payment', 'create', { data: { orderId: 'order-a' } }, 'tenant-a'),
+    ).toEqual({ data: { orderId: 'order-a', tenantId: 'tenant-a' } });
   });
 });

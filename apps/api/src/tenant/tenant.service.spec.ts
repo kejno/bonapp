@@ -65,6 +65,27 @@ describe('TenantService', () => {
       );
     });
 
+    it('uses the tenant returned by the scoped lookup for the storage key', async () => {
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({
+        id: 'tenant-from-context',
+        name: 'Test Tenant',
+      });
+      mockStorageService.upload.mockResolvedValue('url');
+      mockPrismaService.db.tenant.update.mockResolvedValue({});
+
+      await service.uploadLogo('untrusted-tenant-id', file);
+
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        'tenants/tenant-from-context/logo.png',
+        file.buffer,
+        'image/png',
+      );
+      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-from-context' },
+        data: { logoUrl: 'url' },
+      });
+    });
+
     it('should persist logoUrl to database', async () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockStorageService.upload.mockResolvedValue(url);

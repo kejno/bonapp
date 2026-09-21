@@ -4,6 +4,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { StorageService } from '../src/storage/storage.service';
 import { TenantContextService } from '../src/tenant/tenant-context.service';
+import { PrismaClient } from '@prisma/client';
 
 /**
  * Integration test: verifies that the Prisma tenant-scoped client (.db getter)
@@ -16,6 +17,7 @@ describe('Tenant isolation (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantContext: TenantContextService;
+  const unscopedClient = new PrismaClient();
 
   let tenantAId: string;
   let tenantBId: string;
@@ -92,6 +94,7 @@ describe('Tenant isolation (e2e)', () => {
     await tenantContext.run(tenantBId, () =>
       prisma.db.tenant.delete({ where: { id: tenantBId } }),
     );
+    await unscopedClient.$disconnect();
     await app.close();
   });
 
@@ -102,6 +105,16 @@ describe('Tenant isolation (e2e)', () => {
     expect(users.every((u) => u.tenantId === tenantAId)).toBe(true);
     expect(users.some((u) => u.email === '__user@tenant-a.test__')).toBe(true);
     expect(users.some((u) => u.email === '__user@tenant-b.test__')).toBe(false);
+  });
+
+  it('does not return tenant rows through an application connection without a GUC', async () => {
+    const users = await unscopedClient.user.findMany({
+      where: {
+        email: { in: ['__user@tenant-a.test__', '__user@tenant-b.test__'] },
+      },
+    });
+
+    expect(users).toEqual([]);
   });
 
   it('tenant B context returns only tenant B users', async () => {

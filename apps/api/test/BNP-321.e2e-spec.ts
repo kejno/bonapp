@@ -5,6 +5,26 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { StorageService } from '../src/storage/storage.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { createHmac } from 'node:crypto';
+
+const TENANT_ID = 'tenant-uuid';
+
+function createTenantJwt(tenantId: string): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
+  ).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      tenantId,
+      exp: Math.floor(Date.now() / 1000) + 60,
+    }),
+  ).toString('base64url');
+  const signature = createHmac('sha256', process.env.JWT_SECRET ?? '')
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+
+  return `${header}.${payload}.${signature}`;
+}
 
 // Mock load-esm so NestJS FileTypeValidator can perform magic-bytes validation
 // in Jest's synchronous VM environment (without --experimental-vm-modules).
@@ -46,6 +66,8 @@ describe('BNP-321: POST /api/v1/admin/tenant/logo with invalid file type — 400
   let app: INestApplication<App>;
 
   beforeEach(async () => {
+    process.env.JWT_SECRET = 'test-secret';
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -53,9 +75,11 @@ describe('BNP-321: POST /api/v1/admin/tenant/logo with invalid file type — 400
       .useValue({ upload: jest.fn() })
       .overrideProvider(PrismaService)
       .useValue({
-        tenant: {
-          findUnique: jest.fn(),
-          update: jest.fn(),
+        db: {
+          tenant: {
+            findUnique: jest.fn(),
+            update: jest.fn(),
+          },
         },
       })
       .compile();
@@ -72,8 +96,8 @@ describe('BNP-321: POST /api/v1/admin/tenant/logo with invalid file type — 400
   it('returns 400 when a text/plain file is uploaded', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/v1/admin/tenant/logo')
-      .set('Authorization', 'Bearer test-token')
-      .field('tenantId', 'tenant-uuid')
+      .set('Authorization', `Bearer ${createTenantJwt(TENANT_ID)}`)
+      .field('tenantId', TENANT_ID)
       .attach('logo', Buffer.from('not an image content'), {
         filename: 'file.txt',
         contentType: 'text/plain',
@@ -87,8 +111,8 @@ describe('BNP-321: POST /api/v1/admin/tenant/logo with invalid file type — 400
 
     const response = await request(app.getHttpServer())
       .post('/api/v1/admin/tenant/logo')
-      .set('Authorization', 'Bearer test-token')
-      .field('tenantId', 'tenant-uuid')
+      .set('Authorization', `Bearer ${createTenantJwt(TENANT_ID)}`)
+      .field('tenantId', TENANT_ID)
       .attach('logo', pdfBuffer, {
         filename: 'document.pdf',
         contentType: 'application/pdf',
@@ -102,8 +126,8 @@ describe('BNP-321: POST /api/v1/admin/tenant/logo with invalid file type — 400
 
     const response = await request(app.getHttpServer())
       .post('/api/v1/admin/tenant/logo')
-      .set('Authorization', 'Bearer test-token')
-      .field('tenantId', 'tenant-uuid')
+      .set('Authorization', `Bearer ${createTenantJwt(TENANT_ID)}`)
+      .field('tenantId', TENANT_ID)
       .attach('logo', gifBuffer, {
         filename: 'animation.gif',
         contentType: 'image/gif',

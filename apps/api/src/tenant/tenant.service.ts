@@ -25,10 +25,10 @@ export class TenantService {
     if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
     const ext = MIME_TO_EXT[file.mimetype] ?? 'jpg';
-    const key = `tenants/${tenantId}/logo.${ext}`;
+    const key = `tenants/${tenant.id}/logo.${ext}`;
     const url = await this.storage.upload(key, file.buffer, file.mimetype);
     await this.prisma.db.tenant.update({
-      where: { id: tenantId },
+      where: { id: tenant.id },
       data: { logoUrl: url },
     });
     return url;
