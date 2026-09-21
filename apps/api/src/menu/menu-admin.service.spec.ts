@@ -5,6 +5,9 @@ import { MenuAdminService } from './menu-admin.service';
 describe('MenuAdminService', () => {
   let prisma: {
     menuItem: { update: jest.Mock; findUnique: jest.Mock };
+    menuCategory: { update: jest.Mock };
+    modifierGroup: { update: jest.Mock };
+    modifier: { update: jest.Mock };
     stopListItem: { upsert: jest.Mock };
   };
   let cache: { del: jest.Mock };
@@ -13,6 +16,9 @@ describe('MenuAdminService', () => {
   beforeEach(() => {
     prisma = {
       menuItem: { update: jest.fn(), findUnique: jest.fn() },
+      menuCategory: { update: jest.fn() },
+      modifierGroup: { update: jest.fn() },
+      modifier: { update: jest.fn() },
       stopListItem: { upsert: jest.fn() },
     };
     cache = { del: jest.fn() };
@@ -54,6 +60,25 @@ describe('MenuAdminService', () => {
 
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
+
+  it.each([
+    ['category', 'category-1', 'menuCategory', 'updateCategory', { name: 'Breakfast' }],
+    ['modifier group', 'group-1', 'modifierGroup', 'updateModifierGroup', { name: 'Extras' }],
+    ['modifier', 'modifier-1', 'modifier', 'updateModifier', { name: 'Cheese' }],
+  ] as const)(
+    'invalidates the tenant menu after changing a %s',
+    async (_entity, id, model, method, data) => {
+      prisma[model].update.mockResolvedValue({ id });
+
+      await service[method]('tenant-1', id, data);
+
+      expect(prisma[model].update).toHaveBeenCalledWith({
+        where: { id_tenantId: { id, tenantId: 'tenant-1' } },
+        data,
+      });
+      expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
+    },
+  );
 
   it('invalidates the tenant menu immediately after a stop-list update', async () => {
     prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1' });

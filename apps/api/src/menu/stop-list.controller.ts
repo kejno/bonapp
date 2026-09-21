@@ -28,7 +28,7 @@ export class StopListController {
     }
     return this.menuAdminService.updateStopList(
       authenticatedRequest.user!.tenantId!,
-      request.itemId,
+      request.itemId.trim(),
       request.isStopped,
     );
   }

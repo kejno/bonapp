@@ -60,6 +60,7 @@ model MenuCategory {
 
   @@unique([id, tenantId])
   @@index([tenantId, sortOrder])
+  @@map("menu_categories")
 }
 
 model MenuItem {
@@ -77,6 +78,7 @@ model MenuItem {
 
   @@unique([id, tenantId])
   @@index([tenantId, categoryId, sortOrder])
+  @@map("menu_items")
 }
 
 model ModifierGroup {
@@ -90,6 +92,7 @@ model ModifierGroup {
 
   @@unique([id, tenantId])
   @@index([tenantId, sortOrder])
+  @@map("modifier_groups")
 }
 
 model Modifier {
@@ -104,6 +107,7 @@ model Modifier {
 
   @@unique([id, tenantId])
   @@index([tenantId, modifierGroupId, sortOrder])
+  @@map("modifiers")
 }
 
 model MenuItemModifierGroup {
@@ -116,6 +120,7 @@ model MenuItemModifierGroup {
 
   @@id([menuItemId, modifierGroupId])
   @@index([tenantId])
+  @@map("menu_item_modifier_groups")
 }
 
 model StopListItem {
@@ -129,6 +134,7 @@ model StopListItem {
 
   @@index([tenantId])
   @@unique([menuItemId, tenantId])
+  @@map("stop_list_items")
 }
 
 enum TableStatus {

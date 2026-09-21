@@ -26,6 +26,19 @@ describe('StopListController', () => {
     );
   });
 
+  it('trims the item identifier before sending it to the service', async () => {
+    await controller.update(request, {
+      itemId: '  item-1  ',
+      isStopped: true,
+    });
+
+    expect(menuAdminService.updateStopList).toHaveBeenCalledWith(
+      'trusted-tenant',
+      'item-1',
+      true,
+    );
+  });
+
   it.each([
     { itemId: '', isStopped: true },
     { itemId: 'item-1', isStopped: 'true' },

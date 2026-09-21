@@ -11,6 +11,13 @@ const ordersMigrationPath = join(
   'migration.sql',
 );
 const ordersMigration = readFileSync(ordersMigrationPath, 'utf8');
+const menuTablesMigrationPath = join(
+  process.cwd(),
+  'prisma',
+  'migrations',
+  '20260921140000_rename_menu_tables_to_snake_case',
+  'migration.sql',
+);
 const packageJson = JSON.parse(
   readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
 ) as { scripts: Record<string, string> };
@@ -72,5 +79,24 @@ describe('Prisma core schema', () => {
     expect(ordersMigration).toContain('CHECK ("quantity" > 0)');
     expect(ordersMigration).toContain('CHECK ("unit_price_byn" >= 0)');
     expect(ordersMigration).toContain('CHECK ("amount_byn" >= 0)');
+  });
+
+  it('maps menu catalog tables to snake_case and migrates existing names', () => {
+    const menuTablesMigration = readFileSync(menuTablesMigrationPath, 'utf8');
+
+    expect(schema).toMatch(/model MenuCategory[\s\S]*?@@map\("menu_categories"\)/);
+    expect(schema).toMatch(/model MenuItem[\s\S]*?@@map\("menu_items"\)/);
+    expect(schema).toMatch(/model ModifierGroup[\s\S]*?@@map\("modifier_groups"\)/);
+    expect(schema).toMatch(/model Modifier[\s\S]*?@@map\("modifiers"\)/);
+    expect(schema).toMatch(
+      /model MenuItemModifierGroup[\s\S]*?@@map\("menu_item_modifier_groups"\)/,
+    );
+    expect(schema).toMatch(/model StopListItem[\s\S]*?@@map\("stop_list_items"\)/);
+    expect(menuTablesMigration).toContain(
+      'ALTER TABLE "MenuCategory" RENAME TO "menu_categories";',
+    );
+    expect(menuTablesMigration).toContain(
+      'ALTER TABLE "StopListItem" RENAME TO "stop_list_items";',
+    );
   });
 });

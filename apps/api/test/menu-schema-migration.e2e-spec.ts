@@ -6,6 +6,10 @@ const migration = resolve(
   __dirname,
   '../prisma/migrations/20260921000000_add_menu_catalog/migration.sql',
 );
+const renameMigration = resolve(
+  __dirname,
+  '../prisma/migrations/20260921140000_rename_menu_tables_to_snake_case/migration.sql',
+);
 
 const describeWithDocker = process.env.SKIP_DOCKER_TESTS
   ? describe.skip
@@ -16,15 +20,16 @@ describe('menu catalog migration', () => {
     expect(existsSync(migration)).toBe(true);
 
     const sql = readFileSync(migration, 'utf8');
+    const renamedTablesSql = readFileSync(renameMigration, 'utf8');
     for (const table of [
-      'MenuCategory',
-      'MenuItem',
-      'ModifierGroup',
-      'Modifier',
-      'MenuItemModifierGroup',
-      'StopListItem',
+      'menu_categories',
+      'menu_items',
+      'modifier_groups',
+      'modifiers',
+      'menu_item_modifier_groups',
+      'stop_list_items',
     ]) {
-      expect(sql).toContain(`CREATE TABLE "${table}"`);
+      expect(renamedTablesSql).toContain(`RENAME TO "${table}"`);
     }
     expect(sql).toContain('MenuItem_categoryId_tenantId_fkey');
     expect(sql).toContain('StopListItem_menuItemId_tenantId_fkey');
@@ -94,7 +99,7 @@ describeWithDocker('menu catalog migration deployment', () => {
   it('deploys to both an empty and an existing baseline database', () => {
     const emptyUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`;
     expect(() => prisma(emptyUrl, 'migrate', 'deploy')).not.toThrow();
-    expect(sql('postgres', 'SELECT 1 FROM "StopListItem" LIMIT 1;')).toContain(
+    expect(sql('postgres', 'SELECT 1 FROM "stop_list_items" LIMIT 1;')).toContain(
       '0 rows',
     );
 
@@ -115,6 +120,6 @@ describeWithDocker('menu catalog migration deployment', () => {
     );
 
     expect(() => prisma(legacyUrl, 'migrate', 'deploy')).not.toThrow();
-    expect(sql(legacyDb, 'SELECT 1 FROM "MenuItem" LIMIT 1;')).toContain('0 rows');
+    expect(sql(legacyDb, 'SELECT 1 FROM "menu_items" LIMIT 1;')).toContain('0 rows');
   }, 120_000);
 });
