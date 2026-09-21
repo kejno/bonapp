@@ -19,12 +19,15 @@ try {
     global.jira_move_to_status = ({ key, statusName }) => moves.push({ key, statusName });
     global.jira_post_comment = () => {};
 
-    assert.strictEqual(unblock.action({ ticket: { key: 'BNP-123' } }).success, true);
-    assert.deepStrictEqual(moves[0], { key: 'BNP-123', statusName: 'In Testing' });
+    const manualStoryBlock = unblock.action({ ticket: { key: 'BNP-123' } });
+    assert.strictEqual(manualStoryBlock.success, true);
+    assert.strictEqual(manualStoryBlock.action, 'manual_block_no_dependencies');
+    assert.strictEqual(moves.length, 0, 'a manual block without dependency links must remain Blocked');
     assert(reads[0].includes('labels'), 'unblocker must fetch labels to recover the workflow stage');
 
-    assert.strictEqual(unblock.action({ ticket: { key: 'BNP-456' } }).success, true);
-    assert.deepStrictEqual(moves[1], { key: 'BNP-456', statusName: 'Backlog' });
+    const manualGenericBlock = unblock.action({ ticket: { key: 'BNP-456' } });
+    assert.strictEqual(manualGenericBlock.action, 'manual_block_no_dependencies');
+    assert.strictEqual(moves.length, 0);
 } finally {
     require('../configLoader.js').loadProjectConfig = originalLoadProjectConfig;
     delete global.jira_get_ticket;
