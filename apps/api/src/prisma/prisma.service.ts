@@ -140,7 +140,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.$extends({
       query: {
         $allModels: {
-          $allOperations: async (params: unknown): Promise<unknown> => {
+          $allOperations: (params: unknown): Promise<unknown> => {
             const { model, operation, args } = params as {
               model: string;
               operation: string;
