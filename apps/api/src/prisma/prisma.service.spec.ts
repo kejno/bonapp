@@ -14,7 +14,15 @@ describe('PrismaService tenant query scope', () => {
 
   it('registers every model that contains tenant data', () => {
     expect(TENANT_SCOPED_MODELS).toEqual(
-      new Set(['User', 'Tenant', 'DiningArea', 'Table', 'Order', 'Payment']),
+      new Set([
+        'User',
+        'Tenant',
+        'DiningArea',
+        'Table',
+        'Order',
+        'OrderItem',
+        'Payment',
+      ]),
     );
   });
 
@@ -141,5 +149,50 @@ describe('PrismaService tenant query scope', () => {
     expect(
       scopeTenantQueryArgs('Payment', 'create', { data: { orderId: 'order-a' } }, 'tenant-a'),
     ).toEqual({ data: { orderId: 'order-a', tenantId: 'tenant-a' } });
+  });
+
+  it('scopes order items through their owning order', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'OrderItem',
+        'findMany',
+        { where: { status: 'NEW' } },
+        'tenant-a',
+      ),
+    ).toEqual({
+      where: {
+        AND: [
+          { status: 'NEW' },
+          { order: { is: { tenantId: 'tenant-a' } } },
+        ],
+      },
+    });
+
+    expect(
+      scopeTenantQueryArgs(
+        'OrderItem',
+        'deleteMany',
+        { where: { id: 'item-b' } },
+        'tenant-a',
+      ),
+    ).toEqual({
+      where: {
+        AND: [
+          { id: 'item-b' },
+          { order: { is: { tenantId: 'tenant-a' } } },
+        ],
+      },
+    });
+  });
+
+  it('rejects order item upserts because Prisma cannot scope its unique lookup', () => {
+    expect(() =>
+      scopeTenantQueryArgs(
+        'OrderItem',
+        'upsert',
+        { where: { id: 'item-b' }, create: {}, update: {} },
+        'tenant-a',
+      ),
+    ).toThrow('OrderItem upsert is not supported');
   });
 });

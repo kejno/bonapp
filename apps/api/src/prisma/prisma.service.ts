@@ -8,6 +8,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'DiningArea',
   'Table',
   'Order',
+  'OrderItem',
   'Payment',
 ]);
 
@@ -45,6 +46,24 @@ export function scopeTenantQueryArgs(
   if (!TENANT_SCOPED_MODELS.has(model)) return input;
 
   const args = { ...input };
+  if (model === 'OrderItem') {
+    if (operation === 'upsert') {
+      throw new Error(
+        'OrderItem upsert is not supported because its unique lookup cannot be tenant-scoped',
+      );
+    }
+
+    if (TENANT_FILTERED_OPS.has(operation)) {
+      args['where'] = {
+        AND: [
+          asRecord(args['where']),
+          { order: { is: { tenantId } } },
+        ],
+      };
+    }
+    return args;
+  }
+
   const tenantField = model === 'Tenant' ? 'id' : 'tenantId';
 
   if (TENANT_FILTERED_OPS.has(operation)) {
@@ -101,9 +120,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * The GUC and the query run inside one interactive transaction so RLS sees
    * the transaction-local value on the same database connection.
    *
-   * Only models in TENANT_SCOPED_MODELS are supported. Models without a
-   * direct tenantId, such as OrderItem, must be accessed through a dedicated
-   * tenant-scoped parent query that enforces the owning relation.
+   * OrderItem is scoped through its owning Order relation. Its create and
+   * createMany operations are protected by the matching RLS policy; upsert is
+   * rejected because Prisma's unique lookup cannot include that relation.
    */
   forTenant(tenantId: string) {
     return this.client.$extends({
@@ -151,9 +170,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * Throws when no tenant context is active so request handlers cannot
    * accidentally read or write across tenants.
    *
-   * This client supports only models in TENANT_SCOPED_MODELS. Models without
-   * a direct tenantId require a dedicated query through their tenant-scoped
-   * owner relation.
+   * This client supports only models in TENANT_SCOPED_MODELS. OrderItem is
+   * constrained through its tenant-scoped owner relation.
    */
   get db(): ReturnType<typeof this.forTenant> {
     const tenantId = this.tenantContextService.getTenantId();

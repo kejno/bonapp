@@ -21,6 +21,10 @@ describe('Tenant isolation (e2e)', () => {
 
   let tenantAId: string;
   let tenantBId: string;
+  const orderAId = '10000000-0000-4000-a000-000000000011';
+  const orderBId = '20000000-0000-4000-a000-000000000012';
+  const orderItemAId = '10000000-0000-4000-a000-000000000021';
+  const orderItemBId = '20000000-0000-4000-a000-000000000022';
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -57,6 +61,42 @@ describe('Tenant isolation (e2e)', () => {
           role: 'WAITER',
         },
       });
+      await prisma.db.diningArea.create({
+        data: {
+          id: '10000000-0000-4000-a000-000000000031',
+          tenantId: tenantAId,
+          name: 'Area A',
+        },
+      });
+      await prisma.db.table.create({
+        data: {
+          id: '10000000-0000-4000-a000-000000000041',
+          tenantId: tenantAId,
+          areaId: '10000000-0000-4000-a000-000000000031',
+          tableNumber: 1,
+          qrToken: '__tenant-a-table__',
+        },
+      });
+      await prisma.db.order.create({
+        data: {
+          id: orderAId,
+          tenantId: tenantAId,
+          tableId: '10000000-0000-4000-a000-000000000041',
+          dailyOrderNumber: 1,
+        },
+      });
+      await prisma.db.orderItem.create({
+        data: {
+          id: orderItemAId,
+          orderId: orderAId,
+          itemId: 'item-a',
+          quantity: 1,
+          unitPriceByn: 1,
+          selectedModifiers: [],
+          status: 'NEW',
+          kitchenDepartment: 'kitchen',
+        },
+      });
     });
 
     await tenantContext.run(tenantBId, async () => {
@@ -76,12 +116,66 @@ describe('Tenant isolation (e2e)', () => {
           role: 'WAITER',
         },
       });
+      await prisma.db.diningArea.create({
+        data: {
+          id: '20000000-0000-4000-a000-000000000032',
+          tenantId: tenantBId,
+          name: 'Area B',
+        },
+      });
+      await prisma.db.table.create({
+        data: {
+          id: '20000000-0000-4000-a000-000000000042',
+          tenantId: tenantBId,
+          areaId: '20000000-0000-4000-a000-000000000032',
+          tableNumber: 1,
+          qrToken: '__tenant-b-table__',
+        },
+      });
+      await prisma.db.order.create({
+        data: {
+          id: orderBId,
+          tenantId: tenantBId,
+          tableId: '20000000-0000-4000-a000-000000000042',
+          dailyOrderNumber: 1,
+        },
+      });
+      await prisma.db.orderItem.create({
+        data: {
+          id: orderItemBId,
+          orderId: orderBId,
+          itemId: 'item-b',
+          quantity: 1,
+          unitPriceByn: 1,
+          selectedModifiers: [],
+          status: 'NEW',
+          kitchenDepartment: 'kitchen',
+        },
+      });
     });
   });
 
   afterAll(async () => {
     if (!app || !prisma || !tenantContext) return;
 
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.order.deleteMany({ where: { id: orderAId } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.order.deleteMany({ where: { id: orderBId } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.table.deleteMany({ where: { id: '10000000-0000-4000-a000-000000000041' } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.table.deleteMany({ where: { id: '20000000-0000-4000-a000-000000000042' } }),
+    );
+    await tenantContext.run(tenantAId, () =>
+      prisma.db.diningArea.deleteMany({ where: { id: '10000000-0000-4000-a000-000000000031' } }),
+    );
+    await tenantContext.run(tenantBId, () =>
+      prisma.db.diningArea.deleteMany({ where: { id: '20000000-0000-4000-a000-000000000032' } }),
+    );
     await tenantContext.run(tenantAId, () =>
       prisma.db.user.deleteMany({ where: { email: '__user@tenant-a.test__' } }),
     );
@@ -147,5 +241,31 @@ describe('Tenant isolation (e2e)', () => {
     );
     expect(tenants.every((t) => t.id === tenantAId)).toBe(true);
     expect(tenants.some((t) => t.id === tenantBId)).toBe(false);
+  });
+
+  it('does not expose or modify tenant B order items from tenant A or without a GUC', async () => {
+    const unscopedItems = await unscopedClient.orderItem.findMany({
+      where: { id: { in: [orderItemAId, orderItemBId] } },
+    });
+    expect(unscopedItems).toEqual([]);
+
+    const tenantAItems = await tenantContext.run(tenantAId, () =>
+      prisma.db.orderItem.findMany(),
+    );
+    expect(tenantAItems.map((item) => item.id)).toContain(orderItemAId);
+    expect(tenantAItems.map((item) => item.id)).not.toContain(orderItemBId);
+
+    const updated = await tenantContext.run(tenantAId, () =>
+      prisma.db.orderItem.updateMany({
+        where: { id: orderItemBId },
+        data: { status: 'CANCELLED' },
+      }),
+    );
+    expect(updated.count).toBe(0);
+
+    const tenantBItem = await tenantContext.run(tenantBId, () =>
+      prisma.db.orderItem.findUnique({ where: { id: orderItemBId } }),
+    );
+    expect(tenantBItem?.status).toBe('NEW');
   });
 });

@@ -10,6 +10,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { createHmac } from 'crypto';
 
 // NestJS v11 FileTypeValidator loads the ESM-only `file-type` package through
 // `load-esm`, which Jest's synchronous VM cannot import without this shim.
@@ -42,6 +43,7 @@ process.env.S3_ACCESS_KEY = S3_ACCESS_KEY;
 process.env.S3_SECRET_KEY = S3_SECRET_KEY;
 
 const TENANT_ID = 'tenant-uuid-319';
+const JWT_SECRET = 'bnp-319-test-secret';
 const PNG_CONTENT = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 ]);
@@ -50,6 +52,7 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
   let app: INestApplication<App>;
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = JWT_SECRET;
     const s3 = new S3Client({
       endpoint: S3_ENDPOINT,
       region: process.env.S3_REGION ?? 'us-east-1',
@@ -88,11 +91,13 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
     })
       .overrideProvider(PrismaService)
       .useValue({
-        tenant: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({ id: TENANT_ID, name: 'Test Tenant' }),
-          update: jest.fn().mockResolvedValue({ id: TENANT_ID }),
+        db: {
+          tenant: {
+            findUnique: jest
+              .fn()
+              .mockResolvedValue({ id: TENANT_ID, name: 'Test Tenant' }),
+            update: jest.fn().mockResolvedValue({ id: TENANT_ID }),
+          },
         },
       })
       .compile();
@@ -109,7 +114,7 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
   it('saves a PNG uploaded in file and serves its exact content by the returned url', async () => {
     const uploadResponse = await request(app.getHttpServer())
       .post('/api/v1/admin/tenant/logo')
-      .set('Authorization', 'Bearer test-token')
+      .set('Authorization', `Bearer ${createJwt(TENANT_ID)}`)
       .field('tenantId', TENANT_ID)
       .attach('file', PNG_CONTENT, {
         filename: 'logo.png',
@@ -127,3 +132,16 @@ describe('BNP-319: POST /api/v1/admin/tenant/logo — file is saved and public U
     expect(Buffer.from(await downloadResponse.arrayBuffer())).toEqual(PNG_CONTENT);
   });
 });
+
+function createJwt(tenantId: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString(
+    'base64url',
+  );
+  const payload = Buffer.from(
+    JSON.stringify({ tenantId, exp: Math.floor(Date.now() / 1000) + 60 }),
+  ).toString('base64url');
+  const signature = createHmac('sha256', JWT_SECRET)
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return `${header}.${payload}.${signature}`;
+}
