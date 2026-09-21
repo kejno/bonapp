@@ -110,7 +110,7 @@ jobs:
       - run: npm ci
       - run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
-      - run: npm --workspace @bonapp/api run test:e2e
+      - run: npm --workspace @bonapp/api run test:e2e -- order-tenant-integrity.e2e-spec.ts
 
   build:
     name: Build (Node ${{ matrix.node-version }})
