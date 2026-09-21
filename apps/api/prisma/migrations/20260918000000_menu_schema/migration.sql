@@ -67,7 +67,13 @@ CREATE TABLE "ModifierOption" (
 CREATE INDEX "MenuCategory_tenantId_idx" ON "MenuCategory"("tenantId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "MenuCategory_tenantId_id_key" ON "MenuCategory"("tenantId", "id");
+
+-- CreateIndex
 CREATE INDEX "idx_menu_items_tenant_cat" ON "MenuItem"("tenantId", "categoryId") WHERE "isActive" = TRUE;
+
+-- CreateIndex
+CREATE UNIQUE INDEX "MenuItem_tenantId_id_key" ON "MenuItem"("tenantId", "id");
 
 -- CreateIndex
 CREATE INDEX "ModifierGroup_tenantId_idx" ON "ModifierGroup"("tenantId");
@@ -85,13 +91,13 @@ ALTER TABLE "MenuCategory" ADD CONSTRAINT "MenuCategory_tenantId_fkey" FOREIGN K
 ALTER TABLE "MenuItem" ADD CONSTRAINT "MenuItem_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MenuItem" ADD CONSTRAINT "MenuItem_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "MenuCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MenuItem" ADD CONSTRAINT "MenuItem_tenantId_categoryId_fkey" FOREIGN KEY ("tenantId", "categoryId") REFERENCES "MenuCategory"("tenantId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ModifierGroup" ADD CONSTRAINT "ModifierGroup_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ModifierGroup" ADD CONSTRAINT "ModifierGroup_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "MenuItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ModifierGroup" ADD CONSTRAINT "ModifierGroup_tenantId_itemId_fkey" FOREIGN KEY ("tenantId", "itemId") REFERENCES "MenuItem"("tenantId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ModifierOption" ADD CONSTRAINT "ModifierOption_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "ModifierGroup"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

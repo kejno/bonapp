@@ -79,6 +79,16 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
       expect(schema).toContain('menuItems');
       expect(schema).toContain('modifierGroups');
     });
+
+    it('keeps category and item references within the same tenant', () => {
+      expect(schema).toContain('@@unique([tenantId, id])');
+      expect(schema).toContain(
+        '@relation(fields: [tenantId, categoryId], references: [tenantId, id])',
+      );
+      expect(schema).toContain(
+        '@relation(fields: [tenantId, itemId], references: [tenantId, id])',
+      );
+    });
   });
 
   describe('migration SQL — DDL correctness', () => {
@@ -116,9 +126,18 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
     it('adds foreign keys for all relations', () => {
       expect(migration).toContain('MenuCategory_tenantId_fkey');
       expect(migration).toContain('MenuItem_tenantId_fkey');
-      expect(migration).toContain('MenuItem_categoryId_fkey');
-      expect(migration).toContain('ModifierGroup_itemId_fkey');
+      expect(migration).toContain('MenuItem_tenantId_categoryId_fkey');
+      expect(migration).toContain('ModifierGroup_tenantId_itemId_fkey');
       expect(migration).toContain('ModifierOption_groupId_fkey');
+    });
+
+    it('uses composite foreign keys for tenant-scoped category and item references', () => {
+      expect(migration).toContain(
+        'FOREIGN KEY ("tenantId", "categoryId") REFERENCES "MenuCategory"("tenantId", "id")',
+      );
+      expect(migration).toContain(
+        'FOREIGN KEY ("tenantId", "itemId") REFERENCES "MenuItem"("tenantId", "id")',
+      );
     });
   });
 });
