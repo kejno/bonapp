@@ -232,19 +232,19 @@
           "enabled": true
         },
         {
-          "description": "In Testing Stories with an open test PR → review the story test automation PR",
-          "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved', 'test_pr_finalized'))",
-          "configFile": "agents/pr_story_test_automation_review.json",
-          "skipIfLabel": "sm_story_test_review_triggered",
-          "addLabel": "sm_story_test_review_triggered",
-          "enabled": true
-        },
-        {
           "description": "In Testing Stories with test PR needing rework → trigger story_test_automation_rework",
           "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND labels = 'test_pr_rework_needed'",
           "configFile": "agents/story_test_automation_rework.json",
           "skipIfLabel": "sm_story_test_rework_triggered",
           "addLabel": "sm_story_test_rework_triggered",
+          "enabled": true
+        },
+        {
+          "description": "In Testing Stories with an open test PR → review the story test automation PR",
+          "jql": "project = {jiraProject} AND issuetype in ('Story') AND status in ('In Testing') AND (labels is EMPTY OR labels NOT IN ('pr_approved', 'test_pr_finalized', 'test_pr_rework_needed'))",
+          "configFile": "agents/pr_story_test_automation_review.json",
+          "skipIfLabel": "sm_story_test_review_triggered",
+          "addLabel": "sm_story_test_review_triggered",
           "enabled": true
         },
         {
