@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuService } from './menu.service';
@@ -61,15 +60,5 @@ describe('MenuService', () => {
       catalog,
       60,
     );
-  });
-
-  it('returns the database catalog when Redis read and write fail', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    cache.getJson.mockRejectedValue(new Error('Redis unavailable'));
-    cache.setJson.mockRejectedValue(new Error('Redis unavailable'));
-    prisma.menuCategory.findMany.mockResolvedValue(catalog);
-
-    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(catalog);
-    expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
   });
 });

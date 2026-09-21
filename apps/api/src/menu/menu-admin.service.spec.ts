@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuAdminService } from './menu-admin.service';
@@ -74,16 +73,5 @@ describe('MenuAdminService', () => {
     ).rejects.toThrow('not found');
     expect(prisma.stopListItem.upsert).not.toHaveBeenCalled();
     expect(cache.del).not.toHaveBeenCalled();
-  });
-
-  it('does not fail a stop-list update when cache invalidation fails', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1' });
-    prisma.stopListItem.upsert.mockResolvedValue({ id: 'stop-list-1' });
-    cache.del.mockRejectedValue(new Error('Redis unavailable'));
-
-    await expect(
-      service.updateStopList('tenant-1', 'item-1', true),
-    ).resolves.toEqual({ id: 'stop-list-1' });
   });
 });

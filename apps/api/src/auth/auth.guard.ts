@@ -4,16 +4,76 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Request } from 'express';
 
-// TODO: Replace with real JWT validation — BNP-XXX (auth module)
+interface AuthenticatedRequest extends Request {
+  user?: { tenantId: string };
+}
+
+interface JwtPayload {
+  tenantId?: unknown;
+  exp?: unknown;
+}
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<Request>();
-    if (!request.headers.authorization) {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const token = this.getBearerToken(request.headers.authorization);
+    const payload = this.verifyToken(token);
+    request.user = { tenantId: payload.tenantId };
+    return true;
+  }
+
+  private getBearerToken(authorization?: string): string {
+    const match = authorization?.match(/^Bearer\s+(.+)$/i);
+    if (!match) throw new UnauthorizedException();
+    return match[1];
+  }
+
+  private verifyToken(token: string): { tenantId: string } {
+    const [encodedHeader, encodedPayload, signature, ...extraParts] =
+      token.split('.');
+    if (
+      !encodedHeader ||
+      !encodedPayload ||
+      !signature ||
+      extraParts.length > 0
+    ) {
       throw new UnauthorizedException();
     }
-    return true;
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new UnauthorizedException();
+
+    try {
+      const header = JSON.parse(
+        Buffer.from(encodedHeader, 'base64url').toString('utf8'),
+      ) as { alg?: unknown };
+      const payload = JSON.parse(
+        Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+      ) as JwtPayload;
+      const expectedSignature = createHmac('sha256', secret)
+        .update(`${encodedHeader}.${encodedPayload}`)
+        .digest();
+      const providedSignature = Buffer.from(signature, 'base64url');
+
+      if (
+        header.alg !== 'HS256' ||
+        providedSignature.length !== expectedSignature.length ||
+        !timingSafeEqual(providedSignature, expectedSignature) ||
+        typeof payload.tenantId !== 'string' ||
+        !payload.tenantId.trim() ||
+        (typeof payload.exp === 'number' && payload.exp <= Date.now() / 1000)
+      ) {
+        throw new UnauthorizedException();
+      }
+
+      return { tenantId: payload.tenantId };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException();
+    }
   }
 }

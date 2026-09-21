@@ -27,7 +27,10 @@ describe('menu cache (e2e)', () => {
       return Promise.resolve();
     }),
   };
-  let menu = [{ id: 'category-1', items: [{ id: 'item-1' }] }];
+  let menu: Array<{
+    id: string;
+    items: Array<{ id: string; isStopped?: boolean }>;
+  }> = [{ id: 'category-1', items: [{ id: 'item-1' }] }];
   const prisma = {
     menuCategory: { findMany: jest.fn(() => Promise.resolve(menu)) },
     stopListItem: {
@@ -54,7 +57,11 @@ describe('menu cache (e2e)', () => {
       .useValue({ canActivate: () => true })
       .overrideGuard(TenantContextGuard)
       .useValue({
-        canActivate: (context: { switchToHttp: () => { getRequest: () => { user: { tenantId: string } } } }) => {
+        canActivate: (context: {
+          switchToHttp: () => {
+            getRequest: () => { user: { tenantId: string } };
+          };
+        }) => {
           context.switchToHttp().getRequest().user = { tenantId: 'tenant-1' };
           return true;
         },

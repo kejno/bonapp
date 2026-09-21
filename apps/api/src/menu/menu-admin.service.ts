@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { menuCacheKey } from '../cache/cache.constants';
 import { CacheService } from '../cache/cache.service';
@@ -6,8 +6,6 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class MenuAdminService {
-  private readonly logger = new Logger(MenuAdminService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
@@ -84,12 +82,6 @@ export class MenuAdminService {
   }
 
   async invalidateMenu(tenantId: string): Promise<void> {
-    const key = menuCacheKey(tenantId);
-    try {
-      await this.cache.del(key);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Unable to invalidate menu cache ${key}: ${message}`);
-    }
+    await this.cache.del(menuCacheKey(tenantId));
   }
 }
