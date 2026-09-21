@@ -79,7 +79,18 @@ export function scopeTenantQueryArgs(
   const tenantField = model === 'Tenant' ? 'id' : 'tenantId';
 
   if (TENANT_FILTERED_OPS.has(operation)) {
-    args['where'] = { ...asRecord(args['where']), [tenantField]: tenantId };
+    const where = asRecord(args['where']);
+    if (
+      model === 'User' &&
+      (operation === 'findUnique' || operation === 'findUniqueOrThrow') &&
+      typeof where['email'] === 'string'
+    ) {
+      args['where'] = {
+        tenantId_email: { tenantId, email: where['email'] },
+      };
+    } else {
+      args['where'] = { ...where, [tenantField]: tenantId };
+    }
   }
 
   if (!TENANT_WRITE_OPS.has(operation)) return args;

@@ -122,6 +122,22 @@ describe('PrismaService tenant query scope', () => {
     expect(args).toEqual({ where: { email: 'a@test' } });
   });
 
+  it.each(['findUnique', 'findUniqueOrThrow'])(
+    'uses the composite key for a user %s lookup by email',
+    (operation) => {
+      const args = { where: { email: 'shared@test' } };
+
+      expect(
+        scopeTenantQueryArgs('User', operation, args, 'tenant-a'),
+      ).toEqual({
+        where: {
+          tenantId_email: { tenantId: 'tenant-a', email: 'shared@test' },
+        },
+      });
+      expect(args).toEqual({ where: { email: 'shared@test' } });
+    },
+  );
+
   it('scopes dining areas and tables by tenantId', () => {
     expect(
       scopeTenantQueryArgs(
