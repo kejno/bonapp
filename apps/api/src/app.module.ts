@@ -1,8 +1,16 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
+import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
 
 @Module({
@@ -12,6 +20,12 @@ import { TenantModule } from './tenant/tenant.module';
     TenantModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: TenantGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(TenantContextMiddleware)
+      .forRoutes({ path: '*path', method: RequestMethod.ALL });
+  }
+}

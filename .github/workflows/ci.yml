@@ -100,7 +100,12 @@ jobs:
         ports:
           - 5432:5432
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bonapp
+      DATABASE_URL: postgresql://bonapp_app:bonapp_app@localhost:5432/bonapp
+      S3_ENDPOINT: http://localhost:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_BUCKET: bonapp-e2e-bnp-319
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,8 +114,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma generate --schema apps/api/prisma/schema.prisma
-      - run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
-      - run: npm --workspace @bonapp/api run test:e2e -- order-tenant-integrity.e2e-spec.ts
+      - run: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "CREATE ROLE bonapp_app LOGIN PASSWORD 'bonapp_app' NOSUPERUSER NOBYPASSRLS"
+      - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "GRANT USAGE ON SCHEMA public TO bonapp_app"
+      - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO bonapp_app"
+      - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO bonapp_app"
+      - run: docker run --detach --name minio --publish 9000:9000 --env MINIO_ROOT_USER=minioadmin --env MINIO_ROOT_PASSWORD=minioadmin --health-cmd "curl -f http://localhost:9000/minio/health/live" --health-interval 2s --health-timeout 3s --health-retries 15 quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+      - run: for i in {1..30}; do if [ "$(docker inspect --format={{.State.Health.Status}} minio)" = "healthy" ]; then exit 0; fi; sleep 2; done; docker logs minio; exit 1
+      - run: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm --workspace @bonapp/api run test:e2e -- order-tenant-integrity.e2e-spec.ts
+      - run: npm --workspace @bonapp/api run test:e2e -- tenant-isolation.e2e-spec.ts
+      - run: npm --workspace @bonapp/api run test:e2e -- BNP-319.e2e-spec.ts
 
   build:
     name: Build (Node ${{ matrix.node-version }})

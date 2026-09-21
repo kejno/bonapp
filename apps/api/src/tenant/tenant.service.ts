@@ -19,16 +19,16 @@ export class TenantService {
     tenantId: string,
     file: Express.Multer.File,
   ): Promise<string> {
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await this.prisma.db.tenant.findUnique({
       where: { id: tenantId },
     });
     if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
     const ext = MIME_TO_EXT[file.mimetype] ?? 'jpg';
-    const key = `tenants/${tenantId}/logo.${ext}`;
+    const key = `tenants/${tenant.id}/logo.${ext}`;
     const url = await this.storage.upload(key, file.buffer, file.mimetype);
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
+    await this.prisma.db.tenant.update({
+      where: { id: tenant.id },
       data: { logoUrl: url },
     });
     return url;

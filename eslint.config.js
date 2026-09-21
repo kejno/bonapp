@@ -32,7 +32,7 @@ module.exports = tseslint.config(
     files: ['apps/api/**/*.ts'],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        project: './apps/api/tsconfig.json',
         tsconfigRootDir: __dirname,
       },
     },
