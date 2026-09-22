@@ -72,7 +72,7 @@ describe('BNP-338: PostgreSQL RLS hides another tenant rows', () => {
     );
     psql(
       databaseName,
-      "INSERT INTO tenants (id, slug, name, updated_at) VALUES ('bnp338-tenant-a', 'bnp338-a', 'Tenant A', CURRENT_TIMESTAMP), ('bnp338-tenant-b', 'bnp338-b', 'Tenant B', CURRENT_TIMESTAMP);",
+      "INSERT INTO tenants (id, slug, name, updated_at) VALUES ('bnp338-tenant-a', 'bnp338-a', 'Tenant A', CURRENT_TIMESTAMP), ('bnp338-tenant-b', 'bnp338-b', 'Tenant B', CURRENT_TIMESTAMP); INSERT INTO dining_areas (id, tenant_id, name, updated_at) VALUES ('bnp338-area-a', 'bnp338-tenant-a', 'Area A', CURRENT_TIMESTAMP), ('bnp338-area-b', 'bnp338-tenant-b', 'Area B', CURRENT_TIMESTAMP); INSERT INTO tables (id, tenant_id, area_id, table_number, qr_token) VALUES ('bnp338-table-a', 'bnp338-tenant-a', 'bnp338-area-a', 1, 'bnp338-qr-a'), ('bnp338-table-b', 'bnp338-tenant-b', 'bnp338-area-b', 1, 'bnp338-qr-b'); INSERT INTO orders (id, tenant_id, table_id, daily_order_number, updated_at) VALUES ('bnp338-order-a', 'bnp338-tenant-a', 'bnp338-table-a', 1, CURRENT_TIMESTAMP), ('bnp338-order-b', 'bnp338-tenant-b', 'bnp338-table-b', 1, CURRENT_TIMESTAMP);",
     );
     databaseUrl = `postgresql://app_user:app-password@127.0.0.1:${port}/${databaseName}`;
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
@@ -94,15 +94,17 @@ describe('BNP-338: PostgreSQL RLS hides another tenant rows', () => {
       await tx.$executeRawUnsafe(
         "SELECT set_config('app.current_tenant_id', 'bnp338-tenant-a', true)",
       );
-      return tx.$queryRawUnsafe<Array<{ id: string }>>(
-        'SELECT id FROM tenants ORDER BY id',
+      return tx.$queryRawUnsafe<Array<{ id: string; tenant_id: string }>>(
+        'SELECT id, tenant_id FROM orders ORDER BY id',
       );
     });
     const withoutContext = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
       'SELECT id FROM tenants ORDER BY id',
     );
 
-    expect(tenantIds).toEqual([{ id: 'bnp338-tenant-a' }]);
+    expect(tenantIds).toEqual([
+      { id: 'bnp338-order-a', tenant_id: 'bnp338-tenant-a' },
+    ]);
     expect(withoutContext).toEqual([]);
   });
 });

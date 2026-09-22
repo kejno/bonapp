@@ -79,7 +79,20 @@ describe('BNP-339: seed creates Le Bistro Gourmand and its owner', () => {
         },
       },
     );
-    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    psql(
+      databaseName,
+      "CREATE ROLE seed_reader LOGIN PASSWORD 'seed-reader-password' BYPASSRLS; GRANT USAGE ON SCHEMA public TO seed_reader; GRANT SELECT ON tenants, users TO seed_reader;",
+    );
+    prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: databaseUrl.replace(
+            'postgres:postgres',
+            'seed_reader:seed-reader-password',
+          ),
+        },
+      },
+    });
     await prisma.$connect();
   }, 120_000);
 
@@ -94,31 +107,31 @@ describe('BNP-339: seed creates Le Bistro Gourmand and its owner', () => {
   });
 
   it('creates the required tenant and OWNER account', async () => {
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        "SELECT set_config('app.current_tenant_id', 'e1a7f3b0-0001-4000-a000-000000000001', true)",
-      );
-      const [tenant] = await tx.$queryRawUnsafe<
-        Array<{ name: string; slug: string }>
-      >(
-        "SELECT name, slug FROM tenants WHERE id = 'e1a7f3b0-0001-4000-a000-000000000001'",
-      );
-      const [user] = await tx.$queryRawUnsafe<
-        Array<{ email: string; role: string; password_hash: string }>
-      >(
-        "SELECT email, role, password_hash FROM users WHERE tenant_id = 'e1a7f3b0-0001-4000-a000-000000000001' AND email = 'admin@lebistro.by'",
-      );
-      return { tenant, user };
+    const tenant = await prisma.tenant.findFirst({
+      where: { name: 'Le Bistro Gourmand' },
+      select: { id: true, name: true, slug: true },
     });
+    const user = tenant
+      ? await prisma.user.findFirst({
+          where: { tenantId: tenant.id, email: 'admin@lebistro.by' },
+          select: {
+            email: true,
+            role: true,
+            passwordHash: true,
+            tenantId: true,
+          },
+        })
+      : null;
 
-    expect(result.tenant).toMatchObject({
+    expect(tenant).toMatchObject({
       name: 'Le Bistro Gourmand',
       slug: 'le-bistro-gourmand',
     });
-    expect(result.user).toMatchObject({
+    expect(user).toMatchObject({
       email: 'admin@lebistro.by',
       role: 'OWNER',
+      tenantId: tenant?.id,
     });
-    expect(result.user?.password_hash).not.toBe('test-password');
+    expect(user?.passwordHash).not.toBe('test-password');
   });
 });
