@@ -326,6 +326,6 @@ model StopListItem {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@index([tenantId])
-  @@unique([menuItemId, tenantId])
+  @@unique([tenantId, menuItemId])
   @@map("stop_list_items")
 }

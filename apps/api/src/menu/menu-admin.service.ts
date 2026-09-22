@@ -74,7 +74,7 @@ export class MenuAdminService {
     }
 
     const stopListItem = await db.stopListItem.upsert({
-      where: { menuItemId_tenantId: { menuItemId: itemId, tenantId } },
+      where: { tenantId_menuItemId: { tenantId, menuItemId: itemId } },
       create: { tenantId, menuItemId: itemId, isStopped },
       update: { isStopped },
     });

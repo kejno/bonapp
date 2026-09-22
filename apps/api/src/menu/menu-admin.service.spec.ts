@@ -101,7 +101,11 @@ describe('MenuAdminService', () => {
 
     await service.updateStopList('tenant-1', 'item-1', true);
 
-    expect(prisma.stopListItem.upsert).toHaveBeenCalled();
+    expect(prisma.stopListItem.upsert).toHaveBeenCalledWith({
+      where: { tenantId_menuItemId: { tenantId: 'tenant-1', menuItemId: 'item-1' } },
+      create: { tenantId: 'tenant-1', menuItemId: 'item-1', isStopped: true },
+      update: { isStopped: true },
+    });
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
 
