@@ -16,13 +16,6 @@ enum UserRole {
   CASHIER
 }
 
-enum TableStatus {
-  AVAILABLE
-  OCCUPIED
-  RESERVED
-  CLOSED
-}
-
 model Tenant {
   id               String       @id @default(uuid())
   slug             String       @unique
@@ -45,10 +38,110 @@ model Tenant {
   users            User[]
   diningAreas      DiningArea[]
   tables           Table[]
+  menuCategories   MenuCategory[]
+  menuItems        MenuItem[]
+  modifierGroups   ModifierGroup[]
+  modifiers        Modifier[]
+  stopListItems    StopListItem[]
   orders           Order[]
   payments         Payment[]
 
   @@map("tenants")
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  items     MenuItem[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, sortOrder])
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id             String                 @id @default(uuid())
+  tenantId       String                 @map("tenant_id")
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
+  categoryId     String                 @map("category_id")
+  category       MenuCategory           @relation(fields: [categoryId, tenantId], references: [id, tenantId])
+  name           String
+  price          Decimal                @db.Decimal(10, 2)
+  sortOrder      Int                    @default(0) @map("sort_order")
+  isActive       Boolean                @default(true) @map("is_active")
+  modifierGroups MenuItemModifierGroup[]
+  stopListItem   StopListItem?
+
+  @@unique([id, tenantId])
+  @@index([tenantId, categoryId, sortOrder])
+  @@map("menu_items")
+}
+
+model ModifierGroup {
+  id        String                 @id @default(uuid())
+  tenantId  String                 @map("tenant_id")
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int                    @default(0) @map("sort_order")
+  modifiers Modifier[]
+  menuItems MenuItemModifierGroup[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, sortOrder])
+  @@map("modifier_groups")
+}
+
+model Modifier {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  modifierGroupId String        @map("modifier_group_id")
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+  name            String
+  price           Decimal       @db.Decimal(10, 2)
+  sortOrder       Int           @default(0) @map("sort_order")
+
+  @@unique([id, tenantId])
+  @@index([tenantId, modifierGroupId, sortOrder])
+  @@map("modifiers")
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String        @map("menu_item_id")
+  modifierGroupId String        @map("modifier_group_id")
+  tenantId        String        @map("tenant_id")
+  sortOrder       Int           @default(0) @map("sort_order")
+  menuItem        MenuItem      @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+
+  @@id([menuItemId, modifierGroupId])
+  @@index([tenantId])
+  @@map("menu_item_modifier_groups")
+}
+
+model StopListItem {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  menuItemId String   @map("menu_item_id")
+  menuItem   MenuItem @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
+  isStopped  Boolean  @default(true) @map("is_stopped")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@unique([menuItemId, tenantId])
+  @@map("stop_list_items")
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLOSED
 }
 
 model User {

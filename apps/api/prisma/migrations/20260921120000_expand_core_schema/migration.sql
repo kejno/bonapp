@@ -85,7 +85,17 @@ CREATE TABLE "tables" (
 
 ALTER TABLE "dining_areas" ALTER COLUMN "updated_at" DROP DEFAULT;
 
-DROP INDEX "User_email_key";
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'User_email_key' AND conrelid = 'users'::regclass
+  ) THEN
+    ALTER TABLE "users" DROP CONSTRAINT "User_email_key";
+  ELSIF to_regclass('"User_email_key"') IS NOT NULL THEN
+    DROP INDEX "User_email_key";
+  END IF;
+END $$;
 DROP INDEX "User_tenantId_idx";
 ALTER TABLE "users" DROP CONSTRAINT "User_tenantId_fkey";
 

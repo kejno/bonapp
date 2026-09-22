@@ -10,6 +10,12 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Order',
   'OrderItem',
   'Payment',
+  'MenuCategory',
+  'MenuItem',
+  'ModifierGroup',
+  'Modifier',
+  'MenuItemModifierGroup',
+  'StopListItem',
 ]);
 
 // Operations that accept a WHERE clause and must be filtered by tenantId.

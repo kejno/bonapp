@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TenantController } from './tenant.controller';
 import { TenantService } from './tenant.service';
 
@@ -17,6 +18,12 @@ describe('TenantController', () => {
       controllers: [TenantController],
       providers: [
         { provide: TenantService, useValue: mockTenantService },
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: jest.fn().mockReturnValue('test-jwt-secret'),
+          },
+        },
       ],
     }).compile();
 
