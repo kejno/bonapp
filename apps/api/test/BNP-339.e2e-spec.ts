@@ -67,9 +67,9 @@ describe('BNP-339: seed creates Le Bistro Gourmand and its owner', () => {
     );
     execFileSync(
       'npx',
-      ['prisma', 'db', 'seed', '--schema', 'apps/api/prisma/schema.prisma'],
+      ['prisma', 'db', 'seed', '--schema', 'prisma/schema.prisma'],
       {
-        cwd: `${__dirname}/../../..`,
+        cwd: `${__dirname}/..`,
         encoding: 'utf8',
         stdio: 'pipe',
         env: {
