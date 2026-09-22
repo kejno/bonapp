@@ -68,8 +68,7 @@ CREATE INDEX "idx_menu_items_tenant_cat"
 -- FK to menu_categories via new composite unique key (tenant_id, id)
 ALTER TABLE "menu_items"
   ADD CONSTRAINT "menu_items_tenant_id_category_id_fkey"
-    FOREIGN KEY ("tenant_id", "category_id")
-    REFERENCES "menu_categories"("tenant_id", "id")
+    FOREIGN KEY ("tenant_id", "category_id") REFERENCES "menu_categories"("tenant_id", "id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
@@ -100,8 +99,7 @@ CREATE INDEX "modifier_groups_item_id_idx"
 -- FK to menu_items via new composite unique key (tenant_id, id)
 ALTER TABLE "modifier_groups"
   ADD CONSTRAINT "modifier_groups_tenant_id_item_id_fkey"
-    FOREIGN KEY ("tenant_id", "item_id")
-    REFERENCES "menu_items"("tenant_id", "id")
+    FOREIGN KEY ("tenant_id", "item_id") REFERENCES "menu_items"("tenant_id", "id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
