@@ -236,7 +236,7 @@ model MenuItem {
   proteins           Decimal?     @db.Decimal(7, 2)
   fats               Decimal?     @db.Decimal(7, 2)
   carbs              Decimal?     @db.Decimal(7, 2)
-  allergens          String[]
+  allergens          String[]     @default([])
   kitchenDepartment  String?      @map("kitchen_department")
   cookingTimeMinutes Int?         @map("cooking_time_minutes")
   isInStopList       Boolean      @default(false) @map("is_in_stop_list")

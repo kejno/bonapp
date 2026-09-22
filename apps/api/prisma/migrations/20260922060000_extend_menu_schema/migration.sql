@@ -41,7 +41,7 @@ ALTER TABLE "menu_items"
   ADD COLUMN "proteins" DECIMAL(7,2),
   ADD COLUMN "fats" DECIMAL(7,2),
   ADD COLUMN "carbs" DECIMAL(7,2),
-  ADD COLUMN "allergens" TEXT[],
+  ADD COLUMN "allergens" TEXT[] NOT NULL DEFAULT '{}',
   ADD COLUMN "kitchen_department" TEXT,
   ADD COLUMN "cooking_time_minutes" INTEGER,
   ADD COLUMN "is_in_stop_list" BOOLEAN NOT NULL DEFAULT false,

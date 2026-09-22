@@ -23,10 +23,14 @@ export class MenuService {
       include: {
         menuItems: {
           where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
           include: {
             modifierGroups: {
+              orderBy: { id: 'asc' },
               include: {
-                modifierOptions: true,
+                modifierOptions: {
+                  orderBy: { id: 'asc' },
+                },
               },
             },
             stopListItem: { select: { isStopped: true } },
