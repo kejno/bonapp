@@ -99,7 +99,12 @@ export class MenuCacheTestFixture {
       data: { id: this.tenantId, slug: this.tenantId, name: 'Menu cache E2E' },
     });
     await this.prisma.menuCategory.create({
-      data: { id: this.categoryId, tenantId: this.tenantId, name: 'Coffee' },
+      data: {
+        id: this.categoryId,
+        tenantId: this.tenantId,
+        name: 'Coffee',
+        sortOrder: 0,
+      },
     });
     await this.prisma.menuItem.create({
       data: {
@@ -107,13 +112,14 @@ export class MenuCacheTestFixture {
         tenantId: this.tenantId,
         categoryId: this.categoryId,
         name: 'Espresso',
-        price: '3.50',
+        priceByn: '3.50',
       },
     });
     await this.prisma.modifierGroup.create({
       data: {
         id: this.modifierGroupId,
         tenantId: this.tenantId,
+        itemId: this.itemId,
         name: 'Milk options',
       },
     });
