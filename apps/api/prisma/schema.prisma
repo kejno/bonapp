@@ -251,7 +251,6 @@ model MenuItem {
   stopListItem           StopListItem?
 
   @@unique([tenantId, id])
-  @@unique([id, tenantId])
   // idx_menu_items_tenant_cat is managed in migration SQL because Prisma does not support partial indexes.
   @@map("menu_items")
 }
@@ -309,7 +308,7 @@ model MenuItemModifierGroup {
   modifierGroupId String        @map("modifier_group_id")
   tenantId        String        @map("tenant_id")
   sortOrder       Int           @default(0) @map("sort_order")
-  menuItem        MenuItem      @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
+  menuItem        MenuItem      @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
   modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
 
   @@id([menuItemId, modifierGroupId])
@@ -322,7 +321,7 @@ model StopListItem {
   tenantId   String   @map("tenant_id")
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
   menuItemId String   @map("menu_item_id")
-  menuItem   MenuItem @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
+  menuItem   MenuItem @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
   isStopped  Boolean  @default(true) @map("is_stopped")
   updatedAt  DateTime @updatedAt @map("updated_at")
 

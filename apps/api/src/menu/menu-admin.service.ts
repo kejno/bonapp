@@ -17,7 +17,7 @@ export class MenuAdminService {
     data: Prisma.MenuItemUpdateInput,
   ) {
     const item = await this.prisma.forTenant(tenantId).menuItem.update({
-      where: { id_tenantId: { id: itemId, tenantId } },
+      where: { tenantId_id: { tenantId, id: itemId } },
       data,
     });
     await this.invalidateMenu(tenantId);
@@ -66,7 +66,7 @@ export class MenuAdminService {
   async updateStopList(tenantId: string, itemId: string, isStopped: boolean) {
     const db = this.prisma.forTenant(tenantId);
     const item = await db.menuItem.findUnique({
-      where: { id_tenantId: { id: itemId, tenantId } },
+      where: { tenantId_id: { tenantId, id: itemId } },
       select: { id: true },
     });
     if (!item) {

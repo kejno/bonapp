@@ -49,7 +49,7 @@ describe('MenuAdminService', () => {
     });
 
     expect(prisma.menuItem.update).toHaveBeenCalledWith({
-      where: { id_tenantId: { id: 'item-1', tenantId: 'tenant-1' } },
+      where: { tenantId_id: { tenantId: 'tenant-1', id: 'item-1' } },
       data: { priceByn: 12.5, isActive: false },
     });
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');

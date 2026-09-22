@@ -71,13 +71,33 @@ ALTER TABLE "menu_items"
     FOREIGN KEY ("tenant_id", "category_id") REFERENCES "menu_categories"("tenant_id", "id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- Migrate stop_list_items and menu_item_modifier_groups FKs to use (tenant_id, id) key
+-- so the legacy (id, tenant_id) unique index can be dropped from menu_items.
+
+ALTER TABLE "stop_list_items"
+  DROP CONSTRAINT "stop_list_items_menu_item_id_tenant_id_fkey";
+ALTER TABLE "stop_list_items"
+  ADD CONSTRAINT "stop_list_items_tenant_id_menu_item_id_fkey"
+    FOREIGN KEY ("tenant_id", "menu_item_id") REFERENCES "menu_items"("tenant_id", "id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "menu_item_modifier_groups"
+  DROP CONSTRAINT "menu_item_modifier_groups_menu_item_id_tenant_id_fkey";
+ALTER TABLE "menu_item_modifier_groups"
+  ADD CONSTRAINT "menu_item_modifier_groups_tenant_id_menu_item_id_fkey"
+    FOREIGN KEY ("tenant_id", "menu_item_id") REFERENCES "menu_items"("tenant_id", "id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Drop the now-redundant (id, tenant_id) unique index; all FKs now reference (tenant_id, id)
+DROP INDEX "menu_items_id_tenant_id_key";
+
 -- ============================================================
 -- modifier_groups: add item_id and selection-range constraints
 -- ============================================================
 
--- Two-step NOT NULL add so the constraint is safe on any existing rows
-ALTER TABLE "modifier_groups" ADD COLUMN "item_id" TEXT;
-ALTER TABLE "modifier_groups" ALTER COLUMN "item_id" SET NOT NULL;
+-- Safe NOT NULL add: DEFAULT '' satisfies constraint on existing rows; DROP DEFAULT keeps schema clean
+ALTER TABLE "modifier_groups" ADD COLUMN "item_id" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "modifier_groups" ALTER COLUMN "item_id" DROP DEFAULT;
 
 ALTER TABLE "modifier_groups"
   ADD COLUMN "is_required" BOOLEAN NOT NULL DEFAULT false,
