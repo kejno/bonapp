@@ -130,6 +130,16 @@ describe('BNP-347: начальная Prisma-миграция', () => {
     ).toContain('UNIQUE');
     expect(
       sql(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'tables' AND indexdef LIKE '%UNIQUE%' AND indexdef LIKE '%(qr_token)%'",
+      ),
+    ).toContain('UNIQUE');
+    expect(
+      sql(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'tables' AND indexdef LIKE '%UNIQUE%' AND indexdef LIKE '%(tenant_id, table_number)%'",
+      ),
+    ).toContain('UNIQUE');
+    expect(
+      sql(
         "SELECT tc.table_name || '.' || kcu.column_name || '->' || ccu.table_name || '.' || ccu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' AND tc.table_name IN ('users', 'dining_areas', 'tables') ORDER BY 1",
       ),
     ).toContain('dining_areas.tenant_id->tenants.id');

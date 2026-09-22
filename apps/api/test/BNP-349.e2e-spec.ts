@@ -13,6 +13,7 @@ describe('BNP-349: Prisma Client и PrismaService', () => {
   let app: INestApplication;
   let service: PrismaService;
   let previousDatabaseUrl: string | undefined;
+  let appClosed = false;
 
   function docker(...args: string[]): string {
     return execFileSync('docker', args, { encoding: 'utf8', stdio: 'pipe' });
@@ -80,19 +81,29 @@ describe('BNP-349: Prisma Client и PrismaService', () => {
   }, 120_000);
 
   afterAll(async () => {
-    await app?.close();
+    if (!appClosed) await app?.close();
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (container) docker('stop', container);
   });
 
   it('запускает Nest-приложение с PrismaService, подключается к БД и штатно останавливается', async () => {
-    await expect(
-      service.forTenant('automation-tenant').tenant.count(),
-    ).resolves.toBe(0);
-    expect(UserRole.SUPER_ADMIN).toBe('SUPER_ADMIN');
-    expect(UserRole.CASHIER).toBe('CASHIER');
+    const client = service.forTenant('automation-tenant');
+
+    await expect(client.tenant.count()).resolves.toBe(0);
+    await expect(client.user.count()).resolves.toBe(0);
+    await expect(client.diningArea.count()).resolves.toBe(0);
+    await expect(client.table.count()).resolves.toBe(0);
+    expect(Object.values(UserRole)).toEqual([
+      'SUPER_ADMIN',
+      'OWNER',
+      'MANAGER',
+      'WAITER',
+      'CHEF',
+      'CASHIER',
+    ]);
 
     await expect(app.close()).resolves.toBeUndefined();
+    appClosed = true;
   });
 });
