@@ -122,6 +122,22 @@ describe('BNP-345: persisting an order with items and payment', () => {
         role: UserRole.WAITER,
       },
     });
+    await prisma.menuCategory.create({
+      data: {
+        id: 'bnp345-category',
+        tenantId: 'bnp345-tenant',
+        name: 'Main menu',
+      },
+    });
+    await prisma.menuItem.create({
+      data: {
+        id: 'bnp345-menu-item',
+        tenantId: 'bnp345-tenant',
+        categoryId: 'bnp345-category',
+        name: 'Test dish',
+        price: '12.75',
+      },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -151,7 +167,7 @@ describe('BNP-345: persisting an order with items and payment', () => {
         items: {
           create: {
             id: 'bnp345-item',
-            itemId: 'menu-item-1',
+            itemId: 'bnp345-menu-item',
             quantity: 2,
             unitPriceByn: '12.75',
             selectedModifiers: [{ id: 'extra-cheese' }],
@@ -196,15 +212,17 @@ describe('BNP-345: persisting an order with items and payment', () => {
       role: UserRole.WAITER,
     });
     expect(order.totalAmountByn.toString()).toBe('25.5');
+    expect(order.tipsAmountByn.toString()).toBe('2.5');
     expect(order.items).toHaveLength(1);
     expect(order.items[0]).toMatchObject({
       id: 'bnp345-item',
       orderId: 'bnp345-order',
-      itemId: 'menu-item-1',
+      itemId: 'bnp345-menu-item',
       quantity: 2,
       itemComment: 'Well done',
       kitchenDepartment: 'hot',
     });
+    expect(order.items[0].unitPriceByn.toString()).toBe('12.75');
     expect(order.items[0].selectedModifiers).toEqual([{ id: 'extra-cheese' }]);
     expect(order.payments).toHaveLength(1);
     expect(order.payments[0]).toMatchObject({
@@ -218,6 +236,7 @@ describe('BNP-345: persisting an order with items and payment', () => {
       payload: { receipt: '123' },
     });
     expect(order.payments[0].amountByn.toString()).toBe('25.5');
+    expect(order.payments[0].tipsAmountByn.toString()).toBe('2.5');
     expect(order.payments[0].createdAt).toBeInstanceOf(Date);
   }, 120_000);
 });
