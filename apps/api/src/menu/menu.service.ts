@@ -26,7 +26,7 @@ export class MenuService {
           include: {
             modifierGroups: {
               include: {
-                modifiers: { orderBy: { sortOrder: 'asc' } },
+                modifierOptions: true,
               },
             },
             stopListItem: { select: { isStopped: true } },

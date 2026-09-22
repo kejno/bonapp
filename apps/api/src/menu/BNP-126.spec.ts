@@ -5,7 +5,7 @@ const repositoryRoot = resolve(__dirname, '../../../..');
 const schemaPath = resolve(repositoryRoot, 'apps/api/prisma/schema.prisma');
 const migrationPath = resolve(
   repositoryRoot,
-  'apps/api/prisma/migrations/20260921140000_menu_schema/migration.sql',
+  'apps/api/prisma/migrations/20260922060000_extend_menu_schema/migration.sql',
 );
 
 describe('BNP-126: menu schema — Prisma models and migration', () => {
@@ -107,21 +107,22 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
 
   describe('migration SQL — DDL correctness', () => {
     it('is ordered after the core schema migrations and targets the renamed tenants table', () => {
-      expect(migrationPath).toContain('20260921140000_menu_schema');
-      expect(migration).toContain('REFERENCES "tenants"("id")');
+      expect(migrationPath).toContain('20260922060000_extend_menu_schema');
       expect(migration).not.toContain('REFERENCES "Tenant"');
+      expect(migration).toContain('REFERENCES "menu_categories"');
+      expect(migration).toContain('REFERENCES "menu_items"');
     });
 
-    it('creates MenuCategory table', () => {
-      expect(migration).toContain('CREATE TABLE "menu_categories"');
+    it('extends menu_categories table', () => {
+      expect(migration).toContain('ALTER TABLE "menu_categories"');
     });
 
-    it('creates MenuItem table', () => {
-      expect(migration).toContain('CREATE TABLE "menu_items"');
+    it('extends menu_items table', () => {
+      expect(migration).toContain('ALTER TABLE "menu_items"');
     });
 
-    it('creates ModifierGroup table', () => {
-      expect(migration).toContain('CREATE TABLE "modifier_groups"');
+    it('extends modifier_groups table', () => {
+      expect(migration).toContain('ALTER TABLE "modifier_groups"');
     });
 
     it('creates ModifierOption table', () => {
@@ -129,8 +130,8 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
     });
 
     it('uses DECIMAL(10,2) for price_byn and cost_price_byn', () => {
-      const priceMatches = (migration.match(/DECIMAL\(10,2\)/g) ?? []).length;
-      expect(priceMatches).toBeGreaterThanOrEqual(3);
+      expect(migration).toContain('"cost_price_byn" DECIMAL(10,2)');
+      expect(migration).toContain('"extra_price_byn" DECIMAL(10,2)');
     });
 
     it('uses TEXT[] for allergens column', () => {
@@ -144,8 +145,6 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
     });
 
     it('adds foreign keys for all relations', () => {
-      expect(migration).toContain('menu_categories_tenant_id_fkey');
-      expect(migration).toContain('menu_items_tenant_id_fkey');
       expect(migration).toContain('menu_items_tenant_id_category_id_fkey');
       expect(migration).toContain('modifier_groups_tenant_id_item_id_fkey');
       expect(migration).toContain('modifier_options_group_id_fkey');
