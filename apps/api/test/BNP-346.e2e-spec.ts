@@ -83,7 +83,11 @@ describe('BNP-346: OrderStatus database enum', () => {
     }
     psql('postgres', `CREATE DATABASE ${databaseName}`);
     migrate();
-  });
+    psql(
+      databaseName,
+      "INSERT INTO tenants (id, slug, name, updated_at) VALUES ('bnp346-tenant', 'bnp346-tenant', 'BNP-346 tenant', CURRENT_TIMESTAMP); INSERT INTO dining_areas (id, tenant_id, name, updated_at) VALUES ('bnp346-area', 'bnp346-tenant', 'Main hall', CURRENT_TIMESTAMP); INSERT INTO tables (id, tenant_id, area_id, table_number, qr_token) VALUES ('bnp346-table', 'bnp346-tenant', 'bnp346-area', 1, 'bnp346-qr'); INSERT INTO orders (id, tenant_id, table_id, daily_order_number, status, updated_at) VALUES ('bnp346-existing-order', 'bnp346-tenant', 'bnp346-table', 1, 'NEW', CURRENT_TIMESTAMP);",
+    );
+  }, 120_000);
 
   afterAll(() => {
     try {
@@ -94,12 +98,20 @@ describe('BNP-346: OrderStatus database enum', () => {
     }
   });
 
-  it('rejects an order status outside the OrderStatus enum', () => {
+  it('rejects an invalid status without changing existing orders', () => {
     expect(() =>
       psql(
         databaseName,
-        'INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "status", "updated_at") VALUES (\'bnp346-order\', \'missing-tenant\', \'missing-table\', 1, \'INVALID_STATUS\', CURRENT_TIMESTAMP);',
+        'INSERT INTO "orders" ("id", "tenant_id", "table_id", "daily_order_number", "status", "updated_at") VALUES (\'bnp346-invalid-order\', \'bnp346-tenant\', \'bnp346-table\', 2, \'INVALID_STATUS\', CURRENT_TIMESTAMP);',
       ),
     ).toThrow(/invalid input value for enum "OrderStatus"/i);
-  });
+
+    const orders = psql(
+      databaseName,
+      "SELECT id || ':' || status FROM orders ORDER BY id;",
+    );
+    expect(orders).toContain('bnp346-existing-order:NEW');
+    expect(orders).not.toContain('bnp346-invalid-order');
+    expect(orders).not.toContain('INVALID_STATUS');
+  }, 120_000);
 });

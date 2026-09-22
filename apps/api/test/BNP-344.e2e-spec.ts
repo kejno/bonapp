@@ -83,7 +83,7 @@ describe('BNP-344: orders and payments migration', () => {
       }
     }
     psql('postgres', `CREATE DATABASE ${databaseName}`);
-  });
+  }, 120_000);
 
   afterAll(() => {
     try {
@@ -94,7 +94,7 @@ describe('BNP-344: orders and payments migration', () => {
     }
   });
 
-  it('applies migrations and creates the required tables, enum types and indexes', () => {
+  it('applies migrations and creates the required tables, enum values, columns and indexes', () => {
     expect(migrate()).toContain(
       'All migrations have been successfully applied',
     );
@@ -107,12 +107,44 @@ describe('BNP-344: orders and payments migration', () => {
     expect(relations).toContain('orders');
     expect(relations).toContain('payments');
 
-    const enums = psql(
+    const orderStatuses = psql(
       databaseName,
-      "SELECT typname FROM pg_type WHERE typname IN ('OrderStatus', 'PaymentMethod') ORDER BY typname;",
+      "SELECT array_agg(enumlabel ORDER BY enumsortorder)::text FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid WHERE typname = 'OrderStatus';",
     );
-    expect(enums).toContain('OrderStatus');
-    expect(enums).toContain('PaymentMethod');
+    expect(orderStatuses).toContain('{NEW,COOKING,READY,SERVED,PAID,CANCELLED}');
+
+    const paymentMethods = psql(
+      databaseName,
+      "SELECT array_agg(enumlabel ORDER BY enumsortorder)::text FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid WHERE typname = 'PaymentMethod';",
+    );
+    expect(paymentMethods).toContain(
+      '{OPLATI_QR,ERIP_EPOS,BANK_CARD,CASH_TO_WAITER}',
+    );
+
+    const expectedColumns: Record<string, string> = {
+      orders:
+        '{id,tenant_id,table_id,daily_order_number,status,guest_session_id,assigned_waiter_id,total_amount_byn,tips_amount_byn,payment_method,is_paid,paid_at,pos_order_id,comment,created_at,updated_at}',
+      order_items:
+        '{id,order_id,item_id,quantity,unit_price_byn,selected_modifiers,item_comment,status,kitchen_department}',
+      payments:
+        '{id,tenant_id,order_id,amount_byn,tips_amount_byn,provider,provider_transaction_id,erip_order_number,status,fiscal_receipt_number,payload,created_at}',
+    };
+    for (const [tableName, expectedColumnsList] of Object.entries(
+      expectedColumns,
+    )) {
+      const columns = psql(
+        databaseName,
+        `SELECT array_agg(column_name ORDER BY ordinal_position)::text FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '${tableName}';`,
+      );
+      expect(columns).toContain(expectedColumnsList);
+    }
+
+    const jsonColumns = psql(
+      databaseName,
+      "SELECT table_name || '.' || column_name || ':' || udt_name FROM information_schema.columns WHERE table_schema = 'public' AND ((table_name = 'order_items' AND column_name = 'selected_modifiers') OR (table_name = 'payments' AND column_name = 'payload')) ORDER BY table_name, column_name;",
+    );
+    expect(jsonColumns).toContain('order_items.selected_modifiers:jsonb');
+    expect(jsonColumns).toContain('payments.payload:jsonb');
 
     const indexes = psql(
       databaseName,
@@ -120,5 +152,5 @@ describe('BNP-344: orders and payments migration', () => {
     );
     expect(indexes).toContain('idx_orders_tenant_status');
     expect(indexes).toContain('idx_orders_table_id');
-  });
+  }, 120_000);
 });

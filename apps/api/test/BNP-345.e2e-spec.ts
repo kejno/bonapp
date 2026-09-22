@@ -7,6 +7,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   PrismaClient,
+  UserRole,
 } from '@prisma/client';
 
 const repositoryRoot = resolve(__dirname, '../../..');
@@ -111,7 +112,17 @@ describe('BNP-345: persisting an order with items and payment', () => {
         qrToken: 'bnp345-qr',
       },
     });
-  });
+    await prisma.user.create({
+      data: {
+        id: 'bnp345-waiter',
+        tenantId: 'bnp345-tenant',
+        email: 'waiter@bnp345.test',
+        passwordHash: 'not-used-in-test',
+        fullName: 'BNP-345 Waiter',
+        role: UserRole.WAITER,
+      },
+    });
+  }, 120_000);
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -123,14 +134,16 @@ describe('BNP-345: persisting an order with items and payment', () => {
     }
   });
 
-  it('stores the order, its item and payment with all supplied values', async () => {
-    const order = await prisma.order.create({
+  it('stores and independently reads an order with its item and payment', async () => {
+    await prisma.order.create({
       data: {
         id: 'bnp345-order',
         tenantId: 'bnp345-tenant',
         tableId: 'bnp345-table',
         dailyOrderNumber: 17,
-        status: OrderStatus.COOKING,
+        status: OrderStatus.NEW,
+        guestSessionId: 'bnp345-guest-session',
+        assignedWaiterId: 'bnp345-waiter',
         totalAmountByn: '25.50',
         tipsAmountByn: '2.50',
         paymentMethod: PaymentMethod.BANK_CARD,
@@ -154,24 +167,39 @@ describe('BNP-345: persisting an order with items and payment', () => {
             tipsAmountByn: '2.50',
             provider: 'bank',
             providerTransactionId: 'transaction-1',
+            eripOrderNumber: 'erip-order-1',
             status: PaymentStatus.SUCCEEDED,
+            fiscalReceiptNumber: 'fiscal-receipt-1',
             payload: { receipt: '123' },
           },
         },
       },
-      include: { items: true, payments: true },
+    });
+
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: 'bnp345-order' },
+      include: { items: true, payments: true, assignedWaiter: true },
     });
 
     expect(order).toMatchObject({
       id: 'bnp345-order',
-      status: OrderStatus.COOKING,
+      status: OrderStatus.NEW,
+      guestSessionId: 'bnp345-guest-session',
+      assignedWaiterId: 'bnp345-waiter',
       paymentMethod: PaymentMethod.BANK_CARD,
       comment: 'No onions',
+    });
+    expect(order.createdAt).toBeInstanceOf(Date);
+    expect(order.updatedAt).toBeInstanceOf(Date);
+    expect(order.assignedWaiter).toMatchObject({
+      id: 'bnp345-waiter',
+      role: UserRole.WAITER,
     });
     expect(order.totalAmountByn.toString()).toBe('25.5');
     expect(order.items).toHaveLength(1);
     expect(order.items[0]).toMatchObject({
       id: 'bnp345-item',
+      orderId: 'bnp345-order',
       itemId: 'menu-item-1',
       quantity: 2,
       itemComment: 'Well done',
@@ -181,11 +209,15 @@ describe('BNP-345: persisting an order with items and payment', () => {
     expect(order.payments).toHaveLength(1);
     expect(order.payments[0]).toMatchObject({
       id: 'bnp345-payment',
+      orderId: 'bnp345-order',
       provider: 'bank',
       providerTransactionId: 'transaction-1',
+      eripOrderNumber: 'erip-order-1',
       status: PaymentStatus.SUCCEEDED,
+      fiscalReceiptNumber: 'fiscal-receipt-1',
       payload: { receipt: '123' },
     });
     expect(order.payments[0].amountByn.toString()).toBe('25.5');
-  });
+    expect(order.payments[0].createdAt).toBeInstanceOf(Date);
+  }, 120_000);
 });
