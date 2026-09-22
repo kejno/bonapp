@@ -8,6 +8,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { CacheModule } from './cache/cache.module';
+import { MenuModule } from './menu/menu.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 import { TenantGuard } from './tenant/tenant.guard';
@@ -17,6 +19,8 @@ import { TenantModule } from './tenant/tenant.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    CacheModule,
+    MenuModule,
     TenantModule,
   ],
   controllers: [AppController],

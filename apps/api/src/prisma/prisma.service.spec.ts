@@ -27,6 +27,9 @@ describe('PrismaService tenant query scope', () => {
         'MenuItem',
         'ModifierGroup',
         'ModifierOption',
+        'Modifier',
+        'MenuItemModifierGroup',
+        'StopListItem',
       ]),
     );
   });
@@ -231,6 +234,35 @@ describe('PrismaService tenant query scope', () => {
         AND: [{ isDefault: true }, { group: { is: { tenantId: 'tenant-a' } } }],
       },
     });
+  });
+
+  it('scopes Modifier, MenuItemModifierGroup, and StopListItem by tenantId', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'Modifier',
+        'create',
+        { data: { modifierGroupId: 'group-a', tenantId: 'other' } },
+        'tenant-a',
+      ),
+    ).toEqual({ data: { modifierGroupId: 'group-a', tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs(
+        'MenuItemModifierGroup',
+        'findMany',
+        { where: { menuItemId: 'item-a' } },
+        'tenant-a',
+      ),
+    ).toEqual({ where: { menuItemId: 'item-a', tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs(
+        'StopListItem',
+        'create',
+        { data: { menuItemId: 'item-a' } },
+        'tenant-a',
+      ),
+    ).toEqual({ data: { menuItemId: 'item-a', tenantId: 'tenant-a' } });
   });
 
   it('uses a filter-capable delegate for uniquely addressed order items', () => {

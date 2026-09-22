@@ -14,6 +14,9 @@ export const TENANT_SCOPED_MODELS = new Set([
   'MenuItem',
   'ModifierGroup',
   'ModifierOption',
+  'Modifier',
+  'MenuItemModifierGroup',
+  'StopListItem',
 ]);
 
 const RELATION_SCOPED_MODELS: Record<string, string> = {

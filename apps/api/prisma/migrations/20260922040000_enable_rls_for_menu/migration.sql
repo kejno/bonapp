@@ -37,6 +37,7 @@ ALTER TABLE "modifier_options" FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "modifier_options"
   AS PERMISSIVE
   FOR ALL
+  TO PUBLIC
   USING (
     EXISTS (
       SELECT 1
