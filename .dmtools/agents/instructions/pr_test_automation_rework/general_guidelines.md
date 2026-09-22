@@ -36,3 +36,17 @@ Do not limit the fix to that ticket's spec file. Read `pr_discussions.md`,
 - run the relevant focused tests while editing; the post-action will additionally
   enforce repository-wide lint, typecheck, test, and build gates before publishing;
 - do not report success while any known blocking thread or CI failure remains.
+
+## No-code-change outcome
+
+Do not modify or weaken a correct test merely to produce a commit. If the
+investigation confirms that there are no remaining test-code findings and the
+remaining failure either requires product code or belongs to another Story:
+
+- leave test code unchanged;
+- state one classification in the result and summaries: `product_failure`,
+  `invalid_test_case`, or `blocked_by_dependency`;
+- include the owning Story or missing dependency when known;
+- do not claim that review feedback was fixed by a code change;
+- do not request another identical test-code review unless a new test commit
+  was actually created.

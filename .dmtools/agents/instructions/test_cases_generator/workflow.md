@@ -18,10 +18,21 @@ Test Case tickets in Jira covering its acceptance criteria and behavior.
    behavior: `dmtools jira_search_by_jql "project = BNP AND issuetype = 'Test Case'" "summary,status"`.
    Follow `agents/instructions/test_cases/test_case_relation_rules.md` to
    decide whether to link an existing one instead of creating a duplicate.
-4. Design new Test Cases following
+4. Build an implemented-contract inventory from the Story context and merged
+   repository state before designing any Test Case:
+   - implemented controllers and exact routes;
+   - services and public methods;
+   - database policies and migrations;
+   - authentication mechanisms;
+   - explicitly linked, already merged dependencies.
+   For every proposed Test Case, verify that every required capability exists
+   in this inventory. If it does not, omit the Test Case and report the missing
+   or future dependency in the Story summary. Do not guess a route, protocol,
+   status code, or public interface from the name of a domain entity.
+5. Design new Test Cases following
    `agents/instructions/test_cases/test_case_creation_rules.md` (naming,
    required sections, positive/negative/boundary coverage, priority).
-5. For each new Test Case, create it directly in Jira:
+6. For each new Test Case, create it directly in Jira:
    ```
    dmtools jira_create_ticket_with_json --data '{
      "project": "BNP",
@@ -33,12 +44,14 @@ Test Case tickets in Jira covering its acceptance criteria and behavior.
      }
    }'
    ```
-6. Link every created (or reused) Test Case to the Story:
+7. Link every created (or reused) Test Case to the Story:
    ```
    dmtools jira_link_issues --data '{"sourceKey": "<TC-KEY>", "anotherKey": "<STORY-KEY>", "relationship": "relates to"}'
    ```
-7. Post a summary comment on the Story listing every Test Case created or
-   linked, with a one-line description of what each verifies.
+8. Post a summary comment on the Story listing every Test Case created or
+   linked, with a one-line description of what each verifies and its contract
+   evidence. List omitted scenarios separately with their owning or missing
+   dependency.
 
 ## Scope
 

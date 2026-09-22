@@ -42,6 +42,8 @@ service/guard/pipe's or component's isolated logic.
    using `input/{STORY_KEY}/pr_diff.txt` for context. Stage each resolved
    file with `git add <file>`. Do NOT `git commit` or `git merge --abort`.
 3. For each linked Test Case:
+   - Perform the contract preflight below before choosing the test layer or
+     writing code.
    - Check if an automated test already exists at
      `apps/api/test/{TC_KEY}.e2e-spec.ts` (or, for a unit-scoped Test Case,
      next to the relevant source file in `apps/api/src/`, `apps/guest-web/src/`,
@@ -60,11 +62,44 @@ service/guard/pipe's or component's isolated logic.
 6. If environment/credentials are missing, produce `outputs/blocked.json`
    instead of running tests.
 
+## Contract preflight
+
+Before implementing an HTTP Test Case:
+
+1. Locate the controller and route in the current branch.
+2. Confirm the exact route prefix, HTTP method, authentication mechanism,
+   request DTO, response shape, and expected status codes from implementation
+   or explicit Story requirements.
+3. Verify that the route is delivered by the current Story or an already
+   merged dependency.
+
+Do not create a test against a guessed or future endpoint. If the Test Case
+requires a route or capability that does not exist:
+
+- classify its ownership before writing the test;
+- if the capability is explicitly required and owned by the current Story,
+  its absence is a product failure;
+- if it belongs to another Story or is not specified, mark the Test Case
+  `skipped` and state `invalid scope` or `blocked by dependency`, including the
+  owning Story when known;
+- do not report an out-of-scope missing capability as a product defect of the
+  current Story;
+- do not substitute another guessed route merely to make the Test Case
+  executable.
+
+For internal middleware, persistence, RLS, migration, or service Stories,
+prefer a test at the implemented layer. An HTTP end-to-end test is appropriate
+only when an HTTP contract is part of the Story or a merged dependency.
+
 ## Failure classification
 
 - A **product failure** — the test ran and found a real bug in the product —
-  must be recorded as `failed`. The Story and the failing Test Case follow
-  the normal review flow.
+  must be recorded as `failed` only when the failing behavior is owned by the
+  current Story or an already merged dependency. The Story and the failing Test
+  Case follow the normal review flow.
+- An **invalid-scope / future-dependency failure** is not a product failure of
+  the current Story. Mark it `skipped`, identify the missing or owning Story in
+  `failureSummary`, and request correction or relinking of the Test Case.
 - An **access / credential / permission / infrastructure failure** — the
   test account cannot reach a required service, repository, secret, or
   token — is **NOT a product failure**. Mark that Test Case as `skipped`,

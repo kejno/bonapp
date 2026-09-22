@@ -15,3 +15,37 @@ flowchart TD
     FAILED_REVIEW --> OUTPUT
     OUTPUT --> END([End])
 ```
+
+## Scope and contract validation
+
+Before judging whether a test matches its Test Case, verify that the Test Case
+itself is consistent with the parent Story and the implemented contract.
+Parent Story scope and explicit implementation evidence take precedence over
+an incorrect, stale, or prematurely generated Test Case.
+
+- Verify exact endpoint paths, methods, authentication mechanisms, DTOs, and
+  status codes against controllers and other implementation in the PR branch.
+- Do not accept a guessed endpoint merely because the Test Case names it.
+- Do not treat functionality owned by another unmerged Story as a product
+  defect of the current Story.
+- For middleware, RLS, migration, or service Stories, require an HTTP test only
+  when an HTTP contract is explicitly in scope or supplied by a merged
+  dependency.
+
+## Recommendation versus test result
+
+The PR recommendation evaluates test-code quality; it is not the product test
+result. Apply this decision table:
+
+| Situation | Recommendation |
+|---|---|
+| Test code incorrectly implements a valid, in-scope Test Case | `REQUEST_CHANGES` |
+| Test Case fundamentally contradicts the parent Story or implemented contract | `BLOCK` as invalid scope; do not trigger test-code rework |
+| Test correctly exposes an in-scope product defect | `APPROVE`; keep the Test Case result `failed` |
+| Test requires another unmerged Story or future capability | `BLOCK` as blocked dependency; do not trigger test-code rework |
+| Test is correct and passes | `APPROVE` |
+
+Never request test-code changes merely because a correct test fails. When no
+test-code change is requested, all review threads are resolved, and the
+remaining work requires application code, approve the test PR and route the
+failed result into the product bug/development flow.

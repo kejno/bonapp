@@ -642,7 +642,14 @@ function action(params) {
         releaseLock();
 
         var autoStarted = false;
-        if (customParams && customParams.autoStartReview && customParams.autoStartReviewConfigFile) {
+        // A no-op rework has no new code for the reviewer to inspect. Starting
+        // the same review again creates an endless review -> rework loop for
+        // valid tests that expose product failures or depend on future scope.
+        // Leave the ticket in its result status and let the product/dependency
+        // flow handle it; only a new test commit warrants another code review.
+        if (!sharedPrChanged) {
+            console.log('No test-code commit was created — skipping identical follow-up review');
+        } else if (customParams && customParams.autoStartReview && customParams.autoStartReviewConfigFile) {
             try {
                 autoStarted = autoStart.triggerConfiguredWorkflowForTicket({
                     ticketKey: ticketKey,
@@ -660,7 +667,7 @@ function action(params) {
                 console.warn('⚠️ autoStartReview trigger failed:', e.message || e);
             }
         }
-        if (!autoStarted) {
+        if (sharedPrChanged && !autoStarted) {
             autoStart.triggerSmIfIdle({ config: config, customParams: customParams });
         }
 
@@ -678,7 +685,8 @@ function action(params) {
             success: true,
             testStatus: testStatus,
             jiraStatus: targetStatus,
-            ticketKey: ticketKey
+            ticketKey: ticketKey,
+            changed: sharedPrChanged
         };
 
     } catch (error) {
