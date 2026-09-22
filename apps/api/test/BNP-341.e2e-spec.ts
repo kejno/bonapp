@@ -37,7 +37,7 @@ describe('BNP-341: item and category changes invalidate guest menu cache', () =>
       await service[method](tenantId, id, { name: `Updated ${id}` });
 
       expect(prisma[model].update).toHaveBeenCalledWith({
-        where: { id_tenantId: { id, tenantId } },
+        where: { tenantId_id: { tenantId, id } },
         data: { name: `Updated ${id}` },
       });
       expect(cache.del).toHaveBeenCalledWith(`menu:tenant:${tenantId}`);

@@ -64,7 +64,7 @@ describe('BNP-340: guest menu cache', () => {
 
     await fixture.prisma.menuItem.update({
       where: {
-        id_tenantId: { id: fixture.itemId, tenantId: fixture.tenantId },
+        tenantId_id: { tenantId: fixture.tenantId, id: fixture.itemId },
       },
       data: { name: 'Double espresso' },
     });

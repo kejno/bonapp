@@ -17,7 +17,7 @@ export class MenuAdminService {
     data: Prisma.MenuItemUpdateInput,
   ) {
     const item = await this.prisma.forTenant(tenantId).menuItem.update({
-      where: { id_tenantId: { id: itemId, tenantId } },
+      where: { tenantId_id: { tenantId, id: itemId } },
       data,
     });
     await this.invalidateMenu(tenantId);
@@ -30,7 +30,7 @@ export class MenuAdminService {
     data: Prisma.MenuCategoryUpdateInput,
   ) {
     const category = await this.prisma.forTenant(tenantId).menuCategory.update({
-      where: { id_tenantId: { id: categoryId, tenantId } },
+      where: { tenantId_id: { tenantId, id: categoryId } },
       data,
     });
     await this.invalidateMenu(tenantId);
@@ -66,7 +66,7 @@ export class MenuAdminService {
   async updateStopList(tenantId: string, itemId: string, isStopped: boolean) {
     const db = this.prisma.forTenant(tenantId);
     const item = await db.menuItem.findUnique({
-      where: { id_tenantId: { id: itemId, tenantId } },
+      where: { tenantId_id: { tenantId, id: itemId } },
       select: { id: true },
     });
     if (!item) {
@@ -74,7 +74,7 @@ export class MenuAdminService {
     }
 
     const stopListItem = await db.stopListItem.upsert({
-      where: { menuItemId_tenantId: { menuItemId: itemId, tenantId } },
+      where: { tenantId_menuItemId: { tenantId, menuItemId: itemId } },
       create: { tenantId, menuItemId: itemId, isStopped },
       update: { isStopped },
     });
