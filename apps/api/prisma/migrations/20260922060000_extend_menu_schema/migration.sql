@@ -74,22 +74,30 @@ ALTER TABLE "menu_items"
 -- Migrate stop_list_items and menu_item_modifier_groups FKs to use (tenant_id, id) key
 -- so the legacy (id, tenant_id) unique index can be dropped from menu_items.
 
+-- Step 1: drop the old FKs that reference the legacy (id, tenant_id) index
 ALTER TABLE "stop_list_items"
   DROP CONSTRAINT "stop_list_items_menu_item_id_tenant_id_fkey";
+
+ALTER TABLE "menu_item_modifier_groups"
+  DROP CONSTRAINT "menu_item_modifier_groups_menu_item_id_tenant_id_fkey";
+
+-- Step 2: drop the legacy (id, tenant_id) index BEFORE recreating the FKs.
+-- If the DROP comes after ADD CONSTRAINT, PostgreSQL resolves both new FKs to this
+-- old index (it is the first available unique index covering the same columns), then
+-- refuses to drop it because the new constraints depend on it (error 2BP01).
+-- Dropping first forces PostgreSQL to use the new (tenant_id, id) index exclusively.
+DROP INDEX "menu_items_id_tenant_id_key";
+
+-- Step 3: recreate the FKs referencing the new (tenant_id, id) unique index
 ALTER TABLE "stop_list_items"
   ADD CONSTRAINT "stop_list_items_tenant_id_menu_item_id_fkey"
     FOREIGN KEY ("tenant_id", "menu_item_id") REFERENCES "menu_items"("tenant_id", "id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "menu_item_modifier_groups"
-  DROP CONSTRAINT "menu_item_modifier_groups_menu_item_id_tenant_id_fkey";
-ALTER TABLE "menu_item_modifier_groups"
   ADD CONSTRAINT "menu_item_modifier_groups_tenant_id_menu_item_id_fkey"
     FOREIGN KEY ("tenant_id", "menu_item_id") REFERENCES "menu_items"("tenant_id", "id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- Drop the now-redundant (id, tenant_id) unique index; all FKs now reference (tenant_id, id)
-DROP INDEX "menu_items_id_tenant_id_key";
 
 -- ============================================================
 -- modifier_groups: add item_id and selection-range constraints

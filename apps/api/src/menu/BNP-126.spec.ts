@@ -159,6 +159,23 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
       );
     });
 
+    it('drops legacy (id, tenant_id) index before creating new tenant-scoped FKs on stop_list_items and menu_item_modifier_groups', () => {
+      const dropLegacyIdx = migration.indexOf('DROP INDEX "menu_items_id_tenant_id_key"');
+      const addFkStopList = migration.indexOf(
+        '"stop_list_items_tenant_id_menu_item_id_fkey"\n    FOREIGN KEY',
+      );
+      const addFkModGroups = migration.indexOf(
+        '"menu_item_modifier_groups_tenant_id_menu_item_id_fkey"\n    FOREIGN KEY',
+      );
+
+      expect(dropLegacyIdx).toBeGreaterThan(-1);
+      expect(addFkStopList).toBeGreaterThan(-1);
+      expect(addFkModGroups).toBeGreaterThan(-1);
+      // DROP must precede both ADD CONSTRAINTs so PostgreSQL uses the new (tenant_id, id) index
+      expect(dropLegacyIdx).toBeLessThan(addFkStopList);
+      expect(dropLegacyIdx).toBeLessThan(addFkModGroups);
+    });
+
     it('protects all menu monetary values from negative writes', () => {
       expect(migration).toContain('menu_items_price_byn_non_negative_check');
       expect(migration).toContain('menu_items_cost_price_byn_non_negative_check');
