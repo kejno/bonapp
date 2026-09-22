@@ -1,62 +1,49 @@
-import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types';
-import { CacheService } from '../src/cache/cache.service';
-import { GuestMenuController } from '../src/menu/guest-menu.controller';
-import { MenuService } from '../src/menu/menu.service';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { MenuCacheTestFixture } from './menu-cache-test.fixture';
+
+type GuestMenu = Array<{ items: Array<{ name: string }> }>;
 
 describe('BNP-340: guest menu cache', () => {
-  let app: INestApplication<App>;
-  const storedMenus = new Map<string, unknown>();
-  const cache = {
-    getJson: jest.fn((key: string) => Promise.resolve(storedMenus.get(key) ?? null)),
-    setJson: jest.fn((key: string, value: unknown) => {
-      storedMenus.set(key, value);
-      return Promise.resolve();
-    }),
-  };
-  const menu = [{ id: 'category-1', items: [{ id: 'item-1', name: 'Espresso' }] }];
-  const prisma = {
-    forTenant: jest.fn(),
-    menuCategory: { findMany: jest.fn(() => Promise.resolve(menu)) },
-  };
+  const fixture = new MenuCacheTestFixture();
 
-  beforeEach(async () => {
-    storedMenus.clear();
-    jest.clearAllMocks();
-    prisma.forTenant.mockReturnValue(prisma);
+  beforeAll(async () => {
+    await fixture.start();
+  }, 120_000);
 
-    const module = await Test.createTestingModule({
-      controllers: [GuestMenuController],
-      providers: [
-        MenuService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: CacheService, useValue: cache },
-      ],
-    }).compile();
-
-    app = module.createNestApplication();
-    await app.init();
+  afterAll(async () => {
+    await fixture.stop();
   });
 
-  afterEach(async () => {
-    await app.close();
-  });
+  it('stores the guest menu in Redis with a 60-second TTL and refreshes it after expiration', async () => {
+    const firstResponse = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    const firstMenu = firstResponse.body as unknown as GuestMenu;
+    expect(firstMenu[0].items[0].name).toBe('Espresso');
+    expect(await fixture.redis.ttl(fixture.cacheKey)).toBeGreaterThan(0);
+    expect(await fixture.redis.ttl(fixture.cacheKey)).toBeLessThanOrEqual(60);
 
-  it('returns the Redis-cached catalog on a repeated request within 60 seconds', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/guest/menu?tenantId=tenant-1')
-      .expect(200)
-      .expect(menu);
-    await request(app.getHttpServer())
-      .get('/api/v1/guest/menu?tenantId=tenant-1')
-      .expect(200)
-      .expect(menu);
+    await fixture.prisma.menuItem.update({
+      where: {
+        id_tenantId: { id: fixture.itemId, tenantId: fixture.tenantId },
+      },
+      data: { name: 'Double espresso' },
+    });
+    const cachedResponse = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    const cachedMenu = cachedResponse.body as unknown as GuestMenu;
+    expect(cachedMenu[0].items[0].name).toBe('Espresso');
 
-    expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
-    expect(cache.getJson).toHaveBeenCalledWith('menu:tenant:tenant-1');
-    expect(cache.setJson).toHaveBeenCalledWith('menu:tenant:tenant-1', menu, 60);
+    await fixture.redis.expire(fixture.cacheKey, 1);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const refreshedResponse = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    const refreshedMenu = refreshedResponse.body as unknown as GuestMenu;
+    expect(refreshedMenu[0].items[0].name).toBe('Double espresso');
   });
 });
