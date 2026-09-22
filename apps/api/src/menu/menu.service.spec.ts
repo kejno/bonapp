@@ -5,8 +5,8 @@ import { MenuService } from './menu.service';
 describe('MenuService', () => {
   const tenantId = 'tenant-1';
   const catalog = [
-    { id: 'category-1', items: [{ id: 'item-1', modifierGroups: [] }] },
-    { id: 'category-2', items: [{ id: 'item-2', modifierGroups: [] }] },
+    { id: 'category-1', menuItems: [{ id: 'item-1', modifierGroups: [] }] },
+    { id: 'category-2', menuItems: [{ id: 'item-2', modifierGroups: [] }] },
   ];
 
   let prisma: {
@@ -47,15 +47,15 @@ describe('MenuService', () => {
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
-        items: {
+        menuItems: {
           where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { createdAt: 'asc' },
           include: {
             modifierGroups: {
-              orderBy: { sortOrder: 'asc' },
+              orderBy: { id: 'asc' },
               include: {
-                modifierGroup: {
-                  include: { modifiers: { orderBy: { sortOrder: 'asc' } } },
+                modifierOptions: {
+                  orderBy: { id: 'asc' },
                 },
               },
             },

@@ -21,15 +21,15 @@ export class MenuService {
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
-        items: {
+        menuItems: {
           where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { createdAt: 'asc' },
           include: {
             modifierGroups: {
-              orderBy: { sortOrder: 'asc' },
+              orderBy: { id: 'asc' },
               include: {
-                modifierGroup: {
-                  include: { modifiers: { orderBy: { sortOrder: 'asc' } } },
+                modifierOptions: {
+                  orderBy: { id: 'asc' },
                 },
               },
             },

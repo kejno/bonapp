@@ -16,6 +16,13 @@ enum UserRole {
   CASHIER
 }
 
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLOSED
+}
+
 model Tenant {
   id               String       @id @default(uuid())
   slug             String       @unique
@@ -38,110 +45,15 @@ model Tenant {
   users            User[]
   diningAreas      DiningArea[]
   tables           Table[]
+  orders           Order[]
+  payments         Payment[]
   menuCategories   MenuCategory[]
   menuItems        MenuItem[]
   modifierGroups   ModifierGroup[]
   modifiers        Modifier[]
   stopListItems    StopListItem[]
-  orders           Order[]
-  payments         Payment[]
 
   @@map("tenants")
-}
-
-model MenuCategory {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  sortOrder Int      @default(0) @map("sort_order")
-  isActive  Boolean  @default(true) @map("is_active")
-  items     MenuItem[]
-
-  @@unique([id, tenantId])
-  @@index([tenantId, sortOrder])
-  @@map("menu_categories")
-}
-
-model MenuItem {
-  id             String                 @id @default(uuid())
-  tenantId       String                 @map("tenant_id")
-  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
-  categoryId     String                 @map("category_id")
-  category       MenuCategory           @relation(fields: [categoryId, tenantId], references: [id, tenantId])
-  name           String
-  price          Decimal                @db.Decimal(10, 2)
-  sortOrder      Int                    @default(0) @map("sort_order")
-  isActive       Boolean                @default(true) @map("is_active")
-  modifierGroups MenuItemModifierGroup[]
-  stopListItem   StopListItem?
-
-  @@unique([id, tenantId])
-  @@index([tenantId, categoryId, sortOrder])
-  @@map("menu_items")
-}
-
-model ModifierGroup {
-  id        String                 @id @default(uuid())
-  tenantId  String                 @map("tenant_id")
-  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
-  name      String
-  sortOrder Int                    @default(0) @map("sort_order")
-  modifiers Modifier[]
-  menuItems MenuItemModifierGroup[]
-
-  @@unique([id, tenantId])
-  @@index([tenantId, sortOrder])
-  @@map("modifier_groups")
-}
-
-model Modifier {
-  id              String        @id @default(uuid())
-  tenantId        String        @map("tenant_id")
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  modifierGroupId String        @map("modifier_group_id")
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
-  name            String
-  price           Decimal       @db.Decimal(10, 2)
-  sortOrder       Int           @default(0) @map("sort_order")
-
-  @@unique([id, tenantId])
-  @@index([tenantId, modifierGroupId, sortOrder])
-  @@map("modifiers")
-}
-
-model MenuItemModifierGroup {
-  menuItemId      String        @map("menu_item_id")
-  modifierGroupId String        @map("modifier_group_id")
-  tenantId        String        @map("tenant_id")
-  sortOrder       Int           @default(0) @map("sort_order")
-  menuItem        MenuItem      @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
-
-  @@id([menuItemId, modifierGroupId])
-  @@index([tenantId])
-  @@map("menu_item_modifier_groups")
-}
-
-model StopListItem {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  menuItemId String   @map("menu_item_id")
-  menuItem   MenuItem @relation(fields: [menuItemId, tenantId], references: [id, tenantId])
-  isStopped  Boolean  @default(true) @map("is_stopped")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@index([tenantId])
-  @@unique([menuItemId, tenantId])
-  @@map("stop_list_items")
-}
-
-enum TableStatus {
-  AVAILABLE
-  OCCUPIED
-  RESERVED
-  CLOSED
 }
 
 model User {
@@ -289,4 +201,131 @@ model Payment {
   createdAt             DateTime      @default(now()) @map("created_at")
 
   @@map("payments")
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int      @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  menuItems MenuItem[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id                 String       @id @default(uuid())
+  tenantId           String       @map("tenant_id")
+  tenant             Tenant       @relation(fields: [tenantId], references: [id])
+  categoryId         String       @map("category_id")
+  category           MenuCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  name               String
+  description        String?
+  priceByn           Decimal      @map("price_byn") @db.Decimal(10, 2)
+  costPriceByn       Decimal?     @map("cost_price_byn") @db.Decimal(10, 2)
+  imageUrl           String?      @map("image_url")
+  weightGrams        Int?         @map("weight_grams")
+  calories           Int?
+  proteins           Decimal?     @db.Decimal(7, 2)
+  fats               Decimal?     @db.Decimal(7, 2)
+  carbs              Decimal?     @db.Decimal(7, 2)
+  allergens          String[]     @default([])
+  kitchenDepartment  String?      @map("kitchen_department")
+  cookingTimeMinutes Int?         @map("cooking_time_minutes")
+  isInStopList       Boolean      @default(false) @map("is_in_stop_list")
+  posItemId          String?      @map("pos_item_id")
+  isHit              Boolean      @default(false) @map("is_hit")
+  isActive           Boolean      @default(true) @map("is_active")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  modifierGroups         ModifierGroup[]
+  menuItemModifierGroups MenuItemModifierGroup[]
+  stopListItem           StopListItem?
+
+  @@unique([tenantId, id])
+  // idx_menu_items_tenant_cat is managed in migration SQL because Prisma does not support partial indexes.
+  @@map("menu_items")
+}
+
+model ModifierGroup {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  itemId       String   @map("item_id")
+  menuItem     MenuItem @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  name         String
+  isRequired   Boolean  @default(false) @map("is_required")
+  minSelection Int      @default(0) @map("min_selection")
+  maxSelection Int?     @map("max_selection")
+
+  modifierOptions ModifierOption[]
+  modifiers       Modifier[]
+  menuItems       MenuItemModifierGroup[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([itemId])
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id            String        @id @default(uuid())
+  groupId       String        @map("group_id")
+  group         ModifierGroup @relation(fields: [groupId], references: [id])
+  name          String
+  extraPriceByn Decimal       @default(0) @map("extra_price_byn") @db.Decimal(10, 2)
+  isDefault     Boolean       @default(false) @map("is_default")
+
+  @@index([groupId])
+  @@map("modifier_options")
+}
+
+model Modifier {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  modifierGroupId String        @map("modifier_group_id")
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+  name            String
+  price           Decimal       @db.Decimal(10, 2)
+  sortOrder       Int           @default(0) @map("sort_order")
+
+  @@unique([id, tenantId])
+  @@index([tenantId, modifierGroupId, sortOrder])
+  @@map("modifiers")
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String        @map("menu_item_id")
+  modifierGroupId String        @map("modifier_group_id")
+  tenantId        String        @map("tenant_id")
+  sortOrder       Int           @default(0) @map("sort_order")
+  menuItem        MenuItem      @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+
+  @@id([menuItemId, modifierGroupId])
+  @@index([tenantId])
+  @@map("menu_item_modifier_groups")
+}
+
+model StopListItem {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  menuItemId String   @map("menu_item_id")
+  menuItem   MenuItem @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
+  isStopped  Boolean  @default(true) @map("is_stopped")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@unique([tenantId, menuItemId])
+  @@map("stop_list_items")
 }

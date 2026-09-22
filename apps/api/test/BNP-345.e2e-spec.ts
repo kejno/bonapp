@@ -127,6 +127,7 @@ describe('BNP-345: persisting an order with items and payment', () => {
         id: 'bnp345-category',
         tenantId: 'bnp345-tenant',
         name: 'Main menu',
+        sortOrder: 0,
       },
     });
     await prisma.menuItem.create({
@@ -135,7 +136,7 @@ describe('BNP-345: persisting an order with items and payment', () => {
         tenantId: 'bnp345-tenant',
         categoryId: 'bnp345-category',
         name: 'Test dish',
-        price: '12.75',
+        priceByn: '12.75',
       },
     });
   }, 120_000);

@@ -26,6 +26,7 @@ describe('PrismaService tenant query scope', () => {
         'MenuCategory',
         'MenuItem',
         'ModifierGroup',
+        'ModifierOption',
         'Modifier',
         'MenuItemModifierGroup',
         'StopListItem',
@@ -39,10 +40,7 @@ describe('PrismaService tenant query scope', () => {
         'User',
         'createMany',
         {
-          data: [
-            { email: 'a@test' },
-            { email: 'b@test', tenantId: 'other' },
-          ],
+          data: [{ email: 'a@test' }, { email: 'b@test', tenantId: 'other' }],
         },
         'tenant-a',
       ),
@@ -133,13 +131,13 @@ describe('PrismaService tenant query scope', () => {
     (operation) => {
       const args = { where: { email: 'shared@test' } };
 
-      expect(
-        scopeTenantQueryArgs('User', operation, args, 'tenant-a'),
-      ).toEqual({
-        where: {
-          tenantId_email: { tenantId: 'tenant-a', email: 'shared@test' },
+      expect(scopeTenantQueryArgs('User', operation, args, 'tenant-a')).toEqual(
+        {
+          where: {
+            tenantId_email: { tenantId: 'tenant-a', email: 'shared@test' },
+          },
         },
-      });
+      );
       expect(args).toEqual({ where: { email: 'shared@test' } });
     },
   );
@@ -166,11 +164,21 @@ describe('PrismaService tenant query scope', () => {
 
   it('scopes orders and payments by tenantId', () => {
     expect(
-      scopeTenantQueryArgs('Order', 'findMany', { where: { status: 'NEW' } }, 'tenant-a'),
+      scopeTenantQueryArgs(
+        'Order',
+        'findMany',
+        { where: { status: 'NEW' } },
+        'tenant-a',
+      ),
     ).toEqual({ where: { status: 'NEW', tenantId: 'tenant-a' } });
 
     expect(
-      scopeTenantQueryArgs('Payment', 'create', { data: { orderId: 'order-a' } }, 'tenant-a'),
+      scopeTenantQueryArgs(
+        'Payment',
+        'create',
+        { data: { orderId: 'order-a' } },
+        'tenant-a',
+      ),
     ).toEqual({ data: { orderId: 'order-a', tenantId: 'tenant-a' } });
   });
 
@@ -184,10 +192,7 @@ describe('PrismaService tenant query scope', () => {
       ),
     ).toEqual({
       where: {
-        AND: [
-          { status: 'NEW' },
-          { order: { is: { tenantId: 'tenant-a' } } },
-        ],
+        AND: [{ status: 'NEW' }, { order: { is: { tenantId: 'tenant-a' } } }],
       },
     });
 
@@ -200,12 +205,64 @@ describe('PrismaService tenant query scope', () => {
       ),
     ).toEqual({
       where: {
-        AND: [
-          { id: 'item-b' },
-          { order: { is: { tenantId: 'tenant-a' } } },
-        ],
+        AND: [{ id: 'item-b' }, { order: { is: { tenantId: 'tenant-a' } } }],
       },
     });
+  });
+
+  it('scopes menu records by tenant and modifier options through their group', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'MenuItem',
+        'create',
+        { data: { categoryId: 'category-a', tenantId: 'other' } },
+        'tenant-a',
+      ),
+    ).toEqual({
+      data: { categoryId: 'category-a', tenantId: 'tenant-a' },
+    });
+
+    expect(
+      scopeTenantQueryArgs(
+        'ModifierOption',
+        'findMany',
+        { where: { isDefault: true } },
+        'tenant-a',
+      ),
+    ).toEqual({
+      where: {
+        AND: [{ isDefault: true }, { group: { is: { tenantId: 'tenant-a' } } }],
+      },
+    });
+  });
+
+  it('scopes Modifier, MenuItemModifierGroup, and StopListItem by tenantId', () => {
+    expect(
+      scopeTenantQueryArgs(
+        'Modifier',
+        'create',
+        { data: { modifierGroupId: 'group-a', tenantId: 'other' } },
+        'tenant-a',
+      ),
+    ).toEqual({ data: { modifierGroupId: 'group-a', tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs(
+        'MenuItemModifierGroup',
+        'findMany',
+        { where: { menuItemId: 'item-a' } },
+        'tenant-a',
+      ),
+    ).toEqual({ where: { menuItemId: 'item-a', tenantId: 'tenant-a' } });
+
+    expect(
+      scopeTenantQueryArgs(
+        'StopListItem',
+        'create',
+        { data: { menuItemId: 'item-a' } },
+        'tenant-a',
+      ),
+    ).toEqual({ data: { menuItemId: 'item-a', tenantId: 'tenant-a' } });
   });
 
   it('uses a filter-capable delegate for uniquely addressed order items', () => {
@@ -214,6 +271,9 @@ describe('PrismaService tenant query scope', () => {
     );
     expect(scopedDelegateOperation('OrderItem', 'findUniqueOrThrow')).toBe(
       'findFirstOrThrow',
+    );
+    expect(scopedDelegateOperation('ModifierOption', 'findUnique')).toBe(
+      'findFirst',
     );
     expect(scopedDelegateOperation('User', 'findUnique')).toBe('findUnique');
   });
@@ -227,5 +287,16 @@ describe('PrismaService tenant query scope', () => {
         'tenant-a',
       ),
     ).toThrow('OrderItem upsert is not supported');
+  });
+
+  it('rejects modifier option upserts because Prisma cannot scope its unique lookup', () => {
+    expect(() =>
+      scopeTenantQueryArgs(
+        'ModifierOption',
+        'upsert',
+        { where: { id: 'option-b' }, create: {}, update: {} },
+        'tenant-a',
+      ),
+    ).toThrow('ModifierOption upsert is not supported');
   });
 });
