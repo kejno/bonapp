@@ -44,13 +44,13 @@ describe('MenuAdminService', () => {
     prisma.menuItem.update.mockResolvedValue({ id: 'item-1' });
 
     await service.updateItem('tenant-1', 'item-1', {
-      price: 12.5,
+      priceByn: 12.5,
       isActive: false,
     });
 
     expect(prisma.menuItem.update).toHaveBeenCalledWith({
       where: { id_tenantId: { id: 'item-1', tenantId: 'tenant-1' } },
-      data: { price: 12.5, isActive: false },
+      data: { priceByn: 12.5, isActive: false },
     });
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
@@ -65,8 +65,19 @@ describe('MenuAdminService', () => {
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
 
+  it('invalidates the tenant menu after changing a category', async () => {
+    prisma.menuCategory.update.mockResolvedValue({ id: 'category-1' });
+
+    await service.updateCategory('tenant-1', 'category-1', { name: 'Breakfast' });
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({
+      where: { tenantId_id: { tenantId: 'tenant-1', id: 'category-1' } },
+      data: { name: 'Breakfast' },
+    });
+    expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
+  });
+
   it.each([
-    ['category', 'category-1', 'menuCategory', 'updateCategory', { name: 'Breakfast' }],
     ['modifier group', 'group-1', 'modifierGroup', 'updateModifierGroup', { name: 'Extras' }],
     ['modifier', 'modifier-1', 'modifier', 'updateModifier', { name: 'Cheese' }],
   ] as const)(

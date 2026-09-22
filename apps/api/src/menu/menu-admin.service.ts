@@ -30,7 +30,7 @@ export class MenuAdminService {
     data: Prisma.MenuCategoryUpdateInput,
   ) {
     const category = await this.prisma.forTenant(tenantId).menuCategory.update({
-      where: { id_tenantId: { id: categoryId, tenantId } },
+      where: { tenantId_id: { tenantId, id: categoryId } },
       data,
     });
     await this.invalidateMenu(tenantId);

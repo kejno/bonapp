@@ -21,16 +21,12 @@ export class MenuService {
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
-        items: {
+        menuItems: {
           where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
           include: {
             modifierGroups: {
-              orderBy: { sortOrder: 'asc' },
               include: {
-                modifierGroup: {
-                  include: { modifiers: { orderBy: { sortOrder: 'asc' } } },
-                },
+                modifiers: { orderBy: { sortOrder: 'asc' } },
               },
             },
             stopListItem: { select: { isStopped: true } },
