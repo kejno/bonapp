@@ -1,13 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { INestApplication } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
+import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { TenantContextService } from '../src/tenant/tenant-context.service';
 
 const apiDirectory = resolve(__dirname, '..');
 
 describe('BNP-349: Prisma Client и PrismaService', () => {
   let container: string;
+  let app: INestApplication;
   let service: PrismaService;
   let previousDatabaseUrl: string | undefined;
 
@@ -26,7 +29,10 @@ describe('BNP-349: Prisma Client и PrismaService', () => {
       'POSTGRES_PASSWORD=postgres',
       'postgres:15',
     ).trim();
-    const port = docker('port', container, '5432/tcp').trim().split(':').at(-1)!;
+    const port = docker('port', container, '5432/tcp')
+      .trim()
+      .split(':')
+      .at(-1)!;
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`;
 
     for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -39,12 +45,16 @@ describe('BNP-349: Prisma Client и PrismaService', () => {
       }
     }
 
-    execFileSync('npx', ['prisma', 'generate', '--schema', 'prisma/schema.prisma'], {
-      cwd: apiDirectory,
-      encoding: 'utf8',
-      stdio: 'pipe',
-      env: { ...process.env, DATABASE_URL: databaseUrl },
-    });
+    execFileSync(
+      'npx',
+      ['prisma', 'generate', '--schema', 'prisma/schema.prisma'],
+      {
+        cwd: apiDirectory,
+        encoding: 'utf8',
+        stdio: 'pipe',
+        env: { ...process.env, DATABASE_URL: databaseUrl },
+      },
+    );
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
       cwd: apiDirectory,
       encoding: 'utf8',
@@ -54,20 +64,35 @@ describe('BNP-349: Prisma Client и PrismaService', () => {
 
     previousDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = databaseUrl;
-    service = new PrismaService(new TenantContextService());
-    await service.onModuleInit();
+
+    process.env.S3_ENDPOINT ??= 'http://localhost:9000';
+    process.env.S3_BUCKET ??= 'bonapp';
+    process.env.S3_ACCESS_KEY ??= 'test-key';
+    process.env.S3_SECRET_KEY ??= 'test-secret';
+    process.env.JWT_SECRET ??= 'test-jwt-secret';
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+    service = app.get(PrismaService);
   }, 120_000);
 
   afterAll(async () => {
-    await service?.onModuleDestroy();
+    await app?.close();
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (container) docker('stop', container);
   });
 
-  it('подключается к БД и предоставляет сгенерированные Prisma enum-типы', async () => {
-    await expect(service.forTenant('automation-tenant').tenant.count()).resolves.toBe(0);
+  it('запускает Nest-приложение с PrismaService, подключается к БД и штатно останавливается', async () => {
+    await expect(
+      service.forTenant('automation-tenant').tenant.count(),
+    ).resolves.toBe(0);
     expect(UserRole.SUPER_ADMIN).toBe('SUPER_ADMIN');
     expect(UserRole.CASHIER).toBe('CASHIER');
+
+    await expect(app.close()).resolves.toBeUndefined();
   });
 });
