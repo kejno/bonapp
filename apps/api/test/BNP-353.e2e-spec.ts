@@ -101,9 +101,36 @@ describe('BNP-353: частичный индекс idx_menu_items_tenant_cat', (
       databaseName,
       "SELECT indexdef FROM pg_indexes WHERE tablename = 'menu_items' AND indexname = 'idx_menu_items_tenant_cat';",
     );
-    expect(indexRow).toContain('idx_menu_items_tenant_cat');
-    // Partial index predicate: only active menu items are covered
-    expect(indexRow).toContain('WHERE');
-    expect(indexRow).toContain('is_active');
+    expect(indexRow).toContain('WHERE (is_active = true)');
+  }, 120_000);
+
+  it('планировщик использует idx_menu_items_tenant_cat для запроса по tenant_id, category_id и is_active = TRUE', () => {
+    const tenantId = randomUUID();
+    const categoryId = randomUUID();
+    const activeItemId = randomUUID();
+    const inactiveItemId = randomUUID();
+
+    psql(
+      databaseName,
+      `INSERT INTO tenants (id, slug, name, updated_at) VALUES ('${tenantId}', 'bnp353-tenant', 'BNP-353 Tenant', NOW())`,
+    );
+    psql(
+      databaseName,
+      `INSERT INTO menu_categories (id, tenant_id, name, sort_order, updated_at) VALUES ('${categoryId}', '${tenantId}', 'Test Category', 1, NOW())`,
+    );
+    psql(
+      databaseName,
+      `INSERT INTO menu_items (id, tenant_id, category_id, name, price_byn, is_active, updated_at) VALUES ('${activeItemId}', '${tenantId}', '${categoryId}', 'Active Item', 10.00, TRUE, NOW())`,
+    );
+    psql(
+      databaseName,
+      `INSERT INTO menu_items (id, tenant_id, category_id, name, price_byn, is_active, updated_at) VALUES ('${inactiveItemId}', '${tenantId}', '${categoryId}', 'Inactive Item', 10.00, FALSE, NOW())`,
+    );
+
+    const explainOutput = psql(
+      databaseName,
+      `SET enable_seqscan = off; EXPLAIN (FORMAT TEXT) SELECT id FROM menu_items WHERE tenant_id = '${tenantId}' AND category_id = '${categoryId}' AND is_active = TRUE`,
+    );
+    expect(explainOutput).toContain('Index Scan using idx_menu_items_tenant_cat');
   }, 120_000);
 });
