@@ -16,6 +16,8 @@ export class MenuCacheTestFixture {
   readonly tenantId = `menu-cache-${randomUUID()}`;
   readonly categoryId = `category-${randomUUID()}`;
   readonly itemId = `item-${randomUUID()}`;
+  readonly modifierGroupId = `modifier-group-${randomUUID()}`;
+  readonly modifierId = `modifier-${randomUUID()}`;
   readonly cacheKey = `menu:tenant:${this.tenantId}`;
 
   app!: INestApplication<App>;
@@ -92,6 +94,7 @@ export class MenuCacheTestFixture {
     this.app = module.createNestApplication();
     await this.app.init();
     this.redis = this.app.get<Redis>(REDIS_CLIENT);
+    await this.redis.connect();
     await this.prisma.tenant.create({
       data: { id: this.tenantId, slug: this.tenantId, name: 'Menu cache E2E' },
     });
@@ -105,6 +108,29 @@ export class MenuCacheTestFixture {
         categoryId: this.categoryId,
         name: 'Espresso',
         price: '3.50',
+      },
+    });
+    await this.prisma.modifierGroup.create({
+      data: {
+        id: this.modifierGroupId,
+        tenantId: this.tenantId,
+        name: 'Milk options',
+      },
+    });
+    await this.prisma.modifier.create({
+      data: {
+        id: this.modifierId,
+        tenantId: this.tenantId,
+        modifierGroupId: this.modifierGroupId,
+        name: 'Oat milk',
+        price: '0.50',
+      },
+    });
+    await this.prisma.menuItemModifierGroup.create({
+      data: {
+        tenantId: this.tenantId,
+        menuItemId: this.itemId,
+        modifierGroupId: this.modifierGroupId,
       },
     });
   }
