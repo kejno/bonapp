@@ -206,6 +206,30 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Looks up a table by its globally-unique QR token without tenant scoping.
+   * Used only for guest session initialization where the tenant must first be
+   * resolved from the token before scoped queries can proceed.
+   */
+  findTableByQrToken(qrToken: string) {
+    return this.client.table.findUnique({
+      where: { qrToken },
+      include: {
+        area: { select: { name: true } },
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            brandColor: true,
+            currency: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Returns a tenant-scoped Prisma client based on the current
    * AsyncLocalStorage context set by TenantContextMiddleware.
    * Throws when no tenant context is active so request handlers cannot
