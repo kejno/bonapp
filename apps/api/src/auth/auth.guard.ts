@@ -9,11 +9,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Request } from 'express';
 
 interface AuthenticatedRequest extends Request {
-  user?: { tenantId: string };
+  user?: { tenantId: string; userId?: string; role?: string };
 }
 
 interface JwtPayload {
   tenantId?: unknown;
+  userId?: unknown;
+  role?: unknown;
   exp?: unknown;
 }
 
@@ -29,7 +31,7 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
     const payload = this.verifyToken(token);
-    request.user = { tenantId: payload.tenantId };
+    request.user = { tenantId: payload.tenantId, userId: payload.userId, role: payload.role };
     return true;
   }
 
@@ -74,7 +76,12 @@ export class AuthGuard implements CanActivate {
         throw new UnauthorizedException();
       }
 
-      return { tenantId: payload.tenantId };
+      return {
+        tenantId: payload.tenantId,
+        userId:
+          typeof payload.userId === 'string' ? payload.userId : undefined,
+        role: typeof payload.role === 'string' ? payload.role : undefined,
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException();

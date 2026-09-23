@@ -1,0 +1,375 @@
+import {
+  ForbiddenException,
+  Injectable,
+  TooManyRequestsException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from 'node:crypto';
+import { compare, hash } from 'bcryptjs';
+import { CacheService } from '../cache/cache.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+const STAFF_ROLES = new Set(['CASHIER', 'WAITER', 'CHEF']);
+const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
+const BCRYPT_COST = 10;
+const PIN_ATTEMPTS_LIMIT = 5;
+const PIN_WINDOW_SECONDS = 900; // 15 minutes
+const PIN_JWT_TTL_SECONDS = 28800; // 8 hours
+const MANAGER_JWT_TTL_SECONDS = 86400; // 24 hours
+const LOGIN_CHALLENGE_TTL_SECONDS = 180; // 3 minutes
+const SETUP_CHALLENGE_TTL_SECONDS = 300; // 5 minutes
+const TOTP_STEP_SECONDS = 30;
+const TOTP_WINDOW = 1;
+
+const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(buf: Buffer): string {
+  let result = '';
+  let bits = 0;
+  let value = 0;
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      result += BASE32_CHARS[(value >> bits) & 0x1f];
+    }
+  }
+  if (bits > 0) result += BASE32_CHARS[(value << (5 - bits)) & 0x1f];
+  return result;
+}
+
+function base32Decode(base32: string): Buffer {
+  const normalized = base32.toUpperCase().replace(/=+$/, '');
+  const bytes: number[] = [];
+  let bits = 0;
+  let value = 0;
+  for (const char of normalized) {
+    const idx = BASE32_CHARS.indexOf(char);
+    if (idx === -1) throw new Error(`Invalid base32 char: ${char}`);
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((value >> bits) & 0xff);
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function hotpCode(key: Buffer, counter: number): string {
+  const counterBuf = Buffer.allocUnsafe(8);
+  const hi = Math.floor(counter / 0x100000000);
+  const lo = counter >>> 0;
+  counterBuf.writeUInt32BE(hi, 0);
+  counterBuf.writeUInt32BE(lo, 4);
+  const hmac = createHmac('sha1', key).update(counterBuf).digest();
+  const offset = hmac[19] & 0xf;
+  const code =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+  return String(code % 1_000_000).padStart(6, '0');
+}
+
+export function totpVerify(secretBase32: string, code: string): boolean {
+  const key = base32Decode(secretBase32);
+  const step = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
+  for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
+    if (hotpCode(key, step + i) === code) return true;
+  }
+  return false;
+}
+
+export function totpGenerateSecret(): { secretBase32: string } {
+  const secretBase32 = base32Encode(randomBytes(20));
+  return { secretBase32 };
+}
+
+export function buildOtpAuthUri(
+  secretBase32: string,
+  email: string,
+  issuer: string,
+): string {
+  const account = encodeURIComponent(`${issuer}:${email}`);
+  return `otpauth://totp/${account}?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+function encryptTotpSecret(secret: string, keyBuf: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(secret, 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptTotpSecret(stored: string, keyBuf: Buffer): string {
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted TOTP format');
+  const [ivHex, tagHex, dataHex] = parts;
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    keyBuf,
+    Buffer.from(ivHex, 'hex'),
+  );
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(dataHex, 'hex')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function createJwt(
+  payload: Record<string, unknown>,
+  secret: string,
+  ttlSeconds: number,
+): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const encode = (obj: object) =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const header = encode({ alg: 'HS256', typ: 'JWT' });
+  const body = encode({ ...payload, exp });
+  const sig = createHmac('sha256', secret)
+    .update(`${header}.${body}`)
+    .digest('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+function pinRateLimitKey(tenantId: string, ip: string): string {
+  return `pin:attempts:${tenantId}:${ip}`;
+}
+
+interface ChallengePayload {
+  type: 'login' | 'setup';
+  userId: string;
+  tenantId: string;
+}
+
+@Injectable()
+export class AuthService {
+  private readonly jwtSecret: string;
+  private readonly totpEncryptionKey: Buffer;
+  private readonly appName: string;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+    config: ConfigService,
+  ) {
+    this.jwtSecret = config.getOrThrow<string>('JWT_SECRET');
+    const rawKey = config.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
+    this.totpEncryptionKey = Buffer.from(rawKey, 'hex');
+    if (this.totpEncryptionKey.length !== 32) {
+      throw new Error('TOTP_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+    }
+    this.appName = config.get<string>('APP_NAME', 'Bonapp');
+  }
+
+  async pinLogin(
+    tenantSlug: string,
+    pin: string,
+    ip: string,
+  ): Promise<{ accessToken: string }> {
+    const tenant = await this.prisma.findTenantBySlug(tenantSlug);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
+
+    const rateLimitKey = pinRateLimitKey(tenant.id, ip);
+    const attempts = await this.cache.increment(
+      rateLimitKey,
+      PIN_WINDOW_SECONDS,
+    );
+    if (attempts > PIN_ATTEMPTS_LIMIT) {
+      throw new TooManyRequestsException(
+        'Too many failed attempts. Please wait 15 minutes.',
+      );
+    }
+
+    const staffUsers = await this.prisma
+      .forTenant(tenant.id)
+      .user.findMany({
+        where: { role: { in: ['CASHIER', 'WAITER', 'CHEF'] }, isActive: true },
+        select: { id: true, role: true, pinHash: true },
+      });
+
+    let matchedUser: { id: string; role: string } | null = null;
+    for (const user of staffUsers) {
+      if (user.pinHash && (await compare(pin, user.pinHash))) {
+        matchedUser = { id: user.id, role: user.role };
+        break;
+      }
+    }
+
+    if (!matchedUser) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.cache.del(rateLimitKey);
+
+    const accessToken = createJwt(
+      { tenantId: tenant.id, userId: matchedUser.id, role: matchedUser.role },
+      this.jwtSecret,
+      PIN_JWT_TTL_SECONDS,
+    );
+    return { accessToken };
+  }
+
+  async login(
+    tenantSlug: string,
+    email: string,
+    password: string,
+  ): Promise<{ accessToken: string } | { challenge: string }> {
+    const tenant = await this.prisma.findTenantBySlug(tenantSlug);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
+
+    const user = await this.prisma.forTenant(tenant.id).user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        role: true,
+        passwordHash: true,
+        totpEnabled: true,
+        isActive: true,
+      },
+    });
+
+    if (
+      !user ||
+      !user.isActive ||
+      !MANAGER_ROLES.has(user.role) ||
+      !(await compare(password, user.passwordHash))
+    ) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.totpEnabled) {
+      const challengeId = randomBytes(16).toString('hex');
+      const payload: ChallengePayload = {
+        type: 'login',
+        userId: user.id,
+        tenantId: tenant.id,
+      };
+      await this.cache.setJson(
+        `totp:challenge:${challengeId}`,
+        payload,
+        LOGIN_CHALLENGE_TTL_SECONDS,
+      );
+      return { challenge: challengeId };
+    }
+
+    const accessToken = createJwt(
+      { tenantId: tenant.id, userId: user.id, role: user.role },
+      this.jwtSecret,
+      MANAGER_JWT_TTL_SECONDS,
+    );
+    return { accessToken };
+  }
+
+  async setup2fa(
+    userId: string,
+    tenantId: string,
+  ): Promise<{
+    secret: string;
+    otpAuthUri: string;
+    setupChallenge: string;
+  }> {
+    const user = await this.prisma.forTenant(tenantId).user.findFirst({
+      where: { id: userId },
+      select: { id: true, role: true, email: true },
+    });
+
+    if (!user || !MANAGER_ROLES.has(user.role)) {
+      throw new ForbiddenException('Only OWNER or MANAGER can set up 2FA');
+    }
+
+    const { secretBase32 } = totpGenerateSecret();
+    const encrypted = encryptTotpSecret(secretBase32, this.totpEncryptionKey);
+
+    await this.prisma.forTenant(tenantId).user.update({
+      where: { id: userId },
+      data: { totpSecret: encrypted, totpEnabled: false },
+    });
+
+    const challengeId = randomBytes(16).toString('hex');
+    const payload: ChallengePayload = {
+      type: 'setup',
+      userId: user.id,
+      tenantId,
+    };
+    await this.cache.setJson(
+      `totp:challenge:${challengeId}`,
+      payload,
+      SETUP_CHALLENGE_TTL_SECONDS,
+    );
+
+    return {
+      secret: secretBase32,
+      otpAuthUri: buildOtpAuthUri(secretBase32, user.email, this.appName),
+      setupChallenge: challengeId,
+    };
+  }
+
+  async verify2fa(
+    challenge: string,
+    code: string,
+  ): Promise<{ accessToken: string } | { totpEnabled: boolean }> {
+    const stored = await this.cache.getJson<ChallengePayload>(
+      `totp:challenge:${challenge}`,
+    );
+    if (!stored) throw new UnauthorizedException('Invalid or expired challenge');
+
+    await this.cache.del(`totp:challenge:${challenge}`);
+
+    const user = await this.prisma
+      .forTenant(stored.tenantId)
+      .user.findFirst({
+        where: { id: stored.userId },
+        select: { id: true, role: true, totpSecret: true, totpEnabled: true },
+      });
+
+    if (!user?.totpSecret) {
+      throw new UnauthorizedException('TOTP not configured for this user');
+    }
+
+    const secretBase32 = decryptTotpSecret(
+      user.totpSecret,
+      this.totpEncryptionKey,
+    );
+
+    if (!totpVerify(secretBase32, code)) {
+      throw new UnauthorizedException('Invalid TOTP code');
+    }
+
+    if (stored.type === 'setup') {
+      await this.prisma.forTenant(stored.tenantId).user.update({
+        where: { id: stored.userId },
+        data: { totpEnabled: true },
+      });
+      return { totpEnabled: true };
+    }
+
+    const accessToken = createJwt(
+      { tenantId: stored.tenantId, userId: user.id, role: user.role },
+      this.jwtSecret,
+      MANAGER_JWT_TTL_SECONDS,
+    );
+    return { accessToken };
+  }
+
+  async hashPin(pin: string): Promise<string> {
+    return hash(pin, BCRYPT_COST);
+  }
+
+  isStaffRole(role: string): boolean {
+    return STAFF_ROLES.has(role);
+  }
+}

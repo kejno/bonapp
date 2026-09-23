@@ -17,4 +17,45 @@ describe('CacheService', () => {
     ).resolves.toBeUndefined();
     await expect(service.del('menu:tenant:tenant-1')).resolves.toBeUndefined();
   });
+
+  describe('increment', () => {
+    it('increments a key and sets TTL on first call', async () => {
+      const redis = {
+        incr: jest.fn().mockResolvedValue(1),
+        expire: jest.fn().mockResolvedValue(1),
+      };
+      const service = new CacheService(redis as never);
+
+      const result = await service.increment('pin:attempts:t1:ip', 900);
+
+      expect(result).toBe(1);
+      expect(redis.incr).toHaveBeenCalledWith('pin:attempts:t1:ip');
+      expect(redis.expire).toHaveBeenCalledWith('pin:attempts:t1:ip', 900);
+    });
+
+    it('does not reset TTL on subsequent increments', async () => {
+      const redis = {
+        incr: jest.fn().mockResolvedValue(3),
+        expire: jest.fn().mockResolvedValue(1),
+      };
+      const service = new CacheService(redis as never);
+
+      const result = await service.increment('pin:attempts:t1:ip', 900);
+
+      expect(result).toBe(3);
+      expect(redis.expire).not.toHaveBeenCalled();
+    });
+
+    it('returns 0 and logs when Redis fails', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const redis = {
+        incr: jest.fn().mockRejectedValue(new Error('Redis down')),
+      };
+      const service = new CacheService(redis as never);
+
+      const result = await service.increment('key', 60);
+
+      expect(result).toBe(0);
+    });
+  });
 });

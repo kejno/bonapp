@@ -38,6 +38,19 @@ export class CacheService {
     }
   }
 
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    try {
+      const count = await this.redis.incr(key);
+      if (count === 1) {
+        await this.redis.expire(key, ttlSeconds);
+      }
+      return count;
+    } catch (error) {
+      this.logCacheError('increment', key, error);
+      return 0;
+    }
+  }
+
   private logCacheError(operation: string, key: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.logger.warn(`Unable to ${operation} cache key ${key}: ${message}`);
