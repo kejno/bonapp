@@ -27,13 +27,19 @@ describe('menu cache (e2e)', () => {
       return Promise.resolve();
     }),
   };
+  // Prisma mock data uses the Prisma relation name 'menuItems'
+  let prismaData: Array<{
+    id: string;
+    menuItems: Array<{ id: string; isStopped?: boolean }>;
+  }> = [{ id: 'category-1', menuItems: [{ id: 'item-1' }] }];
+  // Expected HTTP response uses 'items' (the public API contract)
   let menu: Array<{
     id: string;
     items: Array<{ id: string; isStopped?: boolean }>;
   }> = [{ id: 'category-1', items: [{ id: 'item-1' }] }];
   const prisma = {
     forTenant: jest.fn(),
-    menuCategory: { findMany: jest.fn(() => Promise.resolve(menu)) },
+    menuCategory: { findMany: jest.fn(() => Promise.resolve(prismaData)) },
     stopListItem: {
       upsert: jest.fn(() => Promise.resolve({ id: 'stop-list-1' })),
     },
@@ -44,6 +50,7 @@ describe('menu cache (e2e)', () => {
   beforeEach(async () => {
     storedMenus.clear();
     jest.clearAllMocks();
+    prismaData = [{ id: 'category-1', menuItems: [{ id: 'item-1' }] }];
     menu = [{ id: 'category-1', items: [{ id: 'item-1' }] }];
 
     const module = await Test.createTestingModule({
@@ -99,6 +106,7 @@ describe('menu cache (e2e)', () => {
     expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
 
+    prismaData = [{ id: 'category-1', menuItems: [{ id: 'item-1', isStopped: true }] }];
     menu = [{ id: 'category-1', items: [{ id: 'item-1', isStopped: true }] }];
     await request(app.getHttpServer())
       .patch('/api/v1/stop-list')

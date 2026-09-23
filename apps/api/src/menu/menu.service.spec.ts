@@ -4,9 +4,15 @@ import { MenuService } from './menu.service';
 
 describe('MenuService', () => {
   const tenantId = 'tenant-1';
+  // Raw Prisma result shape (menuItems is the Prisma relation name)
   const catalog = [
     { id: 'category-1', menuItems: [{ id: 'item-1', modifierGroups: [] }] },
     { id: 'category-2', menuItems: [{ id: 'item-2', modifierGroups: [] }] },
+  ];
+  // Transformed API response shape (menuItems renamed to items)
+  const transformedCatalog = [
+    { id: 'category-1', items: [{ id: 'item-1', modifierGroups: [] }] },
+    { id: 'category-2', items: [{ id: 'item-2', modifierGroups: [] }] },
   ];
 
   let prisma: {
@@ -30,9 +36,9 @@ describe('MenuService', () => {
   });
 
   it('returns a cached complete catalog without querying the database', async () => {
-    cache.getJson.mockResolvedValue(catalog);
+    cache.getJson.mockResolvedValue(transformedCatalog);
 
-    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(catalog);
+    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(transformedCatalog);
     expect(prisma.menuCategory.findMany).not.toHaveBeenCalled();
     expect(prisma.forTenant).not.toHaveBeenCalled();
   });
@@ -41,7 +47,7 @@ describe('MenuService', () => {
     cache.getJson.mockResolvedValue(null);
     prisma.menuCategory.findMany.mockResolvedValue(catalog);
 
-    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(catalog);
+    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(transformedCatalog);
     expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },
@@ -66,7 +72,7 @@ describe('MenuService', () => {
     });
     expect(cache.setJson).toHaveBeenCalledWith(
       `menu:tenant:${tenantId}`,
-      catalog,
+      transformedCatalog,
       60,
     );
   });
