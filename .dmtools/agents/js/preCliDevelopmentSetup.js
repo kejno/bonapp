@@ -56,12 +56,17 @@ function writeBranchConflictGuidance(ticketKey, branchName, baseBranch, details)
     try {
         file_write({
             path: 'input/' + ticketKey + '/merge_conflicts.md',
-            content: '# Branch Conflict Guidance\n\n' +
+            content: '# Branch Conflict Guidance — ACTION REQUIRED before writing any code\n\n' +
                 'Branch `' + branchName + '` has work that is not already merged into `origin/' + baseBranch + '`, ' +
-                'and `origin/' + baseBranch + '` is not an ancestor of this branch.\n\n' +
-                'Do not discard the branch work automatically. If a merge conflict appears while syncing with `origin/' + baseBranch + '`, ' +
-                'resolve it deliberately. In most cases, prefer `origin/' + baseBranch + '` for repository setup, generated workflow/config files, ' +
-                'and shared infrastructure, then re-apply only the ticket-specific implementation that is still relevant.\n\n' +
+                'and an automatic `git merge origin/' + baseBranch + '` failed and was aborted to keep the working ' +
+                'tree clean. This means real, conflicting changes have landed on `' + baseBranch + '` since this ' +
+                'branch was cut — do not treat the current file contents as the source of truth.\n\n' +
+                'Before making any change: run `git merge origin/' + baseBranch + '` yourself and resolve the ' +
+                'conflicts deliberately, file by file. Do NOT resolve a conflict by deleting the side you did not ' +
+                'write — a file that conflicts because `' + baseBranch + '` added unrelated content (e.g. another ' +
+                'ticket\'s models in a shared schema file) must keep BOTH that content and this ticket\'s own ' +
+                'changes. Prefer `origin/' + baseBranch + '` for repository setup, generated workflow/config files, ' +
+                'and shared infrastructure, then re-apply only the ticket-specific implementation on top of it.\n\n' +
                 'Details:\n\n```\n' + (details || '(not available)') + '\n```\n'
         });
     } catch (e) {
@@ -120,19 +125,38 @@ function alignBranchWithBase(ticketKey, branchName, baseBranch) {
     }
     console.warn('Branch does not contain origin/' + baseBranch + ':', branchName);
 
+    // Branch has real, not-yet-merged work AND has fallen behind base — do not
+    // just leave it divergent and hope the CLI agent reads a guidance file and
+    // merges manually. That silent trust is exactly how BNP-132 happened: the
+    // branch sat 5 days behind main, no merge was ever attempted, and the
+    // agent rewrote schema.prisma from scratch on the stale base, deleting
+    // ~300 lines of models that had landed on main since the branch was cut.
+    // Attempt a real `git merge` first; only fall back to writing guidance
+    // (and aborting, so the working tree stays clean) when git itself can't
+    // auto-resolve it.
+    try {
+        runCmd({ command: 'git merge origin/' + baseBranch + ' --no-edit' });
+        console.log('✅ Merged origin/' + baseBranch + ' into ' + branchName);
+        return;
+    } catch (mergeError) {
+        console.warn('git merge origin/' + baseBranch + ' failed, needs manual resolution:', mergeError);
+    }
+
     var details = '';
     try {
-        var mergeBase = findMergeBase('HEAD', 'origin/' + baseBranch);
-        if (mergeBase) {
-            details = cleanCommandOutput(runCmd({ command: 'git merge-tree ' + mergeBase + ' HEAD origin/' + baseBranch }) || '');
+        details = cleanCommandOutput(runCmd({ command: 'git diff --name-only --diff-filter=U' }) || '');
+        if (!details.trim()) {
+            details = 'git merge failed but no conflicted files were found — inspect the working tree directly.';
         } else {
-            details = 'No merge base found between HEAD and origin/' + baseBranch + '. The local checkout is likely shallow or the branch history is unrelated to the current base.';
+            details = 'Conflicted files:\n' + details;
         }
-    } catch (mergeTreeError) {
-        details = mergeTreeError && mergeTreeError.toString ? mergeTreeError.toString() : String(mergeTreeError);
+    } catch (statusError) {
+        details = statusError && statusError.toString ? statusError.toString() : String(statusError);
     }
+    // Leave a clean tree for the agent — an aborted merge, not a half-merged one.
+    try { runCmd({ command: 'git merge --abort' }); } catch (e) {}
     writeBranchConflictGuidance(ticketKey, branchName, baseBranch, details.substring(0, 6000));
-    console.warn('Keeping divergent branch ' + branchName + '; conflict guidance written for the agent.');
+    console.warn('Auto-merge failed for divergent branch ' + branchName + '; conflict guidance written for the agent.');
 }
 
 // ── Generated index guard (.codegraph) ──────────────────────────────────────

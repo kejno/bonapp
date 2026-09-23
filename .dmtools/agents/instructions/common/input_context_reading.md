@@ -10,7 +10,15 @@ flowchart TD
         I6["6️⃣ Check for images in input/TICKET/ — *.png *.jpg *.gif *.svg"]
         I7["7️⃣ If present: input/TICKET/parent-KEY.md — parent story summary, description, ACs"]
         I8["8️⃣ If present: input/TICKET/parent_context_ba.md / sa.md / vd.md — BA/SA/VD context"]
-        I0 --> I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8
+        I9["9️⃣ If present: input/TICKET/merge_conflicts.md — ⚠️ STOP, read fully, resolve before any other change"]
+        I0 --> I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8 --> I9
+    end
+
+    subgraph MERGE_CONFLICT_RULE["merge_conflicts.md present — the branch is stale, not the source of truth"]
+        M1["git merge origin/&lt;base&gt; yourself, resolve conflicts file by file"]
+        M2["❌ NEVER resolve a conflict by deleting content you didn't write — e.g. another ticket's models in a shared schema/config file must be KEPT alongside your own changes"]
+        M3["✅ Prefer origin/&lt;base&gt; for repo setup/generated/shared-infra files, then re-apply only your ticket's own change on top"]
+        M1 --> M2 --> M3
     end
 
     subgraph CONFLUENCE_RULE["Confluence pages in input/ — READ THEM, don't re-fetch"]
