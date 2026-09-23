@@ -17,19 +17,23 @@ export class MenuService {
       return cached;
     }
 
-    const menu = await this.prisma.forTenant(tenantId).menuCategory.findMany({
+    const categories = await this.prisma.forTenant(tenantId).menuCategory.findMany({
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
-        items: {
+        menuItems: {
           where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { createdAt: 'asc' },
           include: {
-            modifierGroups: {
+            menuItemModifierGroups: {
               orderBy: { sortOrder: 'asc' },
               include: {
                 modifierGroup: {
-                  include: { modifiers: { orderBy: { sortOrder: 'asc' } } },
+                  include: {
+                    modifiers: {
+                      orderBy: { sortOrder: 'asc' },
+                    },
+                  },
                 },
               },
             },
@@ -38,6 +42,17 @@ export class MenuService {
         },
       },
     });
+
+    const menu = categories.map(({ menuItems, ...category }) => ({
+      ...category,
+      items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
+        ...item,
+        modifierGroups: menuItemModifierGroups.map(({ sortOrder, modifierGroup }) => ({
+          sortOrder,
+          modifierGroup,
+        })),
+      })),
+    }));
 
     await this.writeCachedMenu(key, menu);
     return menu;
