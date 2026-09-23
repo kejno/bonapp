@@ -37,23 +37,24 @@ function findBranchKeyForTicket(ticketKey, jiraConfig) {
             for (var i = 0; i < issueLinks.length; i++) {
                 var other = issueLinks[i].outwardIssue || issueLinks[i].inwardIssue;
                 if (other && other.fields && other.fields.issuetype &&
-                    other.fields.issuetype.name === jiraConfig.issueTypes.STORY) {
-                    console.log('Resolved parent Story', other.key, 'for Test Case', ticketKey);
+                    (other.fields.issuetype.name === jiraConfig.issueTypes.STORY ||
+                     other.fields.issuetype.name === jiraConfig.issueTypes.BUG)) {
+                    console.log('Resolved parent', other.fields.issuetype.name, other.key, 'for Test Case', ticketKey);
                     return other.key;
                 }
             }
         }
 
-        const stories = jira_search_by_jql({
-            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "' + jiraConfig.issueTypes.STORY + '"',
+        const parents = jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in ("' + jiraConfig.issueTypes.STORY + '", "' + jiraConfig.issueTypes.BUG + '")',
             maxResults: 1
         }) || [];
-        if (stories.length > 0) {
-            console.log('Resolved parent Story', stories[0].key, 'for Test Case', ticketKey, 'via linkedIssues');
-            return stories[0].key;
+        if (parents.length > 0) {
+            console.log('Resolved parent', parents[0].key, 'for Test Case', ticketKey, 'via linkedIssues');
+            return parents[0].key;
         }
 
-        console.warn('No linked Story found for Test Case', ticketKey, '— falling back to its own key');
+        console.warn('No linked Story/Bug found for Test Case', ticketKey, '— falling back to its own key');
         return ticketKey;
     } catch (e) {
         console.warn('Failed to resolve branch key for', ticketKey, ':', e);
