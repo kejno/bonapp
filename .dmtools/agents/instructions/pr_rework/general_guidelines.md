@@ -19,7 +19,11 @@ flowchart TD
     SUGGESTIONS -->|Yes| SKIP["Skip if time-consuming — note in response.md"]
     SUGGESTIONS -->|No| TEST["Follow TDD approach for every fix — see tdd_approach.md — then run tests and verify"]
     SKIP --> TEST
-    TEST --> OUTPUT[Write outputs/response.md]
+    TEST --> BLAST["Blast-radius check — see verification_gate.md:<br/>global providers, schema/index changes,<br/>public signatures, migrations"]
+    BLAST --> GATE["⚠️ Verification gate — see verification_gate.md:<br/>npm run lint && npm run typecheck && npm test"]
+    GATE --> PASS{All green?}
+    PASS -->|No| FIXROOT["Fix the root cause — never disable a rule<br/>or weaken a test to pass"] --> GATE
+    PASS -->|Yes| OUTPUT[Write outputs/response.md]
     OUTPUT --> REPLIES{Open review threads?}
     REPLIES -->|Yes| REVIEW_REPLIES["Write outputs/review_replies.json with one reply per open thread using threadId + inReplyToId"]
     REPLIES -->|No| END([End])

@@ -5,6 +5,10 @@ import App from './App'
 describe('App', () => {
   it('renders the guest heading', () => {
     render(<App />)
-    expect(screen.getByText('Bonapp — Guest')).toBeInTheDocument()
+    const heading = screen.getByText('Bonapp — Guest')
+
+    expect(heading).toBeInTheDocument()
+    expect(heading).toHaveClass('text-primary')
+    expect(heading.parentElement).toHaveClass('bg-background')
   })
 })

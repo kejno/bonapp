@@ -70,14 +70,20 @@ jobs:
           # variable as the single source of truth for provider selection.
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
         run: |
+          set -o pipefail
           provider_override="$(jq -cn \
             --arg provider "${AI_AGENT_PROVIDER:-claude-code}" \
             '{params:{jobParams:{aiAgentProvider:$provider}}}')"
           dmtools run agents/sm.json "${provider_override}" \
             --ciRunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             | tee sm-output.log
+          if grep -Eq '"success"[[:space:]]*:[[:space:]]*false' sm-output.log; then
+            echo "::error::SM Agent reported a rule failure; see sm-output.log above." >&2
+            exit 1
+          fi
 
       - name: Re-dispatch if a local-only status move needs another pass
+        if: always()
         working-directory: .dmtools
         env:
           GH_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
@@ -91,7 +97,7 @@ jobs:
           # already missed). Re-dispatch ourselves once so the next pass picks
           # it up. smAgent.js sets
           # needsAnotherPass:true in its JSON result when this happens.
-          if grep -q '"needsAnotherPass":true' sm-output.log; then
+          if [ -f sm-output.log ] && grep -Eq '"needsAnotherPass"[[:space:]]*:[[:space:]]*true' sm-output.log; then
             echo "Local status change needs another pass — re-dispatching SM Agent."
             gh workflow run sm-agent.yml --repo "${{ github.repository }}"
           fi

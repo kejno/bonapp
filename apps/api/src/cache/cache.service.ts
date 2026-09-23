@@ -1,0 +1,45 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT } from './cache.constants';
+
+@Injectable()
+export class CacheService {
+  private readonly logger = new Logger(CacheService.name);
+
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  async getJson<T>(key: string): Promise<T | null> {
+    try {
+      const value = await this.redis.get(key);
+      return value === null ? null : (JSON.parse(value) as T);
+    } catch (error) {
+      this.logCacheError('read', key, error);
+      return null;
+    }
+  }
+
+  async setJson(
+    key: string,
+    value: unknown,
+    ttlSeconds: number,
+  ): Promise<void> {
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    } catch (error) {
+      this.logCacheError('write', key, error);
+    }
+  }
+
+  async del(key: string): Promise<void> {
+    try {
+      await this.redis.del(key);
+    } catch (error) {
+      this.logCacheError('invalidate', key, error);
+    }
+  }
+
+  private logCacheError(operation: string, key: string, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Unable to ${operation} cache key ${key}: ${message}`);
+  }
+}
