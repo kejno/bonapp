@@ -5,12 +5,51 @@ import { MenuService } from './menu.service';
 describe('MenuService', () => {
   const tenantId = 'tenant-1';
   const rawCatalog = [
-    { id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [] }] },
-    { id: 'category-2', menuItems: [{ id: 'item-2', menuItemModifierGroups: [] }] },
+    {
+      id: 'category-1',
+      menuItems: [
+        {
+          id: 'item-1',
+          stopListItem: null,
+          menuItemModifierGroups: [
+            {
+              menuItemId: 'item-1',
+              modifierGroupId: 'group-1',
+              tenantId: 'tenant-1',
+              sortOrder: 0,
+              modifierGroup: {
+                id: 'group-1',
+                name: 'Milk options',
+                modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    { id: 'category-2', menuItems: [{ id: 'item-2', stopListItem: null, menuItemModifierGroups: [] }] },
   ];
   const transformedCatalog = [
-    { id: 'category-1', items: [{ id: 'item-1', modifierGroups: [] }] },
-    { id: 'category-2', items: [{ id: 'item-2', modifierGroups: [] }] },
+    {
+      id: 'category-1',
+      items: [
+        {
+          id: 'item-1',
+          stopListItem: null,
+          modifierGroups: [
+            {
+              sortOrder: 0,
+              modifierGroup: {
+                id: 'group-1',
+                name: 'Milk options',
+                modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    { id: 'category-2', items: [{ id: 'item-2', stopListItem: null, modifierGroups: [] }] },
   ];
 
   let prisma: {

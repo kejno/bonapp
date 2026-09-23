@@ -47,7 +47,10 @@ export class MenuService {
       ...category,
       items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
         ...item,
-        modifierGroups: menuItemModifierGroups,
+        modifierGroups: menuItemModifierGroups.map(({ sortOrder, modifierGroup }) => ({
+          sortOrder,
+          modifierGroup,
+        })),
       })),
     }));
 

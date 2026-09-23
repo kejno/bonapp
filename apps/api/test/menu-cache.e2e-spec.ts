@@ -27,13 +27,17 @@ describe('menu cache (e2e)', () => {
       return Promise.resolve();
     }),
   };
-  let menu: Array<{
+  let prismaData: Array<{
     id: string;
-    menuItems: Array<{ id: string; menuItemModifierGroups: unknown[]; stopListItem?: { isStopped: boolean } }>;
+    menuItems: Array<{
+      id: string;
+      menuItemModifierGroups: unknown[];
+      stopListItem?: { isStopped: boolean } | null;
+    }>;
   }> = [{ id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [] }] }];
   const prisma = {
     forTenant: jest.fn(),
-    menuCategory: { findMany: jest.fn(() => Promise.resolve(menu)) },
+    menuCategory: { findMany: jest.fn(() => Promise.resolve(prismaData)) },
     stopListItem: {
       upsert: jest.fn(() => Promise.resolve({ id: 'stop-list-1' })),
     },
@@ -44,7 +48,7 @@ describe('menu cache (e2e)', () => {
   beforeEach(async () => {
     storedMenus.clear();
     jest.clearAllMocks();
-    menu = [{ id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [] }] }];
+    prismaData = [{ id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [] }] }];
 
     const module = await Test.createTestingModule({
       controllers: [GuestMenuController, StopListController],
@@ -101,7 +105,7 @@ describe('menu cache (e2e)', () => {
     expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
 
-    menu = [{ id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [], stopListItem: { isStopped: true } }] }];
+    prismaData = [{ id: 'category-1', menuItems: [{ id: 'item-1', menuItemModifierGroups: [], stopListItem: { isStopped: true } }] }];
     await request(app.getHttpServer())
       .patch('/api/v1/stop-list')
       .send({ itemId: 'item-1', isStopped: true })
