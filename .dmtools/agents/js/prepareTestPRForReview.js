@@ -47,23 +47,24 @@ function findBranchKeyForTicket(ticketKey, jiraConfig) {
             for (var i = 0; i < issueLinks.length; i++) {
                 var other = issueLinks[i].outwardIssue || issueLinks[i].inwardIssue;
                 if (other && other.fields && other.fields.issuetype &&
-                    other.fields.issuetype.name === jiraConfig.issueTypes.STORY) {
-                    console.log('Resolved parent Story', other.key, 'for Test Case', ticketKey);
+                    (other.fields.issuetype.name === jiraConfig.issueTypes.STORY ||
+                     other.fields.issuetype.name === jiraConfig.issueTypes.BUG)) {
+                    console.log('Resolved parent', other.fields.issuetype.name, other.key, 'for Test Case', ticketKey);
                     return other.key;
                 }
             }
         }
 
-        const stories = jira_search_by_jql({
-            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "' + jiraConfig.issueTypes.STORY + '"',
+        const parents = jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in ("' + jiraConfig.issueTypes.STORY + '", "' + jiraConfig.issueTypes.BUG + '")',
             maxResults: 1
         }) || [];
-        if (stories.length > 0) {
-            console.log('Resolved parent Story', stories[0].key, 'for Test Case', ticketKey, 'via linkedIssues');
-            return stories[0].key;
+        if (parents.length > 0) {
+            console.log('Resolved parent', parents[0].key, 'for Test Case', ticketKey, 'via linkedIssues');
+            return parents[0].key;
         }
 
-        console.warn('No linked Story found for Test Case', ticketKey, '— falling back to its own key');
+        console.warn('No linked Story/Bug found for Test Case', ticketKey, '— falling back to its own key');
         return ticketKey;
     } catch (e) {
         console.warn('Failed to resolve branch key for', ticketKey, ':', e);
@@ -131,11 +132,17 @@ function findTestPRForTicket(scm, ticketKey) {
 }
 
 function clearStaleReviewOutputs() {
+    // rm is not part of the review agents' CLI whitelist, while bash is. Run
+    // the fixed cleanup through the allowed shell. Two separate invocations,
+    // not one `a && b` command — cli_execute_command's shell-metacharacter
+    // guard rejects `&&` (and `;`, `|`, ...) in the command string itself,
+    // even when the whole thing is wrapped in `bash -c "..."`.
     try {
         cli_execute_command({
-            // rm is not part of the review agents' CLI whitelist, while bash
-            // is. Run the fixed cleanup command through the allowed shell.
-            command: 'bash -c "rm -f outputs/pr_review.json outputs/response.md outputs/pr_review_general.md && rm -rf outputs/pr_review_comments"'
+            command: 'bash -c "rm -f outputs/pr_review.json outputs/response.md outputs/pr_review_general.md"'
+        });
+        cli_execute_command({
+            command: 'bash -c "rm -rf outputs/pr_review_comments"'
         });
         console.log('✅ Cleared stale review outputs');
     } catch (e) {

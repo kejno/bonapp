@@ -142,12 +142,33 @@ function alignBranchWithBase(ticketKey, branchName, baseBranch) {
 // overwritten". Move the index aside for the duration of branch setup and
 // restore it afterwards; if the checked-out branch still tracks .codegraph,
 // untrack it so the next auto-commit removes it (self-healing).
-// Shell builtins (if/mv/rm/grep/printf) are not in the cli_execute_command
-// whitelist — wrap them in `bash -c` (whitelisted), like other JS helpers do.
+// Shell builtins (test/mv/rm) are not in the cli_execute_command whitelist —
+// wrap them in `bash -c` (whitelisted), like other JS helpers do.
+//
+// Each `bash -c "..."` below is a single command with no `;`/`&&`/`||`/`>>`/`|` —
+// cli_execute_command's shell-metacharacter guard rejects those inside the
+// command string itself, even wrapped in `bash -c`. Multi-step logic is
+// expressed as separate calls guarded by a JS existence check instead, and
+// .gitignore appending goes through file_read/file_write rather than a
+// shell redirect.
+function pathExists(path) {
+    // `test -e` alone has no shell metacharacters to trip the guard. It exits
+    // non-zero (throws here) when the path is absent, zero (returns) when present.
+    try {
+        runCmd({ command: 'bash -c "test -e ' + path + '"' });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function stashGeneratedIndex() {
     try { runCmd({ command: 'git rm -r --cached --ignore-unmatch .codegraph' }); } catch (e) {}
     try {
-        runCmd({ command: 'bash -c "if [ -d .codegraph ]; then rm -rf .codegraph.branch-setup-bak && mv .codegraph .codegraph.branch-setup-bak; fi"' });
+        if (pathExists('.codegraph')) {
+            runCmd({ command: 'bash -c "rm -rf .codegraph.branch-setup-bak"' });
+            runCmd({ command: 'bash -c "mv .codegraph .codegraph.branch-setup-bak"' });
+        }
     } catch (e) {
         console.warn('Could not move .codegraph aside before branch setup:', e);
     }
@@ -156,12 +177,23 @@ function stashGeneratedIndex() {
 function restoreGeneratedIndex() {
     try { runCmd({ command: 'git rm -r --cached --ignore-unmatch .codegraph' }); } catch (e) {}
     try {
-        runCmd({ command: 'bash -c "grep -qxF \'.codegraph/\' .gitignore 2>/dev/null || printf \'\\n# CodeGraph generated index - regenerated per-run, must never be committed\\n.codegraph/\\n\' >> .gitignore"' });
+        // Append via read + file_write instead of a shell redirect — `>>`
+        // and `|` are both shell metacharacters cli_execute_command rejects
+        // inside the command string, even wrapped in `bash -c`.
+        var existing = '';
+        try { existing = file_read({ path: '.gitignore' }) || ''; } catch (e) {}
+        if (existing.indexOf('.codegraph/') === -1) {
+            var addition = '\n# CodeGraph generated index - regenerated per-run, must never be committed\n.codegraph/\n';
+            file_write({ path: '.gitignore', content: existing + addition });
+        }
     } catch (e) {
         console.warn('Could not add .codegraph/ to .gitignore:', e);
     }
     try {
-        runCmd({ command: 'bash -c "if [ -d .codegraph.branch-setup-bak ]; then rm -rf .codegraph && mv .codegraph.branch-setup-bak .codegraph; fi"' });
+        if (pathExists('.codegraph.branch-setup-bak')) {
+            runCmd({ command: 'bash -c "rm -rf .codegraph"' });
+            runCmd({ command: 'bash -c "mv .codegraph.branch-setup-bak .codegraph"' });
+        }
     } catch (e) {
         console.warn('Could not restore .codegraph after branch setup:', e);
     }
