@@ -9,7 +9,7 @@
       "_comment_aiAgentProvider": "Local/default provider list. In GitHub Actions, sm-agent.yml overrides this value from the AI_AGENT_PROVIDER repo variable because dmtools' GraalJS context cannot read OS environment variables directly. See .dmtools/README.md's 'Параллельный запуск Claude + Codex' section.",
       "aiAgentProvider": "claude-code,codex-1,codex-2",
       "_comment_maxTriggeredWorkflows": "Each Codex account has its own single-use rotating refresh token, secret and concurrency group. codex is retained as a backwards-compatible alias for account 1; use codex-1,codex-2 for two-account scheduling.",
-      "maxTriggeredWorkflows": { "claude-code": 1, "codex": 1, "codex-1": 1, "codex-2": 1 },
+      "maxTriggeredWorkflows": { "claude-code": 2, "codex": 1, "codex-1": 1, "codex-2": 1 },
       "rules": [
         {
           "description": "Backlog / To Do Epics → decompose into Story tickets (intake)",
