@@ -41,7 +41,7 @@ export class AuthGuard implements CanActivate {
     return match[1];
   }
 
-  private verifyToken(token: string): { tenantId: string } {
+  private verifyToken(token: string): { tenantId: string; userId?: string; role?: string } {
     const [encodedHeader, encodedPayload, signature, ...extraParts] =
       token.split('.');
     if (

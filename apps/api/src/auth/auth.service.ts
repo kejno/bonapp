@@ -1,7 +1,8 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
-  TooManyRequestsException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -189,8 +190,9 @@ export class AuthService {
       PIN_WINDOW_SECONDS,
     );
     if (attempts > PIN_ATTEMPTS_LIMIT) {
-      throw new TooManyRequestsException(
+      throw new HttpException(
         'Too many failed attempts. Please wait 15 minutes.',
+        HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
@@ -231,7 +233,7 @@ export class AuthService {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
 
-    const user = await this.prisma.forTenant(tenant.id).user.findUnique({
+    const user = await this.prisma.forTenant(tenant.id).user.findFirst({
       where: { email },
       select: {
         id: true,

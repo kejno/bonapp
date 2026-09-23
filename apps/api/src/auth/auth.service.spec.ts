@@ -1,4 +1,4 @@
-import { ForbiddenException, TooManyRequestsException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hash } from 'bcryptjs';
 import {
@@ -211,7 +211,7 @@ describe('AuthService — pinLogin', () => {
     const cache = { increment: jest.fn().mockResolvedValue(6) };
     const service = makeService(prisma, cache);
 
-    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).rejects.toThrow(TooManyRequestsException);
+    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
     expect(prisma.forTenant).not.toHaveBeenCalled();
   });
 
@@ -444,7 +444,6 @@ describe('AuthService — verify2fa', () => {
     expect(result).toEqual({ totpEnabled: true });
     expect(updateFn).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: userId }) }),
-      expect.any(Object),
     );
   });
 
