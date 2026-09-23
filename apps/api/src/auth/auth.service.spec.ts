@@ -253,7 +253,7 @@ describe('AuthService — login', () => {
       findTenantBySlug: jest.fn().mockResolvedValue({ id: tenantId }),
       forTenant: jest.fn().mockReturnValue({
         user: {
-          findUnique: jest.fn().mockResolvedValue({
+          findFirst: jest.fn().mockResolvedValue({
             id: 'user-owner',
             role: 'OWNER',
             passwordHash,
@@ -311,7 +311,7 @@ describe('AuthService — login', () => {
       findTenantBySlug: jest.fn().mockResolvedValue({ id: tenantId }),
       forTenant: jest.fn().mockReturnValue({
         user: {
-          findUnique: jest.fn().mockResolvedValue({
+          findFirst: jest.fn().mockResolvedValue({
             id: 'user-1',
             role: 'CASHIER',
             passwordHash,
