@@ -17,7 +17,7 @@ export class MenuService {
       return cached;
     }
 
-    const menu = await this.prisma.forTenant(tenantId).menuCategory.findMany({
+    const categories = await this.prisma.forTenant(tenantId).menuCategory.findMany({
       where: { tenantId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
@@ -39,6 +39,7 @@ export class MenuService {
       },
     });
 
+    const menu = categories.map(({ menuItems, ...cat }) => ({ ...cat, items: menuItems }));
     await this.writeCachedMenu(key, menu);
     return menu;
   }
