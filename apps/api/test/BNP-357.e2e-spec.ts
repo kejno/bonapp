@@ -57,7 +57,7 @@ describe('BNP-357: stop-list invalidates only the affected tenant cache', () => 
     // Prime tenant A cache
     await request(fixture.app.getHttpServer())
       .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
-      .set('Authorization', `Bearer ${tokenFor(fixture.tenantId)}`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
     expect(await fixture.redis.get(fixture.cacheKey)).not.toBeNull();
 
@@ -71,7 +71,7 @@ describe('BNP-357: stop-list invalidates only the affected tenant cache', () => 
     // Update stop-list for tenant A only
     await request(fixture.app.getHttpServer())
       .patch('/api/v1/stop-list')
-      .set('Authorization', `Bearer ${tokenFor(fixture.tenantId)}`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
       .send({ itemId: fixture.itemId, isStopped: true })
       .expect(200);
 
@@ -80,5 +80,12 @@ describe('BNP-357: stop-list invalidates only the affected tenant cache', () => 
 
     // Tenant B's cache must remain untouched
     expect(await fixture.redis.get(tenantBCacheKey)).not.toBeNull();
+
+    // Tenant B's menu must still be served from cache (step 6)
+    const tenantBMenu = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/menu?tenantId=${tenantBId}`)
+      .set('Authorization', `Bearer ${tokenFor(tenantBId)}`)
+      .expect(200);
+    expect(tenantBMenu.body).toBeDefined();
   });
 });

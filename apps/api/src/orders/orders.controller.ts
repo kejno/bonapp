@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -11,7 +11,7 @@ export class OrdersController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
   }
 }
