@@ -10,6 +10,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CacheModule } from './cache/cache.module';
 import { MenuModule } from './menu/menu.module';
+import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 import { TenantGuard } from './tenant/tenant.guard';
@@ -21,6 +22,7 @@ import { TenantModule } from './tenant/tenant.module';
     PrismaModule,
     CacheModule,
     MenuModule,
+    OrdersModule,
     TenantModule,
   ],
   controllers: [AppController],
