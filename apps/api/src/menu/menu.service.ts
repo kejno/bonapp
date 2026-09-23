@@ -25,11 +25,15 @@ export class MenuService {
           where: { isActive: true },
           orderBy: { createdAt: 'asc' },
           include: {
-            modifierGroups: {
-              orderBy: { id: 'asc' },
+            menuItemModifierGroups: {
+              orderBy: { sortOrder: 'asc' },
               include: {
-                modifierOptions: {
-                  orderBy: { id: 'asc' },
+                modifierGroup: {
+                  include: {
+                    modifiers: {
+                      orderBy: { sortOrder: 'asc' },
+                    },
+                  },
                 },
               },
             },
@@ -39,7 +43,17 @@ export class MenuService {
       },
     });
 
-    const menu = categories.map(({ menuItems, ...cat }) => ({ ...cat, items: menuItems }));
+    const menu = categories.map(({ menuItems, ...category }) => ({
+      ...category,
+      items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
+        ...item,
+        modifierGroups: menuItemModifierGroups.map(({ sortOrder, modifierGroup }) => ({
+          sortOrder,
+          modifierGroup,
+        })),
+      })),
+    }));
+
     await this.writeCachedMenu(key, menu);
     return menu;
   }
