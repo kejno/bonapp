@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantContextService } from '../tenant/tenant-context.service';
 import { OrdersService } from './orders.service';
 
 const mockPrismaService = {
@@ -10,6 +11,10 @@ const mockPrismaService = {
       findFirst: jest.fn(),
     },
   },
+};
+
+const mockTenantContextService = {
+  getTenantId: jest.fn(),
 };
 
 describe('OrdersService', () => {
@@ -22,6 +27,7 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TenantContextService, useValue: mockTenantContextService },
       ],
     }).compile();
 
@@ -29,20 +35,39 @@ describe('OrdersService', () => {
   });
 
   describe('findAll()', () => {
-    it('delegates to prisma.db.order.findMany and returns results', async () => {
-      const orders = [{ id: 'order-1' }, { id: 'order-2' }];
+    it('filters orders by the current tenant', async () => {
+      const tenantId = 'tenant-a';
+      const orders = [{ id: 'order-1', tenantId }];
+      mockTenantContextService.getTenantId.mockReturnValue(tenantId);
       mockPrismaService.db.order.findMany.mockResolvedValue(orders);
 
       const result = await service.findAll();
 
       expect(result).toEqual(orders);
-      expect(mockPrismaService.db.order.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.db.order.findMany).toHaveBeenCalledWith({
+        where: { tenantId },
+      });
+    });
+
+    it('does not return orders from other tenants', async () => {
+      const tenantId = 'tenant-a';
+      mockTenantContextService.getTenantId.mockReturnValue(tenantId);
+      mockPrismaService.db.order.findMany.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result).toEqual([]);
+      expect(mockPrismaService.db.order.findMany).toHaveBeenCalledWith({
+        where: { tenantId },
+      });
     });
   });
 
   describe('findOne()', () => {
-    it('returns the order when found', async () => {
-      const order = { id: 'order-1', tenantId: 'tenant-1' };
+    it('returns the order when it belongs to the current tenant', async () => {
+      const tenantId = 'tenant-a';
+      const order = { id: 'order-1', tenantId };
+      mockTenantContextService.getTenantId.mockReturnValue(tenantId);
       mockPrismaService.db.order.findFirst.mockResolvedValue(order);
 
       const result = await service.findOne('order-1');
@@ -53,10 +78,25 @@ describe('OrdersService', () => {
       });
     });
 
+    it('throws ForbiddenException when order belongs to another tenant', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      mockPrismaService.db.order.findFirst.mockResolvedValue({
+        id: 'order-b',
+        tenantId: 'tenant-b',
+      });
+
+      await expect(service.findOne('order-b')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
     it('throws ForbiddenException when order is not found', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
       mockPrismaService.db.order.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('missing-id')).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.findOne('missing-id')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 });
