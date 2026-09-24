@@ -204,18 +204,20 @@ model Payment {
 }
 
 model MenuCategory {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  sortOrder Int      @map("sort_order")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  name          String
+  sortOrder     Int      @map("sort_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  posCategoryId String?  @map("pos_category_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   menuItems MenuItem[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, posCategoryId])
   @@index([tenantId])
   @@map("menu_categories")
 }
@@ -225,7 +227,7 @@ model MenuItem {
   tenantId           String       @map("tenant_id")
   tenant             Tenant       @relation(fields: [tenantId], references: [id])
   categoryId         String       @map("category_id")
-  category           MenuCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  category           MenuCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Cascade)
   name               String
   description        String?
   priceByn           Decimal      @map("price_byn") @db.Decimal(10, 2)

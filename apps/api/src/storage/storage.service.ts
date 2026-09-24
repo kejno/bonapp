@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 @Injectable()
 export class StorageService {
@@ -33,5 +34,20 @@ export class StorageService {
       }),
     );
     return `${this.publicEndpoint}/${this.bucket}/${key}`;
+  }
+
+  async getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresIn = 600,
+  ): Promise<{ uploadUrl: string; publicUrl: string }> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+    const uploadUrl = await getSignedUrl(this.client, command, { expiresIn });
+    const publicUrl = `${this.publicEndpoint}/${this.bucket}/${key}`;
+    return { uploadUrl, publicUrl };
   }
 }

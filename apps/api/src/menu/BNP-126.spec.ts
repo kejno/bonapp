@@ -88,7 +88,7 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
     it('keeps category and item references within the same tenant', () => {
       expect(schema).toContain('@@unique([tenantId, id])');
       expect(schema).toContain(
-        '@relation(fields: [tenantId, categoryId], references: [tenantId, id])',
+        '@relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Cascade)',
       );
       expect(schema).toContain(
         '@relation(fields: [tenantId, itemId], references: [tenantId, id])',
