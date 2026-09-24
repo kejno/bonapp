@@ -20,6 +20,7 @@ flowchart TD
         R5["✅ When behavior involves a loop/collection, add a case with 2+ items, not only a single-item happy path — a single-item test can pass while multi-item logic is still wrong"]
         R6["✅ Run the full test suite before finishing — no regressions allowed"]
         R7["✅ Run lint on your changed workspace before finishing — zero errors, same rules CI enforces"]
+        R8["✅ Run typecheck on your changed workspace before finishing — zero errors, same as CI's Typecheck job"]
     end
 
     TDD --> RULES
