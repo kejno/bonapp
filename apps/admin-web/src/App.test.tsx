@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('App', () => {
-  it('renders the admin heading', () => {
+  it('renders the login page at /login route', () => {
+    window.history.pushState({}, '', '/login')
     render(<App />)
-    const heading = screen.getByText('Bonapp — Admin')
+    expect(screen.getByRole('heading', { name: 'Bonapp' })).toBeInTheDocument()
+  })
 
-    expect(heading).toBeInTheDocument()
-    expect(heading).toHaveClass('text-primary')
-    expect(heading.parentElement).toHaveClass('bg-background')
+  it('redirects from / to /login', () => {
+    window.history.pushState({}, '', '/')
+    render(<App />)
+    expect(screen.getByRole('heading', { name: 'Bonapp' })).toBeInTheDocument()
   })
 })

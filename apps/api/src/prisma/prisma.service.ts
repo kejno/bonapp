@@ -206,6 +206,15 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Raw Prisma client for cross-tenant queries that run before tenant context
+   * is established (e.g. login). Use only where explicit tenant scoping is applied
+   * in the query itself.
+   */
+  get unscopedClient(): PrismaClient {
+    return this.client;
+  }
+
+  /**
    * Returns a tenant-scoped Prisma client based on the current
    * AsyncLocalStorage context set by TenantContextMiddleware.
    * Throws when no tenant context is active so request handlers cannot
