@@ -137,6 +137,13 @@ export class HallsService {
       },
     });
     if (result.count === 0) {
+      const stillExists = await this.prisma.forTenant(tenantId).table.findFirst({
+        where: { id: tableId },
+        select: { id: true },
+      });
+      if (!stillExists) {
+        return;
+      }
       throw new ConflictException(
         'Table cannot be deleted: its status changed to active concurrently.',
       );

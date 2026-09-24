@@ -277,6 +277,15 @@ describe('HallsService', () => {
 
       await expect(service.deleteTable('tenant-1', 't1')).rejects.toThrow(ConflictException);
     });
+
+    it('returns silently when table was concurrently deleted by another request (not a 409)', async () => {
+      prisma.table.findFirst
+        .mockResolvedValueOnce({ id: 't1', status: TableStatus.AVAILABLE })
+        .mockResolvedValueOnce(null);
+      prisma.table.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteTable('tenant-1', 't1')).resolves.toBeUndefined();
+    });
   });
 
   describe('bulkCreateTables', () => {

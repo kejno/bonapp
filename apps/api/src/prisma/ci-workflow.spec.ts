@@ -26,6 +26,9 @@ describe('CI workflow', () => {
   });
 
   it('runs the logo-upload regression scenario with MinIO', () => {
+    expect(workflow).toContain('docker/login-action@v3');
+    expect(workflow).toContain('secrets.DOCKERHUB_USERNAME');
+    expect(workflow).toContain('secrets.DOCKERHUB_TOKEN');
     expect(workflow).toContain('docker run --detach --name minio');
     expect(workflow).toContain('minio/minio:latest');
     expect(workflow).toContain('--health-cmd "curl -f http://localhost:9000/minio/health/live"');
