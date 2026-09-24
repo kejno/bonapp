@@ -119,7 +119,7 @@ describe('HallsService', () => {
             tableNumber: 5,
             areaId: 'area-1',
             qrToken: expect.any(String) as unknown,
-          }),
+          }) as unknown,
         }) as unknown,
       );
       expect(result).toBe(created);
