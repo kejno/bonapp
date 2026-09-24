@@ -32,6 +32,10 @@ describe('CI workflow', () => {
     );
     expect(workflow).not.toContain('minio/minio:latest');
     expect(workflow).not.toContain('DOCKERHUB_USERNAME');
+    expect(workflow).toContain('docker/login-action@v3');
+    expect(workflow).toContain('registry: quay.io');
+    expect(workflow).toContain('QUAYIO_USERNAME');
+    expect(workflow).toContain('QUAYIO_TOKEN');
     expect(workflow).toContain('--health-cmd "curl -f http://localhost:9000/minio/health/live"');
     expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} minio');
     expect(workflow).toContain('BNP-319.e2e-spec.ts');
