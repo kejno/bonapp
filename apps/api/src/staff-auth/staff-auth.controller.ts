@@ -8,18 +8,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { StaffAuthService } from './staff-auth.service';
-import { JwtAuthGuard, StaffRequest } from './jwt-auth.guard';
-import {
-  ChangePasswordDto,
-  LoginDto,
-  LoginResponse,
-  LogoutDto,
-  RefreshDto,
-  TokenPair,
-} from './staff-auth.dto';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import type { StaffRequest } from './jwt-auth.guard';
+import type { LoginDto, LoginResponse, TokenPair } from './staff-auth.dto';
 
 interface LoginBody extends LoginDto {
   tenantId: string;
@@ -44,32 +38,41 @@ export class StaffAuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @SkipTenantGuard()
-  async refresh(@Body() body: RefreshDto): Promise<TokenPair> {
-    if (!body.refreshToken) {
+  async refresh(@Body() body: unknown): Promise<TokenPair> {
+    const refreshToken = (body as Record<string, unknown>)['refreshToken'];
+    if (typeof refreshToken !== 'string' || !refreshToken) {
       throw new BadRequestException('refreshToken is required');
     }
-    return this.staffAuthService.refresh(body.refreshToken);
+    return this.staffAuthService.refresh(refreshToken);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @SkipTenantGuard()
-  async logout(@Body() body: LogoutDto): Promise<void> {
-    if (!body.refreshToken) {
+  async logout(@Body() body: unknown): Promise<void> {
+    const refreshToken = (body as Record<string, unknown>)['refreshToken'];
+    if (typeof refreshToken !== 'string' || !refreshToken) {
       throw new BadRequestException('refreshToken is required');
     }
-    return this.staffAuthService.logout(body.refreshToken);
+    return this.staffAuthService.logout(refreshToken);
   }
 
   @Post('change-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   async changePassword(
-    @Body() body: ChangePasswordDto,
+    @Body() body: unknown,
     @Req() req: StaffRequest,
   ): Promise<void> {
-    const { currentPassword, newPassword } = body;
-    if (!currentPassword || !newPassword) {
+    const b = body as Record<string, unknown>;
+    const currentPassword = b['currentPassword'];
+    const newPassword = b['newPassword'];
+    if (
+      typeof currentPassword !== 'string' ||
+      !currentPassword ||
+      typeof newPassword !== 'string' ||
+      !newPassword
+    ) {
       throw new BadRequestException(
         'currentPassword and newPassword are required',
       );

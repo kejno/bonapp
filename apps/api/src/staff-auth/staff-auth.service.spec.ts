@@ -226,15 +226,13 @@ describe('StaffAuthService', () => {
     });
 
     it('throws 401 when refresh token is already blacklisted', async () => {
-      const { refreshToken } = buildTokenPair(
+      const { refreshToken, refreshJti } = buildTokenPair(
         USER_ID,
         TENANT_ID,
         'WAITER',
         TEST_SECRET,
       );
-      const redis = makeRedis();
-      const existsSpy = jest.fn().mockResolvedValue(1);
-      redis.exists = existsSpy;
+      const redis = makeRedis({ [`rt_blacklist:${refreshJti}`]: '1' });
       const service = new StaffAuthService(
         {} as never,
         redis as never,
@@ -329,7 +327,7 @@ describe('StaffAuthService', () => {
 
       expect(updateMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ mustChangePassword: false }),
+          data: expect.objectContaining({ mustChangePassword: false }) as unknown,
         }),
       );
     });
