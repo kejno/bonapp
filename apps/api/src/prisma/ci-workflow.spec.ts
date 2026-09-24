@@ -26,11 +26,12 @@ describe('CI workflow', () => {
   });
 
   it('runs the logo-upload regression scenario with MinIO', () => {
-    expect(workflow).toContain('docker/login-action@v3');
-    expect(workflow).toContain('secrets.DOCKERHUB_USERNAME');
-    expect(workflow).toContain('secrets.DOCKERHUB_TOKEN');
     expect(workflow).toContain('docker run --detach --name minio');
-    expect(workflow).toContain('minio/minio:latest');
+    expect(workflow).toContain(
+      'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data',
+    );
+    expect(workflow).not.toContain('minio/minio:latest');
+    expect(workflow).not.toContain('DOCKERHUB_USERNAME');
     expect(workflow).toContain('--health-cmd "curl -f http://localhost:9000/minio/health/live"');
     expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} minio');
     expect(workflow).toContain('BNP-319.e2e-spec.ts');
