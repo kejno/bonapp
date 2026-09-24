@@ -23,7 +23,8 @@
     "preCliJSAction": "agents/js/preCliDevelopmentSetup.js",
     "postJSAction": "agents/js/developTicketAndCreatePR.js",
     "customParams": {
-      "removeLabel": "sm_story_development_triggered"
+      "removeLabel": "sm_story_development_triggered",
+      "blockOnParentEpicStatus": true
     },
     "inputJql": "key = BNP-11",
     "cliPrompts": [
