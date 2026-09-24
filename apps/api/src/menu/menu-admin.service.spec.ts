@@ -251,6 +251,19 @@ describe('MenuAdminService', () => {
     expect(prisma.modifierOption.create).not.toHaveBeenCalled();
   });
 
+  it('rejects createModifierOption when the group is inactive', async () => {
+    prisma.modifierGroup.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.createModifierOption('tenant-1', 'inactive-group', { name: 'X' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.modifierGroup.findFirst).toHaveBeenCalledWith({
+      where: { id: 'inactive-group', isActive: true },
+      select: { id: true },
+    });
+    expect(prisma.modifierOption.create).not.toHaveBeenCalled();
+  });
+
   // --- updateModifierOption ---
 
   it('updates modifier option fields and invalidates cache', async () => {
@@ -274,6 +287,19 @@ describe('MenuAdminService', () => {
     await expect(
       service.updateModifierOption('tenant-b', 'opt-from-a', { name: 'X' }),
     ).rejects.toThrow(NotFoundException);
+    expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects updateModifierOption when the option is inactive', async () => {
+    prisma.modifierOption.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.updateModifierOption('tenant-1', 'inactive-option', { name: 'X' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.modifierOption.findFirst).toHaveBeenCalledWith({
+      where: { id: 'inactive-option', isActive: true },
+      select: { id: true },
+    });
     expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
   });
 
@@ -309,6 +335,19 @@ describe('MenuAdminService', () => {
     prisma.modifierOption.findFirst.mockResolvedValue(null);
 
     await expect(service.deactivateModifierOption('tenant-b', 'opt-from-a')).rejects.toThrow(NotFoundException);
+    expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects deactivateModifierOption when the option is already inactive', async () => {
+    prisma.modifierOption.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.deactivateModifierOption('tenant-1', 'inactive-option'),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.modifierOption.findFirst).toHaveBeenCalledWith({
+      where: { id: 'inactive-option', isActive: true },
+      select: { id: true },
+    });
     expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
   });
 

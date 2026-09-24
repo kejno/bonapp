@@ -11,6 +11,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
@@ -119,10 +120,10 @@ export class MenuAdminController {
     if (!isValidUpdateGroupBody(body)) {
       throw new BadRequestException('at least one of name, minSelected, maxSelected is required');
     }
-    const prismaData: Record<string, unknown> = {};
-    if (body.name !== undefined) prismaData['name'] = body.name.trim();
-    if (body.minSelected !== undefined) prismaData['minSelection'] = body.minSelected;
-    if (body.maxSelected !== undefined) prismaData['maxSelection'] = body.maxSelected;
+    const prismaData: Prisma.ModifierGroupUpdateInput = {};
+    if (body.name !== undefined) prismaData.name = body.name.trim();
+    if (body.minSelected !== undefined) prismaData.minSelection = body.minSelected;
+    if (body.maxSelected !== undefined) prismaData.maxSelection = body.maxSelected;
     return this.menuAdminService.updateModifierGroup(
       req.user!.tenantId!,
       id.trim(),
