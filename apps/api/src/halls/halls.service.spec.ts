@@ -18,6 +18,7 @@ describe('HallsService', () => {
       createMany: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
+      deleteMany: jest.Mock;
     };
   };
   let service: HallsService;
@@ -37,6 +38,7 @@ describe('HallsService', () => {
         createMany: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        deleteMany: jest.fn(),
       },
     };
     prisma.forTenant.mockReturnValue(prisma);
@@ -218,39 +220,62 @@ describe('HallsService', () => {
         service.updateTable('tenant-1', 't1', { tableNumber: 7 }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('throws NotFoundException on P2025 when table is deleted concurrently during update', async () => {
+      prisma.table.findFirst.mockResolvedValue({ id: 't1' });
+      prisma.table.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.updateTable('tenant-1', 't1', { tableNumber: 7 }),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('deleteTable', () => {
     it('deletes a table with AVAILABLE status', async () => {
       prisma.table.findFirst.mockResolvedValue({ id: 't1', status: TableStatus.AVAILABLE });
-      prisma.table.delete.mockResolvedValue({ id: 't1' });
+      prisma.table.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.deleteTable('tenant-1', 't1');
 
-      expect(prisma.table.delete).toHaveBeenCalledWith({
-        where: { id_tenantId: { id: 't1', tenantId: 'tenant-1' } },
-      });
+      expect(prisma.table.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 't1' }) as unknown,
+        }) as unknown,
+      );
     });
 
     it('throws ConflictException when table has OCCUPIED status', async () => {
       prisma.table.findFirst.mockResolvedValue({ id: 't1', status: TableStatus.OCCUPIED });
 
       await expect(service.deleteTable('tenant-1', 't1')).rejects.toThrow(ConflictException);
-      expect(prisma.table.delete).not.toHaveBeenCalled();
+      expect(prisma.table.deleteMany).not.toHaveBeenCalled();
     });
 
     it('throws ConflictException when table has BILL_REQUESTED status', async () => {
       prisma.table.findFirst.mockResolvedValue({ id: 't1', status: TableStatus.BILL_REQUESTED });
 
       await expect(service.deleteTable('tenant-1', 't1')).rejects.toThrow(ConflictException);
-      expect(prisma.table.delete).not.toHaveBeenCalled();
+      expect(prisma.table.deleteMany).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when table is not in the tenant', async () => {
       prisma.table.findFirst.mockResolvedValue(null);
 
       await expect(service.deleteTable('tenant-2', 't1')).rejects.toThrow(NotFoundException);
-      expect(prisma.table.delete).not.toHaveBeenCalled();
+      expect(prisma.table.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when table status changes to active concurrently (TOCTOU)', async () => {
+      prisma.table.findFirst.mockResolvedValue({ id: 't1', status: TableStatus.AVAILABLE });
+      prisma.table.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteTable('tenant-1', 't1')).rejects.toThrow(ConflictException);
     });
   });
 
@@ -389,6 +414,20 @@ describe('HallsService', () => {
       ).rejects.toThrow(NotFoundException);
 
       expect(prisma.table.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException on P2025 when table is deleted concurrently during status update', async () => {
+      prisma.table.findFirst.mockResolvedValue({ id: 't1' });
+      prisma.table.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.updateTableStatus('tenant-1', 't1', TableStatus.OCCUPIED),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

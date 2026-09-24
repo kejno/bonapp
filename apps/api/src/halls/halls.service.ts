@@ -110,6 +110,9 @@ export class HallsService {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Table number already exists in this tenant');
       }
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new NotFoundException(`Table ${tableId} not found`);
+      }
       throw err;
     }
   }
@@ -127,9 +130,17 @@ export class HallsService {
         'Table cannot be deleted: it has an active status. Close the order first.',
       );
     }
-    await this.prisma.forTenant(tenantId).table.delete({
-      where: { id_tenantId: { id: tableId, tenantId } },
+    const result = await this.prisma.forTenant(tenantId).table.deleteMany({
+      where: {
+        id: tableId,
+        status: { notIn: Array.from(ACTIVE_TABLE_STATUSES) },
+      },
     });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Table cannot be deleted: its status changed to active concurrently.',
+      );
+    }
   }
 
   async bulkCreateTables(tenantId: string, dto: BulkCreateTablesDto) {
@@ -183,10 +194,17 @@ export class HallsService {
     if (!table) {
       throw new NotFoundException(`Table ${tableId} not found`);
     }
-    return this.prisma.forTenant(tenantId).table.update({
-      where: { id_tenantId: { id: tableId, tenantId } },
-      data: { status },
-    });
+    try {
+      return await this.prisma.forTenant(tenantId).table.update({
+        where: { id_tenantId: { id: tableId, tenantId } },
+        data: { status },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new NotFoundException(`Table ${tableId} not found`);
+      }
+      throw err;
+    }
   }
 
   private async verifyAreaBelongsToTenant(
