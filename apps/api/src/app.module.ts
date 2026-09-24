@@ -9,6 +9,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CacheModule } from './cache/cache.module';
+import { GuestSessionModule } from './guest-session/guest-session.module';
 import { HallsModule } from './halls/halls.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
@@ -26,6 +27,7 @@ import { TenantModule } from './tenant/tenant.module';
     MenuModule,
     OrdersModule,
     TenantModule,
+    GuestSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: TenantGuard }],

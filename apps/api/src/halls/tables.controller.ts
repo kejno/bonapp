@@ -59,7 +59,7 @@ function isValidCreateTable(body: unknown): body is CreateTableBody {
   return (
     isPositiveInteger(b['tableNumber']) &&
     typeof b['areaId'] === 'string' &&
-    (b['areaId'] as string).trim().length > 0 &&
+    b['areaId'].trim().length > 0 &&
     (b['seatsCount'] === undefined || isPositiveInteger(b['seatsCount'])) &&
     (b['label'] === undefined || typeof b['label'] === 'string')
   );
@@ -76,7 +76,7 @@ function isValidUpdateTable(body: unknown): body is UpdateTableBody {
   if (!hasTableNumber && !hasLabel && !hasSeatsCount && !hasAreaId) return false;
   if (hasTableNumber && !isPositiveInteger(b['tableNumber'])) return false;
   if (hasSeatsCount && !isPositiveInteger(b['seatsCount'])) return false;
-  if (hasAreaId && (typeof b['areaId'] !== 'string' || (b['areaId'] as string).trim().length === 0)) return false;
+  if (hasAreaId && (typeof b['areaId'] !== 'string' || b['areaId'].trim().length === 0)) return false;
   if (hasLabel && typeof b['label'] !== 'string') return false;
 
   return true;
@@ -87,7 +87,7 @@ function isValidBulkCreate(body: unknown): body is BulkCreateBody {
   const b = body as Record<string, unknown>;
   return (
     typeof b['areaId'] === 'string' &&
-    (b['areaId'] as string).trim().length > 0 &&
+    b['areaId'].trim().length > 0 &&
     isPositiveInteger(b['startNumber']) &&
     isPositiveInteger(b['count']) &&
     (b['count'] as number) <= 100 &&
@@ -146,12 +146,11 @@ export class TablesController {
         'At least one valid field (tableNumber, label, seatsCount, areaId) must be provided',
       );
     }
-    const b = body as UpdateTableBody;
     return this.hallsService.updateTable(req.user!.tenantId!, id, {
-      ...(b.tableNumber !== undefined && { tableNumber: b.tableNumber }),
-      ...(b.label !== undefined && { label: b.label.trim() }),
-      ...(b.seatsCount !== undefined && { seatsCount: b.seatsCount }),
-      ...(b.areaId !== undefined && { areaId: b.areaId!.trim() }),
+      ...(body.tableNumber !== undefined && { tableNumber: body.tableNumber }),
+      ...(body.label !== undefined && { label: body.label.trim() }),
+      ...(body.seatsCount !== undefined && { seatsCount: body.seatsCount }),
+      ...(body.areaId !== undefined && { areaId: body.areaId.trim() }),
     });
   }
 

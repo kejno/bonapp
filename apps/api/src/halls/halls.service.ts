@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TableStatus } from '@prisma/client';
+import { Prisma, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -146,7 +146,14 @@ export class HallsService {
       qrToken: randomUUID(),
     }));
 
-    await this.prisma.forTenant(tenantId).table.createMany({ data });
+    try {
+      await this.prisma.forTenant(tenantId).table.createMany({ data });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Table number conflict — concurrent request created the same numbers');
+      }
+      throw err;
+    }
 
     return this.prisma.forTenant(tenantId).table.findMany({
       where: { tableNumber: { in: tableNumbers } },

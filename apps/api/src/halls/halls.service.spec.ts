@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { TableStatus } from '@prisma/client';
+import { Prisma, TableStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HallsService } from './halls.service';
 
@@ -118,9 +118,9 @@ describe('HallsService', () => {
           data: expect.objectContaining({
             tableNumber: 5,
             areaId: 'area-1',
-            qrToken: expect.any(String),
+            qrToken: expect.any(String) as unknown,
           }),
-        }),
+        }) as unknown,
       );
       expect(result).toBe(created);
     });
@@ -133,8 +133,8 @@ describe('HallsService', () => {
 
       expect(prisma.table.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ seatsCount: 1 }),
-        }),
+          data: expect.objectContaining({ seatsCount: 1 }) as unknown,
+        }) as unknown,
       );
     });
 
@@ -248,11 +248,11 @@ describe('HallsService', () => {
       expect(prisma.table.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
-            expect.objectContaining({ tableNumber: 1, seatsCount: 4, qrToken: expect.any(String) }),
-            expect.objectContaining({ tableNumber: 2, seatsCount: 4, qrToken: expect.any(String) }),
-            expect.objectContaining({ tableNumber: 3, seatsCount: 4, qrToken: expect.any(String) }),
-          ]),
-        }),
+            expect.objectContaining({ tableNumber: 1, seatsCount: 4, qrToken: expect.any(String) as unknown }) as unknown,
+            expect.objectContaining({ tableNumber: 2, seatsCount: 4, qrToken: expect.any(String) as unknown }) as unknown,
+            expect.objectContaining({ tableNumber: 3, seatsCount: 4, qrToken: expect.any(String) as unknown }) as unknown,
+          ]) as unknown,
+        }) as unknown,
       );
       expect(result).toHaveLength(3);
     });
@@ -275,7 +275,7 @@ describe('HallsService', () => {
         count: 5,
       });
 
-      const createManyArgs = prisma.table.createMany.mock.calls[0][0] as { data: Array<{ qrToken: string }> };
+      const createManyArgs = (prisma.table.createMany.mock.calls[0] as unknown[])[0] as { data: Array<{ qrToken: string }> };
       const qrTokens = createManyArgs.data.map((t) => t.qrToken);
       expect(new Set(qrTokens).size).toBe(5);
     });
@@ -306,7 +306,7 @@ describe('HallsService', () => {
           count: 10,
         }),
       ).rejects.toMatchObject({
-        response: expect.objectContaining({ conflicts: [3, 5] }),
+        response: expect.objectContaining({ conflicts: [3, 5] }) as unknown,
       });
     });
 
@@ -316,6 +316,21 @@ describe('HallsService', () => {
       await expect(
         service.bulkCreateTables('tenant-1', { areaId: 'foreign-area', startNumber: 1, count: 3 }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('converts Prisma P2002 to ConflictException when a race condition causes a unique constraint violation', async () => {
+      prisma.diningArea.findFirst.mockResolvedValue({ id: 'area-1' });
+      prisma.table.findMany.mockResolvedValueOnce([]);
+      prisma.table.createMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.bulkCreateTables('tenant-1', { areaId: 'area-1', startNumber: 1, count: 3 }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
