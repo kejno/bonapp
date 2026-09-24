@@ -66,16 +66,23 @@ export class HallsService {
 
   async createTable(tenantId: string, dto: CreateTableDto) {
     await this.verifyAreaBelongsToTenant(tenantId, dto.areaId);
-    return this.prisma.forTenant(tenantId).table.create({
-      data: {
-        tenantId,
-        areaId: dto.areaId,
-        tableNumber: dto.tableNumber,
-        label: dto.label,
-        seatsCount: dto.seatsCount ?? 1,
-        qrToken: randomUUID(),
-      },
-    });
+    try {
+      return await this.prisma.forTenant(tenantId).table.create({
+        data: {
+          tenantId,
+          areaId: dto.areaId,
+          tableNumber: dto.tableNumber,
+          label: dto.label,
+          seatsCount: dto.seatsCount ?? 1,
+          qrToken: randomUUID(),
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Table number ${dto.tableNumber} already exists in this tenant`);
+      }
+      throw err;
+    }
   }
 
   async updateTable(tenantId: string, tableId: string, dto: UpdateTableDto) {
@@ -89,15 +96,22 @@ export class HallsService {
     if (!table) {
       throw new NotFoundException(`Table ${tableId} not found`);
     }
-    return this.prisma.forTenant(tenantId).table.update({
-      where: { id_tenantId: { id: tableId, tenantId } },
-      data: {
-        ...(dto.tableNumber !== undefined && { tableNumber: dto.tableNumber }),
-        ...(dto.label !== undefined && { label: dto.label }),
-        ...(dto.seatsCount !== undefined && { seatsCount: dto.seatsCount }),
-        ...(dto.areaId !== undefined && { areaId: dto.areaId }),
-      },
-    });
+    try {
+      return await this.prisma.forTenant(tenantId).table.update({
+        where: { id_tenantId: { id: tableId, tenantId } },
+        data: {
+          ...(dto.tableNumber !== undefined && { tableNumber: dto.tableNumber }),
+          ...(dto.label !== undefined && { label: dto.label }),
+          ...(dto.seatsCount !== undefined && { seatsCount: dto.seatsCount }),
+          ...(dto.areaId !== undefined && { areaId: dto.areaId }),
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Table number already exists in this tenant');
+      }
+      throw err;
+    }
   }
 
   async deleteTable(tenantId: string, tableId: string): Promise<void> {

@@ -147,6 +147,20 @@ describe('HallsService', () => {
 
       expect(prisma.table.create).not.toHaveBeenCalled();
     });
+
+    it('throws ConflictException on P2002 when tableNumber already exists in the tenant', async () => {
+      prisma.diningArea.findFirst.mockResolvedValue({ id: 'area-1' });
+      prisma.table.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.createTable('tenant-1', { tableNumber: 5, areaId: 'area-1' }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('updateTable', () => {
@@ -189,6 +203,20 @@ describe('HallsService', () => {
 
       expect(prisma.table.findFirst).not.toHaveBeenCalled();
       expect(prisma.table.update).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException on P2002 when updating tableNumber to an existing value', async () => {
+      prisma.table.findFirst.mockResolvedValue({ id: 't1' });
+      prisma.table.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.updateTable('tenant-1', 't1', { tableNumber: 7 }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
