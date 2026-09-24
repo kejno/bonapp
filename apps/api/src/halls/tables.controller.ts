@@ -77,7 +77,7 @@ function isValidUpdateTable(body: unknown): body is UpdateTableBody {
   if (hasTableNumber && !isPositiveInteger(b['tableNumber'])) return false;
   if (hasSeatsCount && !isPositiveInteger(b['seatsCount'])) return false;
   if (hasAreaId && (typeof b['areaId'] !== 'string' || b['areaId'].trim().length === 0)) return false;
-  if (hasLabel && typeof b['label'] !== 'string') return false;
+  if (hasLabel && (typeof b['label'] !== 'string' || b['label'].trim().length === 0)) return false;
 
   return true;
 }

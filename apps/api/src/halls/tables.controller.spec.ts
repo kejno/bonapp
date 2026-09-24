@@ -111,6 +111,7 @@ describe('TablesController', () => {
       [{ tableNumber: -5 }],
       [{ seatsCount: -1 }],
       [{ areaId: '' }],
+      [{ label: '   ' }],
       [{ label: 123 }],
     ])('throws BadRequestException for invalid update payload %p', (body) => {
       expect(() => controller.update(req, 't1', body)).toThrow(BadRequestException);
