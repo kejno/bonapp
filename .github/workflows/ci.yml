@@ -125,6 +125,7 @@ jobs:
       - run: npm --workspace @bonapp/api run test:e2e -- tenant-isolation.e2e-spec.ts
       - run: npm --workspace @bonapp/api run test:e2e -- BNP-319.e2e-spec.ts
       - run: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm --workspace @bonapp/api run test:e2e -- menu-tenant-integrity.e2e-spec.ts
+      - run: npm --workspace @bonapp/api run test:e2e -- BNP-148.e2e-spec.ts
 
   build:
     name: Build (Node ${{ matrix.node-version }})

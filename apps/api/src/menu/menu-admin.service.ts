@@ -193,17 +193,26 @@ export class MenuAdminService {
     optionId: string,
     data: UpdateModifierOptionData,
   ) {
-    const db = this.prisma.forTenant(tenantId);
-    const existing = await db.modifierOption.findFirst({
-      where: { id: optionId, isActive: true },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException(`Modifier option ${optionId} not found`);
+    const option = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const updated = await tx.modifierOption.updateMany({
+        where: {
+          id: optionId,
+          isActive: true,
+          group: { is: { tenantId } },
+        },
+        data,
+      });
+      if (updated.count === 0) {
+        throw new NotFoundException(`Modifier option ${optionId} not found`);
+      }
 
-    await db.modifierOption.updateMany({ where: { id: optionId }, data });
+      const option = await tx.modifierOption.findFirst({
+        where: { id: optionId, isActive: true },
+      });
+      if (!option) throw new NotFoundException(`Modifier option ${optionId} not found`);
+      return option;
+    });
     await this.invalidateMenu(tenantId);
-    const option = await db.modifierOption.findFirst({ where: { id: optionId } });
-    if (!option) throw new NotFoundException(`Modifier option ${optionId} not found`);
     return option;
   }
 
