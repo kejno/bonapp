@@ -13,7 +13,11 @@ flowchart TD
     RUN --> PASS{Tests pass?}
     PASS -->|No| FIX["Fix failures and re-run tests"]
     FIX --> RUN
-    PASS -->|Yes| GITSTATUS["Run git status and review every new/modified file"]
+    PASS -->|Yes| LINT["Run the project's lint command scoped to your changed workspace<br/>(e.g. npm run lint --workspace=apps/api) — MUST pass before finishing"]
+    LINT --> LINTPASS{Lint passes, zero errors?}
+    LINTPASS -->|No| LINTFIX["Fix lint errors — auto-fixable ones via --fix, rest manually<br/>NEVER disable/suppress a rule to make it pass"]
+    LINTFIX --> LINT
+    LINTPASS -->|Yes| GITSTATUS["Run git status and review every new/modified file"]
     GITSTATUS --> SECRETS{Sensitive or untracked non-code files present?}
     SECRETS -->|Yes| IGNORE["Add appropriate patterns to .gitignore"]
     SECRETS -->|No| SUMMARY["Write concise PR description to outputs/response.md — see output_rules.md"]

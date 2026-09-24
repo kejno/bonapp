@@ -19,6 +19,7 @@ flowchart TD
         R4["✅ Aim for 100% unit test coverage on new and modified code"]
         R5["✅ When behavior involves a loop/collection, add a case with 2+ items, not only a single-item happy path — a single-item test can pass while multi-item logic is still wrong"]
         R6["✅ Run the full test suite before finishing — no regressions allowed"]
+        R7["✅ Run lint on your changed workspace before finishing — zero errors, same rules CI enforces"]
     end
 
     TDD --> RULES
