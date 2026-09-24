@@ -26,7 +26,6 @@ export class MenuService {
           orderBy: { createdAt: 'asc' },
           include: {
             menuItemModifierGroups: {
-              where: { modifierGroup: { isActive: true } },
               orderBy: { sortOrder: 'asc' },
               include: {
                 modifierGroup: {
@@ -48,10 +47,12 @@ export class MenuService {
       ...category,
       items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
         ...item,
-        modifierGroups: menuItemModifierGroups.map(({ sortOrder, modifierGroup }) => ({
-          sortOrder,
-          modifierGroup,
-        })),
+        modifierGroups: menuItemModifierGroups
+          .filter(({ modifierGroup }) => modifierGroup.isActive)
+          .map(({ sortOrder, modifierGroup }) => ({
+            sortOrder,
+            modifierGroup,
+          })),
       })),
     }));
 
