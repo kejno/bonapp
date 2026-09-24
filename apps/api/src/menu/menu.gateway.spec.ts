@@ -1,14 +1,54 @@
 import type { HttpAdapterHost } from '@nestjs/core';
+import type { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from './menu.gateway';
 
 describe('MenuGateway', () => {
   function makeGateway() {
-    const gateway = new MenuGateway({} as HttpAdapterHost);
+    const prisma = { findTableByQrToken: jest.fn() };
+    const gateway = new MenuGateway(
+      {} as HttpAdapterHost,
+      prisma as unknown as PrismaService,
+      { get: jest.fn() } as unknown as ConfigService,
+    );
     const emitFn = jest.fn();
     const toFn = jest.fn().mockReturnValue({ emit: emitFn });
     (gateway as unknown as Record<string, unknown>)['io'] = { to: toFn };
-    return { gateway, toFn, emitFn };
+    return { gateway, prisma, toFn, emitFn };
   }
+
+  it('joins only the tenant resolved from the authenticated QR token', async () => {
+    const { gateway, prisma } = makeGateway();
+    const join = jest.fn();
+    const disconnect = jest.fn();
+    prisma.findTableByQrToken.mockResolvedValue({ tenantId: 'tenant-1' });
+
+    await (
+      gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }
+    ).joinTenantRoom({ handshake: { auth: { qrToken: 'valid-qr-token' } }, join, disconnect });
+
+    expect(prisma.findTableByQrToken).toHaveBeenCalledWith('valid-qr-token');
+    expect(join).toHaveBeenCalledWith('tenant:tenant-1');
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+
+  it('disconnects a socket without a valid QR token instead of trusting a tenant query', async () => {
+    const { gateway, prisma } = makeGateway();
+    const join = jest.fn();
+    const disconnect = jest.fn();
+
+    await (
+      gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }
+    ).joinTenantRoom({
+      handshake: { auth: {}, query: { tenantId: 'another-tenant' } },
+      join,
+      disconnect,
+    });
+
+    expect(prisma.findTableByQrToken).not.toHaveBeenCalled();
+    expect(join).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledWith(true);
+  });
 
   it('emits menu:stop_list_changed to the correct tenant room', () => {
     const { gateway, toFn, emitFn } = makeGateway();

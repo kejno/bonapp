@@ -215,7 +215,9 @@ describe('MenuAdminController', () => {
     {},
     { isInStopList: 'true' },
     { isInStopList: 1 },
-  ])('rejects invalid stop-list body %p', (body) => {
-    expect(() => controller.updateItemStopList(req, 'item-1', body)).rejects.toThrow(BadRequestException);
+  ])('rejects invalid stop-list body %p', async (body) => {
+    await expect(controller.updateItemStopList(req, 'item-1', body)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

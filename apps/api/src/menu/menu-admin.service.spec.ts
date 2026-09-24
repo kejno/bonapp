@@ -6,6 +6,7 @@ import { MenuAdminService } from './menu-admin.service';
 describe('MenuAdminService', () => {
   let prisma: {
     forTenant: jest.Mock;
+    transactionForTenant: jest.Mock;
     menuItem: { update: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     menuCategory: { update: jest.Mock };
     modifierGroup: { update: jest.Mock; findMany: jest.Mock; create: jest.Mock; findFirst: jest.Mock };
@@ -19,6 +20,7 @@ describe('MenuAdminService', () => {
   beforeEach(() => {
     prisma = {
       forTenant: jest.fn(),
+      transactionForTenant: jest.fn(),
       menuItem: { update: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
       menuCategory: { update: jest.fn() },
       modifierGroup: { update: jest.fn(), findMany: jest.fn(), create: jest.fn(), findFirst: jest.fn() },
@@ -27,6 +29,9 @@ describe('MenuAdminService', () => {
       stopListItem: { upsert: jest.fn() },
     };
     prisma.forTenant.mockReturnValue(prisma);
+    prisma.transactionForTenant.mockImplementation(
+      async (_tenantId: string, operation: (tx: typeof prisma) => Promise<unknown>) => operation(prisma),
+    );
     cache = { del: jest.fn() };
     service = new MenuAdminService(
       prisma as unknown as PrismaService,
@@ -153,7 +158,7 @@ describe('MenuAdminService', () => {
     await service.createModifierGroup('tenant-1', 'item-1', { name: 'Size', minSelected: 1, maxSelected: 1 });
 
     expect(prisma.modifierGroup.create).toHaveBeenCalledWith({
-      data: { itemId: 'item-1', name: 'Size', minSelection: 1, maxSelection: 1 },
+      data: { tenantId: 'tenant-1', itemId: 'item-1', name: 'Size', minSelection: 1, maxSelection: 1 },
       include: { modifierOptions: true },
     });
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
@@ -166,7 +171,7 @@ describe('MenuAdminService', () => {
     await service.createModifierGroup('tenant-1', 'item-1', { name: 'Extras' });
 
     expect(prisma.modifierGroup.create).toHaveBeenCalledWith({
-      data: { itemId: 'item-1', name: 'Extras', minSelection: 0, maxSelection: null },
+      data: { tenantId: 'tenant-1', itemId: 'item-1', name: 'Extras', minSelection: 0, maxSelection: null },
       include: { modifierOptions: true },
     });
   });
@@ -195,6 +200,7 @@ describe('MenuAdminService', () => {
       where: { id_tenantId: { id: 'group-1', tenantId: 'tenant-1' } },
       data: { isActive: false },
     });
+    expect(prisma.transactionForTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
     expect(result).toEqual({ id: 'group-1', isActive: false });
   });
@@ -271,6 +277,17 @@ describe('MenuAdminService', () => {
     expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
   });
 
+  it('rejects updateModifierOption when the option is removed after it is updated', async () => {
+    prisma.modifierOption.findFirst
+      .mockResolvedValueOnce({ id: 'opt-1' })
+      .mockResolvedValueOnce(null);
+    prisma.modifierOption.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.updateModifierOption('tenant-1', 'opt-1', { name: 'XL' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
   // --- deactivateModifierOption ---
 
   it('deactivates a modifier option and invalidates cache', async () => {
@@ -293,6 +310,17 @@ describe('MenuAdminService', () => {
 
     await expect(service.deactivateModifierOption('tenant-b', 'opt-from-a')).rejects.toThrow(NotFoundException);
     expect(prisma.modifierOption.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects deactivateModifierOption when the option is removed after deactivation', async () => {
+    prisma.modifierOption.findFirst
+      .mockResolvedValueOnce({ id: 'opt-1' })
+      .mockResolvedValueOnce(null);
+    prisma.modifierOption.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(service.deactivateModifierOption('tenant-1', 'opt-1')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   // --- updateItemStopList ---

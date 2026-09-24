@@ -130,6 +130,7 @@ export class MenuAdminService {
 
     const group = await db.modifierGroup.create({
       data: {
+        tenantId,
         itemId,
         name: data.name,
         minSelection: data.minSelected ?? 0,
@@ -149,13 +150,15 @@ export class MenuAdminService {
     });
     if (!group) throw new NotFoundException(`Modifier group ${groupId} not found`);
 
-    await db.modifierOption.updateMany({
-      where: { groupId },
-      data: { isActive: false },
-    });
-    const result = await db.modifierGroup.update({
-      where: { id_tenantId: { id: groupId, tenantId } },
-      data: { isActive: false },
+    const result = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await tx.modifierOption.updateMany({
+        where: { groupId },
+        data: { isActive: false },
+      });
+      return tx.modifierGroup.update({
+        where: { id_tenantId: { id: groupId, tenantId } },
+        data: { isActive: false },
+      });
     });
     await this.invalidateMenu(tenantId);
     return result;
@@ -199,7 +202,9 @@ export class MenuAdminService {
 
     await db.modifierOption.updateMany({ where: { id: optionId }, data });
     await this.invalidateMenu(tenantId);
-    return db.modifierOption.findFirst({ where: { id: optionId } });
+    const option = await db.modifierOption.findFirst({ where: { id: optionId } });
+    if (!option) throw new NotFoundException(`Modifier option ${optionId} not found`);
+    return option;
   }
 
   async deactivateModifierOption(tenantId: string, optionId: string) {
@@ -215,7 +220,9 @@ export class MenuAdminService {
       data: { isActive: false },
     });
     await this.invalidateMenu(tenantId);
-    return db.modifierOption.findFirst({ where: { id: optionId } });
+    const option = await db.modifierOption.findFirst({ where: { id: optionId } });
+    if (!option) throw new NotFoundException(`Modifier option ${optionId} not found`);
+    return option;
   }
 
   async updateItemStopList(

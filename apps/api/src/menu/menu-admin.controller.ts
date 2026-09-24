@@ -98,14 +98,14 @@ export class MenuAdminController {
     if (!isValidCreateGroupBody(body)) {
       throw new BadRequestException('name is required');
     }
-    const data = body as Record<string, unknown>;
+    const rawBody = body as unknown as Record<string, unknown>;
     return this.menuAdminService.createModifierGroup(
       req.user!.tenantId!,
       itemId.trim(),
       {
-        name: (data['name'] as string).trim(),
-        minSelected: typeof data['minSelected'] === 'number' ? data['minSelected'] : undefined,
-        maxSelected: typeof data['maxSelected'] === 'number' ? data['maxSelected'] : undefined,
+        name: body.name.trim(),
+        minSelected: typeof rawBody['minSelected'] === 'number' ? rawBody['minSelected'] : undefined,
+        maxSelected: typeof rawBody['maxSelected'] === 'number' ? rawBody['maxSelected'] : undefined,
       },
     );
   }
@@ -150,14 +150,14 @@ export class MenuAdminController {
     if (!isValidCreateOptionBody(body)) {
       throw new BadRequestException('name is required');
     }
-    const data = body as Record<string, unknown>;
+    const rawBody = body as unknown as Record<string, unknown>;
     return this.menuAdminService.createModifierOption(
       req.user!.tenantId!,
       groupId.trim(),
       {
-        name: (data['name'] as string).trim(),
-        extraPriceByn: typeof data['extraPriceByn'] === 'number' ? data['extraPriceByn'] : undefined,
-        isDefault: typeof data['isDefault'] === 'boolean' ? data['isDefault'] : undefined,
+        name: body.name.trim(),
+        extraPriceByn: typeof rawBody['extraPriceByn'] === 'number' ? rawBody['extraPriceByn'] : undefined,
+        isDefault: typeof rawBody['isDefault'] === 'boolean' ? rawBody['isDefault'] : undefined,
       },
     );
   }
