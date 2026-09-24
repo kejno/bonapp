@@ -193,7 +193,7 @@ describe('MenuAdminService', () => {
     const result = await service.deactivateModifierGroup('tenant-1', 'group-1');
 
     expect(prisma.modifierOption.updateMany).toHaveBeenCalledWith({
-      where: { groupId: 'group-1' },
+      where: { groupId: 'group-1', group: { is: { tenantId: 'tenant-1' } } },
       data: { isActive: false },
     });
     expect(prisma.modifierGroup.update).toHaveBeenCalledWith({

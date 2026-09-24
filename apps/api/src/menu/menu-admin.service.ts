@@ -152,7 +152,7 @@ export class MenuAdminService {
 
     const result = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.modifierOption.updateMany({
-        where: { groupId },
+        where: { groupId, group: { is: { tenantId } } },
         data: { isActive: false },
       });
       return tx.modifierGroup.update({

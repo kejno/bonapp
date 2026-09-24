@@ -1,5 +1,6 @@
 import type { HttpAdapterHost } from '@nestjs/core';
 import type { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from './menu.gateway';
 
@@ -47,6 +48,23 @@ describe('MenuGateway', () => {
 
     expect(prisma.findTableByQrToken).not.toHaveBeenCalled();
     expect(join).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('logs a QR lookup failure before disconnecting the socket', () => {
+    const { gateway } = makeGateway();
+    const disconnect = jest.fn();
+    const error = new Error('database timeout');
+    const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    (gateway as unknown as {
+      handleJoinTenantRoomError(socket: unknown, error: unknown): void;
+    }).handleJoinTenantRoomError({ disconnect }, error);
+
+    expect(loggerError).toHaveBeenCalledWith(
+      'Unable to join menu WebSocket tenant room',
+      error,
+    );
     expect(disconnect).toHaveBeenCalledWith(true);
   });
 

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { Server as HttpServer } from 'node:http';
@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class MenuGateway implements OnModuleInit {
   private io!: Server;
+  private readonly logger = new Logger(MenuGateway.name);
 
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
@@ -25,8 +26,15 @@ export class MenuGateway implements OnModuleInit {
 
     this.io = new Server(httpServer, { cors: { origin: allowedOrigins } });
     this.io.on('connection', (socket: Socket) => {
-      void this.joinTenantRoom(socket).catch(() => socket.disconnect(true));
+      void this.joinTenantRoom(socket).catch((error: unknown) =>
+        this.handleJoinTenantRoomError(socket, error),
+      );
     });
+  }
+
+  private handleJoinTenantRoomError(socket: Socket, error: unknown): void {
+    this.logger.error('Unable to join menu WebSocket tenant room', error);
+    socket.disconnect(true);
   }
 
   private async joinTenantRoom(socket: Socket): Promise<void> {
