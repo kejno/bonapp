@@ -1,0 +1,215 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
+import { TenantContextGuard } from '../auth/tenant-context.guard';
+import type { TenantRequest } from '../auth/tenant-context.guard';
+import type {
+  CreateModifierGroupData,
+  CreateModifierOptionData,
+  UpdateModifierOptionData,
+} from './menu-admin.service';
+import { MenuAdminService } from './menu-admin.service';
+import { MenuGateway } from './menu.gateway';
+
+interface UpdateGroupBody {
+  name?: string;
+  minSelected?: number;
+  maxSelected?: number | null;
+}
+
+function isValidCreateGroupBody(
+  body: unknown,
+): body is { name: string } & CreateModifierGroupData {
+  if (typeof body !== 'object' || body === null) return false;
+  const { name } = body as Record<string, unknown>;
+  return typeof name === 'string' && name.trim().length > 0;
+}
+
+function isValidUpdateGroupBody(body: unknown): body is UpdateGroupBody {
+  if (typeof body !== 'object' || body === null) return false;
+  const { name, minSelected, maxSelected } = body as Record<string, unknown>;
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) return false;
+  if (minSelected !== undefined && typeof minSelected !== 'number') return false;
+  if (maxSelected !== undefined && maxSelected !== null && typeof maxSelected !== 'number') return false;
+  return name !== undefined || minSelected !== undefined || maxSelected !== undefined;
+}
+
+function isValidCreateOptionBody(
+  body: unknown,
+): body is { name: string } & CreateModifierOptionData {
+  if (typeof body !== 'object' || body === null) return false;
+  const { name } = body as Record<string, unknown>;
+  return typeof name === 'string' && name.trim().length > 0;
+}
+
+function isValidUpdateOptionBody(body: unknown): body is UpdateModifierOptionData {
+  if (typeof body !== 'object' || body === null) return false;
+  const { name, extraPriceByn, isDefault } = body as Record<string, unknown>;
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) return false;
+  if (extraPriceByn !== undefined && typeof extraPriceByn !== 'number') return false;
+  if (isDefault !== undefined && typeof isDefault !== 'boolean') return false;
+  return name !== undefined || extraPriceByn !== undefined || isDefault !== undefined;
+}
+
+function isValidStopListBody(
+  body: unknown,
+): body is { isInStopList: boolean } {
+  if (typeof body !== 'object' || body === null) return false;
+  const { isInStopList } = body as Record<string, unknown>;
+  return typeof isInStopList === 'boolean';
+}
+
+@Controller('api/v1/admin/menu')
+@UseGuards(AuthGuard, TenantContextGuard)
+export class MenuAdminController {
+  constructor(
+    private readonly menuAdminService: MenuAdminService,
+    private readonly menuGateway: MenuGateway,
+  ) {}
+
+  @Get('items/:itemId/modifier-groups')
+  listModifierGroups(
+    @Req() req: TenantRequest,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.menuAdminService.listModifierGroups(
+      req.user!.tenantId!,
+      itemId.trim(),
+    );
+  }
+
+  @Post('items/:itemId/modifier-groups')
+  createModifierGroup(
+    @Req() req: TenantRequest,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+  ) {
+    if (!isValidCreateGroupBody(body)) {
+      throw new BadRequestException('name is required');
+    }
+    const data = body as Record<string, unknown>;
+    return this.menuAdminService.createModifierGroup(
+      req.user!.tenantId!,
+      itemId.trim(),
+      {
+        name: (data['name'] as string).trim(),
+        minSelected: typeof data['minSelected'] === 'number' ? data['minSelected'] : undefined,
+        maxSelected: typeof data['maxSelected'] === 'number' ? data['maxSelected'] : undefined,
+      },
+    );
+  }
+
+  @Put('modifier-groups/:id')
+  updateModifierGroup(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!isValidUpdateGroupBody(body)) {
+      throw new BadRequestException('at least one of name, minSelected, maxSelected is required');
+    }
+    const prismaData: Record<string, unknown> = {};
+    if (body.name !== undefined) prismaData['name'] = body.name.trim();
+    if (body.minSelected !== undefined) prismaData['minSelection'] = body.minSelected;
+    if (body.maxSelected !== undefined) prismaData['maxSelection'] = body.maxSelected;
+    return this.menuAdminService.updateModifierGroup(
+      req.user!.tenantId!,
+      id.trim(),
+      prismaData,
+    );
+  }
+
+  @Delete('modifier-groups/:id')
+  deactivateModifierGroup(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+  ) {
+    return this.menuAdminService.deactivateModifierGroup(
+      req.user!.tenantId!,
+      id.trim(),
+    );
+  }
+
+  @Post('modifier-groups/:id/options')
+  createModifierOption(
+    @Req() req: TenantRequest,
+    @Param('id') groupId: string,
+    @Body() body: unknown,
+  ) {
+    if (!isValidCreateOptionBody(body)) {
+      throw new BadRequestException('name is required');
+    }
+    const data = body as Record<string, unknown>;
+    return this.menuAdminService.createModifierOption(
+      req.user!.tenantId!,
+      groupId.trim(),
+      {
+        name: (data['name'] as string).trim(),
+        extraPriceByn: typeof data['extraPriceByn'] === 'number' ? data['extraPriceByn'] : undefined,
+        isDefault: typeof data['isDefault'] === 'boolean' ? data['isDefault'] : undefined,
+      },
+    );
+  }
+
+  @Put('modifier-options/:id')
+  updateModifierOption(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!isValidUpdateOptionBody(body)) {
+      throw new BadRequestException('at least one of name, extraPriceByn, isDefault is required');
+    }
+    const data: UpdateModifierOptionData = {};
+    if (body.name !== undefined) data.name = body.name.trim();
+    if (body.extraPriceByn !== undefined) data.extraPriceByn = body.extraPriceByn;
+    if (body.isDefault !== undefined) data.isDefault = body.isDefault;
+    return this.menuAdminService.updateModifierOption(
+      req.user!.tenantId!,
+      id.trim(),
+      data,
+    );
+  }
+
+  @Delete('modifier-options/:id')
+  deactivateModifierOption(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+  ) {
+    return this.menuAdminService.deactivateModifierOption(
+      req.user!.tenantId!,
+      id.trim(),
+    );
+  }
+
+  @Patch('items/:itemId/stop-list')
+  async updateItemStopList(
+    @Req() req: TenantRequest,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+  ) {
+    if (!isValidStopListBody(body)) {
+      throw new BadRequestException('isInStopList is required');
+    }
+    const tenantId = req.user!.tenantId!;
+    const trimmedItemId = itemId.trim();
+    const result = await this.menuAdminService.updateItemStopList(
+      tenantId,
+      trimmedItemId,
+      body.isInStopList,
+    );
+    this.menuGateway.emitStopListChanged(tenantId, trimmedItemId, body.isInStopList);
+    return result;
+  }
+}

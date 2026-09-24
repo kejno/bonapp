@@ -26,6 +26,7 @@ export class MenuService {
           orderBy: { createdAt: 'asc' },
           include: {
             menuItemModifierGroups: {
+              where: { modifierGroup: { isActive: true } },
               orderBy: { sortOrder: 'asc' },
               include: {
                 modifierGroup: {
