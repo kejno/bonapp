@@ -25,7 +25,8 @@ const tables = [
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<MemoryRouter><QueryClientProvider client={client}><TablesPage /></QueryClientProvider></MemoryRouter>);
+  const result = render(<MemoryRouter><QueryClientProvider client={client}><TablesPage /></QueryClientProvider></MemoryRouter>);
+  return { ...result, client };
 }
 
 afterEach(() => {
@@ -56,6 +57,21 @@ describe('TablesPage', () => {
 
     expect(await screen.findByRole('button', { name: 'Стол 1, RESERVED' })).toHaveAttribute('data-status', 'UNKNOWN');
     expect(screen.getByText('RESERVED')).toBeInTheDocument();
+  });
+
+  it('updates the table color when the server reports a changed business status', async () => {
+    vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
+    vi.mocked(tablesApi.getTables)
+      .mockResolvedValueOnce([{ ...tables[0], status: 'AVAILABLE' }])
+      .mockResolvedValueOnce([{ ...tables[0], status: 'OCCUPIED' }]);
+    const { client } = renderPage();
+
+    const table = await screen.findByRole('button', { name: 'Стол 1, Свободен' });
+    expect(table).toHaveAttribute('data-status', 'FREE');
+
+    await client.invalidateQueries({ queryKey: ['dining-tables'] });
+
+    expect(await screen.findByRole('button', { name: 'Стол 1, Занят' })).toHaveAttribute('data-status', 'OCCUPIED');
   });
 
   it('creates a table in the selected zone', async () => {
