@@ -43,7 +43,7 @@ export class StorageService {
     contentType: string,
     expiresIn = 600,
   ): Promise<{ uploadUrl: string; uploadFields: Record<string, string>; publicUrl: string }> {
-    const presignedPost = await (createPresignedPost as (
+    const presignedPost = await (createPresignedPost as unknown as (
       client: S3Client,
       params: Record<string, unknown>,
     ) => Promise<{ url: string; fields: Record<string, string> }>)(this.client, {
