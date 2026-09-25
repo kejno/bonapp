@@ -45,11 +45,18 @@ describe('AuthGuard', () => {
   });
 
   it('validates a JWT and assigns its tenant context to the request', () => {
-    const token = createToken({ tenantId: 'tenant-1' }, 'test-jwt-secret');
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'user-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
     const { context, request } = mockContext(`Bearer ${token}`);
 
     expect(guard.canActivate(context)).toBe(true);
-    expect(request.user).toEqual({ tenantId: 'tenant-1' });
+    expect(request.user).toEqual({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      role: 'OWNER',
+    });
   });
 
   it('should throw UnauthorizedException when Authorization header is absent', () => {
@@ -81,6 +88,17 @@ describe('AuthGuard', () => {
     expect(() =>
       guard.canActivate(mockContext(`Bearer ${expiredToken}`).context),
     ).toThrow(UnauthorizedException);
+  });
+
+  it('rejects a token with an unknown role', () => {
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'user-1', role: 'UNKNOWN' },
+      'test-jwt-secret',
+    );
+
+    expect(() => guard.canActivate(mockContext(`Bearer ${token}`).context)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rejects a refresh token even when it has a valid signature', () => {
