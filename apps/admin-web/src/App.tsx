@@ -4,6 +4,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import MenuEditorPage from './menu/MenuPage';
+import MenuPage from './pages/MenuPage';
+import OrderPage from './pages/OrderPage';
+import TablesPage from './pages/TablesPage';
 
 const queryClient = new QueryClient();
 
@@ -25,6 +29,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
+          <Route path="/menu/editor" element={<ProtectedRoute><MenuEditorPage /></ProtectedRoute>} />
+          <Route
+            path="/tables"
+            element={
+              <ProtectedRoute>
+                <TablesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:orderId"
+            element={
+              <ProtectedRoute>
+                <OrderPage />
               </ProtectedRoute>
             }
           />

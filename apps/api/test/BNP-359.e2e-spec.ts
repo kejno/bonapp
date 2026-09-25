@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
+type AreaResponse = { id: string; name: string; sortOrder: number; tenantId: string };
+
 describe('BNP-359: создание и сортировка зон обслуживания', () => {
   const fixture = new MenuCacheTestFixture();
 
@@ -18,23 +20,25 @@ describe('BNP-359: создание и сортировка зон обслуж�
       .set('Authorization', `Bearer ${fixture.token()}`)
       .send({ name: 'Терраса', sortOrder: 20 })
       .expect(201);
-    const first = await request(fixture.app.getHttpServer())
+    const firstResponse = await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/areas')
       .set('Authorization', `Bearer ${fixture.token()}`)
       .send({ name: 'Основной зал', sortOrder: 10 })
       .expect(201);
+    const first = firstResponse.body as AreaResponse;
 
     const response = await request(fixture.app.getHttpServer())
       .get('/api/v1/admin/areas')
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
 
-    expect(response.body.map((area: { name: string }) => area.name)).toEqual([
+    const areas = response.body as AreaResponse[];
+    expect(areas.map((area) => area.name)).toEqual([
       'Основной зал',
       'Терраса',
     ]);
-    expect(response.body[0]).toMatchObject({
-      id: first.body.id,
+    expect(areas[0]).toMatchObject({
+      id: first.id,
       sortOrder: 10,
       tenantId: fixture.tenantId,
     });

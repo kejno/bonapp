@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
+type TableResponse = { tableNumber: number; qrToken: string };
+
 describe('BNP-361: массовое создание столов', () => {
   const fixture = new MenuCacheTestFixture();
 
@@ -22,12 +24,13 @@ describe('BNP-361: массовое создание столов', () => {
       .send({ areaId: area.id, startNumber: 101, count: 10, seatsCount: 4 })
       .expect(201);
 
-    expect(response.body).toHaveLength(10);
-    expect(response.body.map((table: { tableNumber: number }) => table.tableNumber)).toEqual(
+    const tables = response.body as TableResponse[];
+    expect(tables).toHaveLength(10);
+    expect(tables.map((table) => table.tableNumber)).toEqual(
       Array.from({ length: 10 }, (_, index) => 101 + index),
     );
-    const tokens = response.body.map((table: { qrToken: string }) => table.qrToken);
-    expect(tokens.every((token: string) => token.length > 0)).toBe(true);
+    const tokens = tables.map((table) => table.qrToken);
+    expect(tokens.every((token) => token.length > 0)).toBe(true);
     expect(new Set(tokens).size).toBe(10);
 
     const persisted = await fixture.prisma.table.findMany({

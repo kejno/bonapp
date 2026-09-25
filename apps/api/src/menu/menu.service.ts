@@ -37,6 +37,11 @@ export class MenuService {
                 },
               },
             },
+            modifierGroups: {
+              where: { isActive: true },
+              orderBy: { id: 'asc' },
+              include: { modifierOptions: { where: { isActive: true } } },
+            },
             stopListItem: { select: { isStopped: true } },
           },
         },
@@ -45,10 +50,40 @@ export class MenuService {
 
     const menu = categories.map(({ menuItems, ...category }) => ({
       ...category,
-      items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
-        ...item,
-        modifierGroups: menuItemModifierGroups
-          .filter(({ modifierGroup }) => modifierGroup.isActive)
+      items: menuItems.map(({ menuItemModifierGroups, modifierGroups = [], ...item }) => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        priceByn: item.priceByn,
+        imageUrl: item.imageUrl,
+        weightGrams: item.weightGrams,
+        calories: item.calories,
+        proteins: item.proteins,
+        fats: item.fats,
+        carbs: item.carbs,
+        allergens: item.allergens,
+        kitchenDepartment: item.kitchenDepartment,
+        cookingTimeMinutes: item.cookingTimeMinutes,
+        isInStopList: item.isInStopList,
+        isHit: item.isHit,
+        isActive: item.isActive,
+        stopListItem: item.stopListItem,
+        modifierGroups: [
+          ...menuItemModifierGroups
+            .filter(({ modifierGroup }) => modifierGroup.isActive)
+            .map(({ sortOrder, modifierGroup }) => ({ sortOrder, modifierGroup })),
+          ...modifierGroups
+            .filter(({ isActive }) => isActive)
+            .map(({ modifierOptions, ...modifierGroup }, index) => ({
+              sortOrder: menuItemModifierGroups.length + index,
+              modifierGroup: {
+                ...modifierGroup,
+                modifiers: modifierOptions.map(({ id, name, extraPriceByn }) => ({ id, name, price: extraPriceByn })),
+              },
+            })),
+        ]
+          .filter((entry, index, entries) => entries.findIndex(({ modifierGroup }) => modifierGroup.id === entry.modifierGroup.id) === index)
+          .sort((left, right) => left.sortOrder - right.sortOrder)
           .map(({ sortOrder, modifierGroup }) => ({
             sortOrder,
             modifierGroup,
