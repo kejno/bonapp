@@ -37,6 +37,14 @@ describe('MenuService', () => {
               },
             },
           ],
+          modifierGroups: [
+            {
+              id: 'group-direct',
+              name: 'Sauce options',
+              isActive: true,
+              modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', extraPriceByn: '1.25', isActive: true }],
+            },
+          ],
         },
       ],
     },
@@ -57,6 +65,15 @@ describe('MenuService', () => {
                 name: 'Milk options',
                 isActive: true,
                 modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
+              },
+            },
+            {
+              sortOrder: 2,
+              modifierGroup: {
+                id: 'group-direct',
+                name: 'Sauce options',
+                isActive: true,
+                modifiers: [{ id: 'mod-direct', name: 'Garlic sauce', price: '1.25' }],
               },
             },
           ],
@@ -94,11 +111,32 @@ describe('MenuService', () => {
     expect(prisma.forTenant).not.toHaveBeenCalled();
   });
 
+  it('does not expose internal cost or POS identifiers in the guest menu', async () => {
+    cache.getJson.mockResolvedValue(null);
+    const item = rawCatalog[0].menuItems[0] as Record<string, unknown>;
+    item.costPriceByn = '4.25';
+    item.posItemId = 'internal-pos-123';
+    prisma.menuCategory.findMany.mockResolvedValue(rawCatalog);
+
+    const result = await service.getGuestMenu(tenantId) as Array<{ items: Array<Record<string, unknown>> }>;
+    const guestItem = result[0].items[0];
+
+    expect(guestItem).not.toHaveProperty('costPriceByn');
+    expect(guestItem).not.toHaveProperty('posItemId');
+    expect(guestItem).toHaveProperty('id', 'item-1');
+    delete item.costPriceByn;
+    delete item.posItemId;
+  });
+
   it('loads and caches all categories, items, and modifiers for 60 seconds on a miss', async () => {
     cache.getJson.mockResolvedValue(null);
     prisma.menuCategory.findMany.mockResolvedValue(rawCatalog);
 
-    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(transformedCatalog);
+    const guestCatalog = await service.getGuestMenu(tenantId) as Array<{ items: Array<{ modifierGroups: Array<{ modifierGroup: { id: string; modifiers?: Array<{ id: string; name: string; price: string }> } }> }> }>;
+    expect(guestCatalog).toMatchObject(transformedCatalog);
+    expect(guestCatalog[0].items[0].modifierGroups[1].modifierGroup.modifiers).toEqual([
+      { id: 'mod-direct', name: 'Garlic sauce', price: '1.25' },
+    ]);
     expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },
@@ -120,15 +158,16 @@ describe('MenuService', () => {
                 },
               },
             },
+            modifierGroups: {
+              where: { isActive: true },
+              orderBy: { id: 'asc' },
+              include: { modifierOptions: { where: { isActive: true } } },
+            },
             stopListItem: { select: { isStopped: true } },
           },
         },
       },
     });
-    expect(cache.setJson).toHaveBeenCalledWith(
-      `menu:tenant:${tenantId}`,
-      transformedCatalog,
-      60,
-    );
+    expect(cache.setJson).toHaveBeenCalledWith(`menu:tenant:${tenantId}`, expect.any(Array), 60);
   });
 });

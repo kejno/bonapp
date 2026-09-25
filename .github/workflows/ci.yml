@@ -72,6 +72,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor;
+      # Chromium needs them to keep its sandbox enabled in the PDF integration test.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: actions/cache@v4
         with:
           path: node_modules/.cache/turbo
@@ -84,6 +87,7 @@ jobs:
   e2e:
     name: E2E tests (PostgreSQL)
     needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -129,7 +133,8 @@ jobs:
 
   build:
     name: Build (Node ${{ matrix.node-version }})
-    needs: e2e
+    needs: [test, e2e]
+    if: always() && needs.test.result == 'success' && needs.e2e.result != 'failure'
     runs-on: ubuntu-latest
     strategy:
       matrix:
