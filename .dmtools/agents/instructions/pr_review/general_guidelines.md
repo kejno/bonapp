@@ -118,9 +118,9 @@ linter/formatter config, existing patterns in sibling files)?
 | Dimension | What to check |
 |---|---|
 | **Security** | injection, unsafe interpolation, secret leakage, missing permissions, unsafe defaults |
-| **Architecture / OOP** | SRP, coupling, abstraction consistency, provider/repository boundaries |
+| **Architecture / OOP** | SRP, coupling, abstraction consistency, provider/repository boundaries — see deep-module check below |
 | **Code quality** | naming, complexity, error handling, logging, comments |
-| **Tests** | coverage for new/changed paths, meaningful assertions, no brittle string-only tests |
+| **Tests** | coverage for new/changed paths, meaningful assertions, no brittle string-only tests — see interface-is-the-test-surface below |
 | **Duplication** | copy-paste, duplicated logic across files, duplicated configuration |
 | **Backward compatibility** | public API changes, migration paths, default behavior |
 | **Performance** | unnecessary rebuilds, heavy sync operations, missing timeouts |
@@ -151,6 +151,34 @@ Cite hard violations (documented standard + rule) separately from smell
 judgement calls (name the smell, quote the hunk) — hard violations can justify
 a higher severity by themselves, smells are advisory unless they compound into
 a real risk.
+
+**Deep-module check** — for any new class, provider, or module introduced or
+significantly reshaped in the diff, apply this to the Architecture/OOP line
+instead of a vague "SRP/coupling" judgement:
+
+- **The deletion test.** Imagine deleting the new module and inlining it at
+  its call site(s). If the complexity vanishes, it was a pass-through —
+  flag it as unnecessary indirection (SUGGESTION, or IMPORTANT if it also
+  adds an unjustified interface/DI surface). If the complexity reappears at
+  every caller, the module is earning its keep — no finding.
+- **One adapter means a hypothetical seam, two means a real one.** If the
+  diff introduces an interface/port (e.g. a new injectable abstraction over
+  a NestJS provider) with only one implementation and no second adapter in
+  sight (no test double, no alternate backend), flag it as speculative
+  indirection — same fix direction as Speculative Generality above.
+- This is a judgement call like the smell baseline, not a hard rule — a
+  single-adapter seam can be justified when the ticket or `instruction.md`
+  states a near-term second adapter is planned (e.g. swapping Оплати for
+  ЕРИП behind the same port).
+
+**Interface-is-the-test-surface check** — for the Tests line, flag a test as
+a finding (not just "coverage ok/not ok") when it verifies behavior by
+reaching past the module's public interface: mocking internal collaborators,
+asserting on call counts/order, or checking side effects through a side
+channel (e.g. querying the DB directly instead of calling the service method
+a real caller would use). Such a test can pass while the actual behavior is
+broken, and breaks on safe refactors — cite the specific line it bypasses and
+what public call it should assert on instead.
 
 ### 5b. Spec pass
 

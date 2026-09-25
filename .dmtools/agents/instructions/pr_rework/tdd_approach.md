@@ -66,3 +66,22 @@ expect(retrieved.name).toBe("Alice");
 If a new/updated test has either red flag, rewrite it against the public
 seam before finishing this finding — do not proceed to REFACTOR with a test
 that only proves the code equals itself.
+
+## Choosing what to fake — dependency categories
+
+The implementation-coupled check above says "go through the public interface,"
+but doesn't say what's on the other side of that interface during a test. Pick
+the test double by what the fix's dependency actually is:
+
+| Dependency kind | Example in bonapp | What to use in the test |
+|---|---|---|
+| **In-process** — pure computation, in-memory state | pricing math, cart totals, DTO mapping | No double needed — call the real function |
+| **Local-substitutable** — has a real local stand-in | Postgres via `PrismaService` | Run against the real local Postgres in CI/test setup (or the project's existing test-DB pattern) — not a mock of `PrismaService` |
+| **Remote but owned** — our own service across a network boundary | internal WebSocket/BullMQ jobs between `apps/api` modules | Test through an in-memory adapter of the same port the production code depends on, not a mock of the calling method |
+| **True external** — third party we don't control | Оплати, ЕРИП/bePaid, СКНО fiscal gateway, iiko/r_keeper | A mock/stub of that gateway's client is correct here — this is the one case where mocking is the right call, not a red flag |
+
+Mocking a **true external** dependency is not what the implementation-coupled
+check above forbids — that check is about mocking your own internal
+collaborators to dodge testing real behavior. Mocking Оплати's HTTP client is
+correct; mocking your own `PaymentService` to avoid calling the real one that
+wraps it is the anti-pattern.
