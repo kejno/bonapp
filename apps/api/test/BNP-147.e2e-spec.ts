@@ -28,13 +28,21 @@ describe('BNP-147: menu catalog CRUD', () => {
       .post('/api/v1/admin/menu/items')
       .set(authorization)
       .send({ name: 'Cheesecake', categoryId: category.body.id, price: 990 })
-      .expect(201)) as unknown as { body: { id: string } };
+      .expect(201)) as unknown as {
+      body: { id: string; price: number; priceByn?: unknown };
+    };
 
-    await request(fixture.app.getHttpServer())
+    expect(item.body.price).toBe(990);
+    expect(item.body.priceByn).toBeUndefined();
+
+    const updated = (await request(fixture.app.getHttpServer())
       .put(`/api/v1/admin/menu/items/${item.body.id}`)
       .set(authorization)
       .send({ name: 'Berry cheesecake', price: 1090 })
-      .expect(200);
+      .expect(200)) as unknown as { body: { price: number; priceByn?: unknown } };
+
+    expect(updated.body.price).toBe(1090);
+    expect(updated.body.priceByn).toBeUndefined();
 
     const modifierGroupId = randomUUID();
     const modifierId = randomUUID();

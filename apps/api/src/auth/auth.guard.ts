@@ -22,6 +22,7 @@ interface JwtPayload {
   sub?: unknown;
   role?: unknown;
   exp?: unknown;
+  type?: unknown;
 }
 
 @Injectable()
@@ -80,6 +81,7 @@ export class AuthGuard implements CanActivate {
         !timingSafeEqual(providedSignature, expectedSignature) ||
         typeof payload.tenantId !== 'string' ||
         !payload.tenantId.trim() ||
+        payload.type === 'refresh' ||
         (typeof payload.exp === 'number' && payload.exp <= Date.now() / 1000)
       ) {
         throw new UnauthorizedException();

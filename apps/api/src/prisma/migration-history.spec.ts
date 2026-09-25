@@ -57,4 +57,11 @@ describe('Prisma migration history', () => {
 
     expect(new Set(timestamps).size).toBe(timestamps.length);
   });
+
+  it('adds the login migration after every migration already on main', () => {
+    const migrations = readdirSync(migrationsDirectory);
+
+    expect(migrations).toContain('20260925000000_add_totp_and_blocked_to_users');
+    expect(migrations).not.toContain('20260924000000_add_totp_and_blocked_to_users');
+  });
 });

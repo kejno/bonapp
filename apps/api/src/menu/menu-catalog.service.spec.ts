@@ -301,7 +301,8 @@ describe('MenuCatalogService', () => {
         },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
-      expect(result).toEqual(created);
+      expect(result).toEqual({ id: 'item-1', name: 'Latte', price: 550 });
+      expect(result).not.toHaveProperty('priceByn');
     });
 
     it('rejects an empty name', async () => {
@@ -385,7 +386,7 @@ describe('MenuCatalogService', () => {
 
   describe('updateItem', () => {
     it('updates an item and invalidates the menu cache', async () => {
-      const updated = { id: 'item-1', name: 'Flat White' };
+      const updated = { id: 'item-1', name: 'Flat White', priceByn: 5.5 };
       prisma.menuItem.update.mockResolvedValue(updated);
 
       const result = await service.updateItem('tenant-1', 'item-1', { name: 'Flat White' });
@@ -395,7 +396,8 @@ describe('MenuCatalogService', () => {
         data: { name: 'Flat White' },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
-      expect(result).toEqual(updated);
+      expect(result).toEqual({ id: 'item-1', name: 'Flat White', price: 550 });
+      expect(result).not.toHaveProperty('priceByn');
     });
 
     it('converts price in minor units to priceByn decimal', async () => {

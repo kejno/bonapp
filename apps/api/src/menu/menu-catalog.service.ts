@@ -172,7 +172,7 @@ export class MenuCatalogService {
         },
       });
       await this.invalidateMenu(tenantId);
-      return item;
+      return this.mapItem(item);
     } catch (e) {
       if (this.isForeignKeyError(e)) {
         throw new NotFoundException(`Category ${dto.categoryId} not found`);
@@ -206,7 +206,7 @@ export class MenuCatalogService {
         data,
       });
       await this.invalidateMenu(tenantId);
-      return item;
+      return this.mapItem(item);
     } catch (e) {
       if (this.isNotFoundError(e)) {
         throw new NotFoundException(`Item ${itemId} not found`);

@@ -101,6 +101,21 @@ describe('AuthGuard', () => {
     );
   });
 
+  it('rejects a refresh token even when it has a valid signature', () => {
+    const refreshToken = createToken(
+      {
+        tenantId: 'tenant-1',
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+        type: 'refresh',
+      },
+      'test-jwt-secret',
+    );
+
+    expect(() =>
+      guard.canActivate(mockContext(`Bearer ${refreshToken}`).context),
+    ).toThrow(UnauthorizedException);
+  });
+
   it('throws at construction when JWT_SECRET is not configured', () => {
     const config = {
       getOrThrow: (key: string) => {
