@@ -95,6 +95,14 @@ describe('HallsService', () => {
       expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
       expect(prisma.table.findMany).toHaveBeenCalledWith({
         orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+        include: {
+          orders: {
+            where: { status: { notIn: ['PAID', 'CANCELLED'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, status: true, totalAmountByn: true },
+          },
+        },
       });
       expect(result).toBe(tables);
     });

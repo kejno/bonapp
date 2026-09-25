@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { Prisma, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateAreaDto {
@@ -61,7 +63,50 @@ export class HallsService {
   listTables(tenantId: string) {
     return this.prisma.forTenant(tenantId).table.findMany({
       orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+      include: {
+        orders: {
+          where: { status: { notIn: ['PAID', 'CANCELLED'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, totalAmountByn: true },
+        },
+      },
     });
+  }
+
+  async generateQrPdf(tenantId: string, tableIds: string[]): Promise<Buffer> {
+    const tables = await this.prisma.forTenant(tenantId).table.findMany({
+      where: { id: { in: tableIds } },
+      orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+      include: { area: { select: { name: true } } },
+    });
+    if (tables.length !== tableIds.length) {
+      throw new NotFoundException('One or more tables were not found');
+    }
+
+    const document = new PDFDocument({ size: 'A4', margin: 40 });
+    const chunks: Buffer[] = [];
+    const finished = new Promise<Buffer>((resolve, reject) => {
+      document.on('data', (chunk: Buffer) => chunks.push(chunk));
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
+    });
+    const menuBaseUrl = process.env.GUEST_MENU_URL ?? 'http://localhost:5173/menu';
+    for (const [index, table] of tables.entries()) {
+      if (index > 0 && index % 4 === 0) document.addPage();
+      const slot = index % 4;
+      const x = slot % 2 === 0 ? 55 : 315;
+      const y = Math.floor(slot / 2) === 0 ? 70 : 410;
+      const url = new URL(menuBaseUrl);
+      url.searchParams.set('table', table.id);
+      const qr = await QRCode.toBuffer(url.toString(), { type: 'png', width: 220, margin: 1 });
+      document.fontSize(18).text(`Стол ${table.tableNumber}`, x, y, { width: 220, align: 'center' });
+      document.fontSize(11).text(table.area.name, x, y + 26, { width: 220, align: 'center' });
+      document.image(qr, x + 35, y + 48, { width: 150, height: 150 });
+      document.fontSize(8).text(url.toString(), x, y + 205, { width: 220, align: 'center' });
+    }
+    document.end();
+    return finished;
   }
 
   async createTable(tenantId: string, dto: CreateTableDto) {
