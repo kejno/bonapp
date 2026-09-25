@@ -13,10 +13,36 @@ describe('TablesController', () => {
     bulkCreateTables: jest.fn(),
     updateTableStatus: jest.fn(),
   };
-  const controller = new TablesController(service as unknown as HallsService);
+  const pdfService = { generate: jest.fn(), getJob: jest.fn(), getFile: jest.fn() };
+  const controller = new TablesController(service as unknown as HallsService, pdfService as never);
   const req = { user: { tenantId: 'tenant-1' } } as TenantRequest;
 
   beforeEach(() => jest.clearAllMocks());
+
+  describe('generateQrPdf', () => {
+    it('streams a synchronous PDF for the authenticated tenant', async () => {
+      const pdf = Buffer.from('%PDF');
+      pdfService.generate.mockResolvedValue(pdf);
+      const response = { set: jest.fn(), send: jest.fn() };
+      const tableIds = ['75fe5e2c-3b7b-4d76-9c19-bd0c32850a0e', '84c022c4-3614-463b-a1f3-1d97c1c888f7'];
+      await controller.generateQrPdf(req, { tableIds }, response as never);
+      expect(pdfService.generate).toHaveBeenCalledWith('tenant-1', tableIds);
+      expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'application/pdf' }));
+      expect(response.send).toHaveBeenCalledWith(pdf);
+    });
+
+    it('returns 202 for asynchronous jobs', async () => {
+      pdfService.generate.mockResolvedValue({ jobId: 'job-1', statusUrl: '/status' });
+      const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      await controller.generateQrPdf(req, {}, response as never);
+      expect(response.status).toHaveBeenCalledWith(202);
+      expect(response.json).toHaveBeenCalledWith({ jobId: 'job-1', statusUrl: '/status' });
+    });
+
+    it('rejects invalid tableIds', async () => {
+      await expect(controller.generateQrPdf(req, { tableIds: [1] }, {} as never)).rejects.toThrow(BadRequestException);
+    });
+  });
 
   describe('list', () => {
     it('returns tables for the authenticated tenant', async () => {

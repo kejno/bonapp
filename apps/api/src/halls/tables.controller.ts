@@ -10,13 +10,16 @@ import {
   Post,
   Put,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { TableStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
 import { HallsService } from './halls.service';
+import { TableQrPdfService } from './table-qr-pdf.service';
 
 const ALLOWED_STATUSES = new Set<string>([
   TableStatus.AVAILABLE,
@@ -105,7 +108,40 @@ function isValidStatusUpdate(body: unknown): body is StatusUpdateBody {
 @Controller('api/v1/admin/tables')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TablesController {
-  constructor(private readonly hallsService: HallsService) {}
+  constructor(
+    private readonly hallsService: HallsService,
+    private readonly tableQrPdfService?: TableQrPdfService,
+  ) {}
+
+  @Post('generate-qr-pdf')
+  async generateQrPdf(@Req() req: TenantRequest, @Body() body: unknown, @Res() res: Response) {
+    if (body !== undefined && (typeof body !== 'object' || body === null ||
+      ('tableIds' in body && (!Array.isArray((body as { tableIds?: unknown }).tableIds) ||
+        !(body as { tableIds: unknown[] }).tableIds.every((id) =>
+          typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
+        ))))) {
+      throw new BadRequestException('tableIds must be an array of UUIDs');
+    }
+    const tableIds = (body as { tableIds?: string[] } | undefined)?.tableIds;
+    const result = await this.tableQrPdfService!.generate(req.user!.tenantId!, tableIds);
+    if (Buffer.isBuffer(result)) {
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="tables-qr.pdf"' });
+      return res.send(result);
+    }
+    return res.status(202).json(result);
+  }
+
+  @Get('generate-qr-pdf/jobs/:jobId')
+  getQrPdfJob(@Param('jobId') jobId: string) {
+    return this.tableQrPdfService!.getJob(jobId);
+  }
+
+  @Get('generate-qr-pdf/jobs/:jobId/file')
+  async downloadQrPdf(@Param('jobId') jobId: string, @Res() res: Response) {
+    const file = await this.tableQrPdfService!.getFile(jobId);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="tables-qr.pdf"' });
+    return res.send(file);
+  }
 
   @Get()
   list(@Req() req: TenantRequest) {
