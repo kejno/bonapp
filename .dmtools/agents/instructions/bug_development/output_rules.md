@@ -10,11 +10,12 @@ flowchart TD
     subgraph RCA["rca.md format"]
         R1["## Root Cause Analysis"]
         R2["**Bug**: one-sentence description"]
-        R3["**Root cause**: exact technical reason — file, function, line"]
-        R4["**Impact**: what is broken and under what conditions"]
-        R5["**Fix approach**: what needs to change and why"]
-        R6["**Previous attempt**: PR #, what changed, why insufficient (only if returned bug)"]
-        R1 --> R2 --> R3 --> R4 --> R5 --> R6
+        R3["**Hypotheses**: 3-5 ranked, falsifiable candidate causes — see general_guidelines.md"]
+        R4["**Root cause**: exact technical reason — file, function, line — the confirmed hypothesis"]
+        R5["**Impact**: what is broken and under what conditions"]
+        R6["**Fix approach**: what needs to change and why"]
+        R7["**Previous attempt**: PR #, what changed, why insufficient (only if returned bug)"]
+        R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7
     end
 
     subgraph ALREADY["already_fixed.json format"]
