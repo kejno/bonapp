@@ -54,6 +54,17 @@ export interface UpdateItemDto {
   description?: string | null;
   imageUrl?: string | null;
   isActive?: boolean;
+  isHit?: boolean;
+  costPriceByn?: number | null;
+  weightGrams?: number | null;
+  kitchenDepartment?: string | null;
+  cookingTimeMinutes?: number | null;
+  calories?: number | null;
+  proteins?: number | null;
+  fats?: number | null;
+  carbs?: number | null;
+  allergens?: string[];
+  posItemId?: string | null;
 }
 
 @Injectable()
@@ -199,6 +210,17 @@ export class MenuCatalogService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.isHit !== undefined) data.isHit = dto.isHit;
+    if (dto.costPriceByn !== undefined) data.costPriceByn = dto.costPriceByn;
+    if (dto.weightGrams !== undefined) data.weightGrams = dto.weightGrams;
+    if (dto.kitchenDepartment !== undefined) data.kitchenDepartment = dto.kitchenDepartment;
+    if (dto.cookingTimeMinutes !== undefined) data.cookingTimeMinutes = dto.cookingTimeMinutes;
+    if (dto.calories !== undefined) data.calories = dto.calories;
+    if (dto.proteins !== undefined) data.proteins = dto.proteins;
+    if (dto.fats !== undefined) data.fats = dto.fats;
+    if (dto.carbs !== undefined) data.carbs = dto.carbs;
+    if (dto.allergens !== undefined) data.allergens = dto.allergens;
+    if (dto.posItemId !== undefined) data.posItemId = dto.posItemId;
 
     try {
       const item = await this.prisma.forTenant(tenantId).menuItem.update({

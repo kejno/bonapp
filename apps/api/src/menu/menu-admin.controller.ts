@@ -28,6 +28,7 @@ interface UpdateGroupBody {
   name?: string;
   minSelected?: number;
   maxSelected?: number | null;
+  isRequired?: boolean;
 }
 
 function isValidCreateGroupBody(
@@ -35,16 +36,18 @@ function isValidCreateGroupBody(
 ): body is { name: string } & CreateModifierGroupData {
   if (typeof body !== 'object' || body === null) return false;
   const { name } = body as Record<string, unknown>;
-  return typeof name === 'string' && name.trim().length > 0;
+  const { isRequired } = body as Record<string, unknown>;
+  return typeof name === 'string' && name.trim().length > 0 && (isRequired === undefined || typeof isRequired === 'boolean');
 }
 
 function isValidUpdateGroupBody(body: unknown): body is UpdateGroupBody {
   if (typeof body !== 'object' || body === null) return false;
-  const { name, minSelected, maxSelected } = body as Record<string, unknown>;
+  const { name, minSelected, maxSelected, isRequired } = body as Record<string, unknown>;
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) return false;
   if (minSelected !== undefined && typeof minSelected !== 'number') return false;
   if (maxSelected !== undefined && maxSelected !== null && typeof maxSelected !== 'number') return false;
-  return name !== undefined || minSelected !== undefined || maxSelected !== undefined;
+  if (isRequired !== undefined && typeof isRequired !== 'boolean') return false;
+  return name !== undefined || minSelected !== undefined || maxSelected !== undefined || isRequired !== undefined;
 }
 
 function isValidCreateOptionBody(
@@ -108,6 +111,7 @@ export class MenuAdminController {
         name: body.name.trim(),
         minSelected: typeof rawBody['minSelected'] === 'number' ? rawBody['minSelected'] : undefined,
         maxSelected: typeof rawBody['maxSelected'] === 'number' ? rawBody['maxSelected'] : undefined,
+        isRequired: typeof rawBody['isRequired'] === 'boolean' ? rawBody['isRequired'] : undefined,
       },
     );
   }
@@ -125,6 +129,7 @@ export class MenuAdminController {
     if (body.name !== undefined) prismaData.name = body.name.trim();
     if (body.minSelected !== undefined) prismaData.minSelection = body.minSelected;
     if (body.maxSelected !== undefined) prismaData.maxSelection = body.maxSelected;
+    if (body.isRequired !== undefined) prismaData.isRequired = body.isRequired;
     return this.menuAdminService.updateModifierGroup(
       req.user!.tenantId!,
       id.trim(),

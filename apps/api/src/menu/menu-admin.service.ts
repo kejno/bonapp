@@ -8,7 +8,7 @@ export interface CreateModifierGroupData {
   name: string;
   minSelected?: number;
   maxSelected?: number;
-}
+  isRequired?: boolean;}
 
 export interface UpdateModifierOptionData {
   name?: string;
@@ -135,6 +135,7 @@ export class MenuAdminService {
         name: data.name,
         minSelection: data.minSelected ?? 0,
         maxSelection: data.maxSelected ?? null,
+        ...(data.isRequired ? { isRequired: true } : {}),
       },
       include: { modifierOptions: true },
     });
