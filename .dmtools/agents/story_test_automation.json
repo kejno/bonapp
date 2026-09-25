@@ -31,6 +31,7 @@
       "./agents/instructions/common/coding_guidelines.md",
       "./agents/instructions/common/input_context_reading.md",
       "./agents/instructions/story_test_automation/general_guidelines.md",
+      "./agents/instructions/story_test_automation/verification_gate.md",
       "./agents/instructions/story_test_automation/output_rules.md",
       "./agents/instructions/test_automation/test_automation_output_files.md",
       "./agents/instructions/test_automation/test_automation_json_output.md",
