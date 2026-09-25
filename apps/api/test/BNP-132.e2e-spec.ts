@@ -130,6 +130,11 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         cacheStore.set(key, value);
         return Promise.resolve();
       }),
+      setJsonIfAbsent: jest.fn().mockImplementation((key: string, value: unknown) => {
+        if (cacheStore.has(key)) return Promise.resolve(false);
+        cacheStore.set(key, value);
+        return Promise.resolve(true);
+      }),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -197,7 +202,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
 
   describe('TOTP setup → verify → login requires 2FA', () => {
     it('2FA setup returns secret, otpAuthUri, and setupChallenge for authenticated OWNER', async () => {
-      const token = makeJwt({ tenantId: TENANT_ID, userId: OWNER_ID, role: 'OWNER' });
+      const token = makeJwt({ tenantId: TENANT_ID, sub: OWNER_ID, role: 'OWNER' });
 
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/setup')
