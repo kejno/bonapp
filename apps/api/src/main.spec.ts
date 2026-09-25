@@ -10,9 +10,9 @@ describe('application bootstrap', () => {
     );
   });
 
-  it('trusts the first reverse proxy when resolving client IP addresses', () => {
+  it('trusts only explicitly configured proxy addresses when resolving client IP addresses', () => {
     const source = readFileSync(join(__dirname, 'main.ts'), 'utf8');
 
-    expect(source).toContain("app.set('trust proxy', 1)");
+    expect(source).toContain("app.set('trust proxy', process.env.TRUSTED_PROXY_ADDRESSES || false)");
   });
 });

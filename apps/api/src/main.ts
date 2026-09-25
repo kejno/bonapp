@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.set('trust proxy', 1);
+  app.set('trust proxy', process.env.TRUSTED_PROXY_ADDRESSES || false);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api/v1');
   await app.listen(process.env.PORT ?? 3000);
