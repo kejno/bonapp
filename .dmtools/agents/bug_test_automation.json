@@ -14,7 +14,7 @@
     "alwaysPostComments": true,
     "envVariables": {
       "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,npm,npx,git,run-agent.sh",
-      "CLAUDE_CODE_MAX_TURNS": "60"
+      "CLAUDE_CODE_MAX_TURNS": "80"
     },
     "customParams": {
       "removeLabel": "sm_bug_test_automation_triggered",
