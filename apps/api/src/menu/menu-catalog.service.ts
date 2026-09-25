@@ -40,6 +40,7 @@ export interface ItemFilters {
 }
 
 export interface CreateItemDto {
+  id?: string;
   name: string;
   categoryId: string;
   price: number;
@@ -54,6 +55,17 @@ export interface UpdateItemDto {
   description?: string | null;
   imageUrl?: string | null;
   isActive?: boolean;
+  isHit?: boolean;
+  costPriceByn?: number | null;
+  weightGrams?: number | null;
+  kitchenDepartment?: string | null;
+  cookingTimeMinutes?: number | null;
+  calories?: number | null;
+  proteins?: number | null;
+  fats?: number | null;
+  carbs?: number | null;
+  allergens?: string[];
+  posItemId?: string | null;
 }
 
 @Injectable()
@@ -160,9 +172,16 @@ export class MenuCatalogService {
   async createItem(tenantId: string, dto: CreateItemDto) {
     this.validateName(dto.name);
     this.validatePrice(dto.price);
+    if (dto.id) {
+      const existing = await this.prisma.forTenant(tenantId).menuItem.findUnique({
+        where: { tenantId_id: { tenantId, id: dto.id } },
+      });
+      if (existing) return this.mapItem(existing);
+    }
     try {
       const item = await this.prisma.forTenant(tenantId).menuItem.create({
         data: {
+          ...(dto.id ? { id: dto.id } : {}),
           tenantId,
           name: dto.name.trim(),
           categoryId: dto.categoryId,
@@ -174,6 +193,12 @@ export class MenuCatalogService {
       await this.invalidateMenu(tenantId);
       return this.mapItem(item);
     } catch (e) {
+      if (dto.id && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const existing = await this.prisma.forTenant(tenantId).menuItem.findUnique({
+          where: { tenantId_id: { tenantId, id: dto.id } },
+        });
+        if (existing) return this.mapItem(existing);
+      }
       if (this.isForeignKeyError(e)) {
         throw new NotFoundException(`Category ${dto.categoryId} not found`);
       }
@@ -199,6 +224,17 @@ export class MenuCatalogService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.isHit !== undefined) data.isHit = dto.isHit;
+    if (dto.costPriceByn !== undefined) data.costPriceByn = dto.costPriceByn;
+    if (dto.weightGrams !== undefined) data.weightGrams = dto.weightGrams;
+    if (dto.kitchenDepartment !== undefined) data.kitchenDepartment = dto.kitchenDepartment;
+    if (dto.cookingTimeMinutes !== undefined) data.cookingTimeMinutes = dto.cookingTimeMinutes;
+    if (dto.calories !== undefined) data.calories = dto.calories;
+    if (dto.proteins !== undefined) data.proteins = dto.proteins;
+    if (dto.fats !== undefined) data.fats = dto.fats;
+    if (dto.carbs !== undefined) data.carbs = dto.carbs;
+    if (dto.allergens !== undefined) data.allergens = dto.allergens;
+    if (dto.posItemId !== undefined) data.posItemId = dto.posItemId;
 
     try {
       const item = await this.prisma.forTenant(tenantId).menuItem.update({

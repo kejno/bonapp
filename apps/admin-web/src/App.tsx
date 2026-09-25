@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import MenuPage from './menu/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 
@@ -22,6 +23,7 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
           <Route
             path="/dashboard"
             element={
