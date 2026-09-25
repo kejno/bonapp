@@ -82,7 +82,7 @@ jobs:
       - run: npm test
 
   e2e:
-    name: E2E ${{ matrix.spec }}
+    name: E2E tests
     needs: test
     runs-on: ubuntu-latest
     strategy:
@@ -144,7 +144,7 @@ jobs:
           DATABASE_URL: ${{ matrix.databaseUrl || env.DATABASE_URL }}
 
   build:
-    name: Build (Node ${{ matrix.node-version }})
+    name: Build
     needs: e2e
     runs-on: ubuntu-latest
     strategy:
