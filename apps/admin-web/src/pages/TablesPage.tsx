@@ -43,7 +43,7 @@ export default function TablesPage() {
       link.href = url;
       link.download = 'table-qr-codes.pdf';
       link.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setPrintOpen(false);
       setSelectedIds([]);
       setError('');
