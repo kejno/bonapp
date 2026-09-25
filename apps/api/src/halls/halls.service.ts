@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
@@ -112,6 +113,8 @@ export class HallsService {
     }
 
     const document = new PDFDocument({ size: 'A4', margin: 40 });
+    document.registerFont('DejaVuSans', join(__dirname, '..', 'assets', 'DejaVuSans.ttf'));
+    document.font('DejaVuSans');
     const chunks: Buffer[] = [];
     const finished = new Promise<Buffer>((resolve, reject) => {
       document.on('data', (chunk: Buffer) => chunks.push(chunk));

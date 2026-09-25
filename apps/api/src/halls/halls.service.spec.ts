@@ -124,7 +124,7 @@ describe('HallsService', () => {
       process.env.GUEST_MENU_URL = 'https://guest.example/menu';
       const selectedTables = [
         { id: 't1', tableNumber: 1, qrToken: 'secret-1', area: { name: 'Main' } },
-        { id: 't2', tableNumber: 2, qrToken: 'secret-2', area: { name: 'Terrace' } },
+        { id: 't2', tableNumber: 2, qrToken: 'secret-2', area: { name: 'Терраса' } },
         { id: 't3', tableNumber: 3, qrToken: 'secret-3', area: { name: 'VIP' } },
         { id: 't4', tableNumber: 4, qrToken: 'secret-4', area: { name: 'Main' } },
         { id: 't5', tableNumber: 5, qrToken: 'secret-5', area: { name: 'Main' } },
@@ -147,6 +147,8 @@ describe('HallsService', () => {
       });
       expect(Buffer.isBuffer(result)).toBe(true);
       expect(result.subarray(0, 4).toString()).toBe('%PDF');
+      expect(result.toString('latin1')).toContain('DejaVuSans');
+      expect(result.toString('latin1')).toContain('/ToUnicode');
       expect(qrSpy).toHaveBeenCalledTimes(5);
       expect(qrSpy.mock.calls.map(([url]) => url).sort()).toEqual([
         'https://guest.example/menu?qr_token=secret-1',
