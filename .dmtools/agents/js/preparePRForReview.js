@@ -11,6 +11,29 @@ const gh = require('./common/githubHelpers.js');
 const gitOps = require('./common/gitOps.js');
 const fetchParentContextToInput = require('./fetchParentContextToInput.js');
 
+var REVIEWED_SHA_MARKER_RE = /<!--\s*pr_review:reviewed_sha=([0-9a-f]{7,40})\s*-->/;
+
+/**
+ * Finds the head SHA our own review last ran against, by scanning general PR
+ * comments for the hidden marker postPRReviewComments.js embeds on every
+ * posted review. Returns null on the PR's first review (no marker yet) — the
+ * caller then falls back to the full base...head diff.
+ */
+function findLastReviewedSha(scm, prNumber) {
+    try {
+        var comments = scm.getPrComments(prNumber) || [];
+        for (var i = comments.length - 1; i >= 0; i--) {
+            var body = comments[i] && comments[i].body;
+            if (!body) continue;
+            var match = REVIEWED_SHA_MARKER_RE.exec(body);
+            if (match) return match[1];
+        }
+    } catch (e) {
+        console.warn('Could not scan PR comments for last-reviewed SHA marker:', e.message || e);
+    }
+    return null;
+}
+
 function action(params) {
     try {
         const inputFolder = params.inputFolderPath;
@@ -113,6 +136,36 @@ function action(params) {
         gitOps.writePRContext(inputFolder, prDetails, diff, discussionData.markdown, discussionData.rawThreads);
         console.log('PR context files written successfully');
 
+        // Step 6.4: Incremental diff since our last review round (rework loop scoping).
+        // First review on a PR has no marker yet — lastReviewedSha stays null and the
+        // agent instructions fall back to reviewing the full pr_diff.txt.
+        var lastReviewedSha = findLastReviewedSha(scm, pr.number);
+        var isRereview = !!lastReviewedSha;
+        console.log(isRereview
+            ? 'Found last-reviewed SHA marker: ' + lastReviewedSha + ' — computing incremental diff'
+            : 'No last-reviewed SHA marker found — this is the first review round');
+
+        if (isRereview) {
+            var incrementalDiff = gitOps.getIncrementalDiff(lastReviewedSha, branchName || (prDetails.head && prDetails.head.ref), config.workingDir);
+            if (incrementalDiff !== null) {
+                var incrementalNote = incrementalDiff === ''
+                    ? '# Incremental Diff Since Last Review\n\nNo new commits since the last reviewed commit (' + lastReviewedSha + ').\n'
+                    : gitOps.trimLargeTextForInput(incrementalDiff, 'Incremental Diff Since Last Review', 12000);
+                gitOps.writeInputFile(inputFolder + '/incremental_diff.txt', incrementalNote, 'incremental_diff.txt');
+            } else {
+                console.warn('Incremental diff unavailable (SHA unreachable) — agent will fall back to full pr_diff.txt');
+            }
+        }
+
+        try {
+            var roundNote = isRereview
+                ? '\n- **Review round**: re-review after rework — last reviewed commit `' + lastReviewedSha + '`. See `incremental_diff.txt` for what actually changed since then.\n'
+                : '\n- **Review round**: first review on this PR.\n';
+            file_write({ path: inputFolder + '/pr_info.md', content: file_read({ path: inputFolder + '/pr_info.md' }) + roundNote });
+        } catch (e) {
+            console.warn('Could not append review-round note to pr_info.md:', e);
+        }
+
         // Step 6.5: Detect failed CI checks
         var headSha = prDetails.head ? prDetails.head.sha : null;
         console.log('Detecting failed checks for head SHA:', headSha || '(missing)');
@@ -179,5 +232,5 @@ function action(params) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action };
+    module.exports = { action, findLastReviewedSha };
 }
