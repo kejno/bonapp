@@ -258,6 +258,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.tenant.findUnique({ where: { slug } });
   }
 
+  findTenantById(id: string) {
+    return this.client.tenant.findUnique({ where: { id } });
+  }
+
   /**
    * Returns a tenant-scoped Prisma client based on the current
    * AsyncLocalStorage context set by TenantContextMiddleware.

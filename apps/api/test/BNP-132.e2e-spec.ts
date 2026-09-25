@@ -95,7 +95,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       forTenant: jest.fn().mockReturnValue({
         user: {
           findMany: jest.fn().mockResolvedValue([
-            { id: CASHIER_ID, role: 'CASHIER', pinHash: cashierPinHash },
+            { id: CASHIER_ID, role: 'CASHIER', pinHash: cashierPinHash, isBlocked: false },
           ]),
           findFirst: jest.fn().mockResolvedValue({
             id: OWNER_ID,
@@ -105,6 +105,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
             totpSecret: null,
             totpEnabled: false,
             isActive: true,
+            isBlocked: false,
           }),
           update: jest.fn().mockResolvedValue({}),
         },
@@ -120,6 +121,11 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       getJson: jest.fn().mockImplementation(<T>(key: string) =>
         Promise.resolve((cacheStore.get(key) as T) ?? null),
       ),
+      consumeJson: jest.fn().mockImplementation(<T>(key: string) => {
+        const value = cacheStore.get(key) as T | undefined;
+        cacheStore.delete(key);
+        return Promise.resolve(value ?? null);
+      }),
       setJson: jest.fn().mockImplementation((key: string, value: unknown) => {
         cacheStore.set(key, value);
         return Promise.resolve();

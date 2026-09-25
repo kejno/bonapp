@@ -25,6 +25,7 @@ const LOGIN_ATTEMPTS_LIMIT = 5;
 const LOGIN_WINDOW_SECONDS = 900; // 15 minutes
 const PIN_JWT_TTL_SECONDS = 28800; // 8 hours
 const MANAGER_JWT_TTL_SECONDS = 86400; // 24 hours
+const REFRESH_JWT_TTL_SECONDS = 604800; // 7 days
 const LOGIN_CHALLENGE_TTL_SECONDS = 180; // 3 minutes
 const SETUP_CHALLENGE_TTL_SECONDS = 300; // 5 minutes
 const TOTP_STEP_SECONDS = 30;
@@ -162,6 +163,14 @@ interface ChallengePayload {
   tenantId: string;
 }
 
+interface AuthUserPayload {
+  id: string;
+  email: string;
+  role: string;
+  tenantId: string;
+  fullName: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly jwtSecret: string;
@@ -194,13 +203,23 @@ export class AuthService {
       .forTenant(tenant.id)
       .user.findMany({
         where: { role: { in: ['CASHIER', 'WAITER', 'CHEF'] }, isActive: true },
-        select: { id: true, role: true, pinHash: true },
+        select: { id: true, role: true, pinHash: true, isBlocked: true },
       });
 
     let matchedUser: { id: string; role: string } | null = null;
     for (const user of staffUsers) {
-      if (user.pinHash && (await compare(pin, user.pinHash))) {
+      const isLegacyPin = user.pinHash !== null && /^\d{4}$/.test(user.pinHash);
+      const pinMatches = user.pinHash && (isLegacyPin
+        ? pin === user.pinHash
+        : await compare(pin, user.pinHash));
+      if (!user.isBlocked && pinMatches) {
         matchedUser = { id: user.id, role: user.role };
+        if (isLegacyPin) {
+          await this.prisma.forTenant(tenant.id).user.update({
+            where: { id: user.id },
+            data: { pinHash: await hash(pin, BCRYPT_COST) },
+          });
+        }
         break;
       }
     }
@@ -230,7 +249,7 @@ export class AuthService {
     email: string,
     password: string,
     ip = '0.0.0.0',
-  ): Promise<{ accessToken: string } | { challenge: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { challenge: string }> {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
 
@@ -238,19 +257,25 @@ export class AuthService {
       where: { email },
       select: {
         id: true,
+        tenantId: true,
+        email: true,
+        fullName: true,
         role: true,
         passwordHash: true,
         totpEnabled: true,
         isActive: true,
+        isBlocked: true,
       },
     });
 
     if (
       !user ||
       !user.isActive ||
+      user.isBlocked ||
       !MANAGER_ROLES.has(user.role) ||
       !(await compare(password, user.passwordHash))
     ) {
+      if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
       await this.recordFailedAttempt(
         loginRateLimitKey(tenant.id, ip),
         LOGIN_ATTEMPTS_LIMIT,
@@ -282,7 +307,32 @@ export class AuthService {
       this.jwtSecret,
       MANAGER_JWT_TTL_SECONDS,
     );
-    return { accessToken };
+    return { accessToken, refreshToken: this.createRefreshToken(user), user: this.authUser(user) };
+  }
+
+  async loginLegacy(login: string, password: string, ip: string): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { challenge: string }> {
+    const normalized = login.trim().toLowerCase();
+    const users = await this.prisma.unscopedClient.user.findMany({
+      where: { OR: [{ email: normalized }, { phone: login.trim() }], isActive: true },
+      take: 2,
+      select: { id: true, tenantId: true, email: true },
+    });
+    if (users.length !== 1) throw new UnauthorizedException('Invalid credentials');
+    const tenant = await this.prisma.findTenantById(users[0].tenantId);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
+    return this.login(tenant.slug, users[0].email, password, ip);
+  }
+
+  private authUser(user: AuthUserPayload): AuthUserPayload {
+    return { id: user.id, email: user.email, role: user.role, tenantId: user.tenantId, fullName: user.fullName };
+  }
+
+  private createRefreshToken(user: AuthUserPayload): string {
+    return createJwt(
+      { tenantId: user.tenantId, userId: user.id, role: user.role, type: 'refresh' },
+      this.jwtSecret,
+      REFRESH_JWT_TTL_SECONDS,
+    );
   }
 
   async setup2fa(
@@ -332,21 +382,20 @@ export class AuthService {
   async verify2fa(
     challenge: string,
     code: string,
-  ): Promise<{ accessToken: string } | { totpEnabled: boolean }> {
-    const stored = await this.cache.getJson<ChallengePayload>(
+  ): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { totpEnabled: boolean }> {
+    const stored = await this.cache.consumeJson<ChallengePayload>(
       `totp:challenge:${challenge}`,
     );
     if (!stored) throw new UnauthorizedException('Invalid or expired challenge');
-
-    await this.cache.del(`totp:challenge:${challenge}`);
 
     const user = await this.prisma
       .forTenant(stored.tenantId)
       .user.findFirst({
         where: { id: stored.userId },
-        select: { id: true, role: true, totpSecret: true, totpEnabled: true },
+        select: { id: true, tenantId: true, email: true, fullName: true, role: true, totpSecret: true, totpEnabled: true, isBlocked: true },
       });
 
+    if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
     if (!user?.totpSecret) {
       throw new UnauthorizedException('TOTP not configured for this user');
     }
@@ -373,7 +422,7 @@ export class AuthService {
       this.jwtSecret,
       MANAGER_JWT_TTL_SECONDS,
     );
-    return { accessToken };
+    return { accessToken, refreshToken: this.createRefreshToken(user), user: this.authUser(user) };
   }
 
   async hashPin(pin: string): Promise<string> {

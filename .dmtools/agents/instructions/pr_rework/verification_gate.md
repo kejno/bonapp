@@ -11,12 +11,24 @@ problem. Those failures are cheap to catch here and expensive to catch in review
 Run these from the repository root, in order. All must pass:
 
 ```bash
-npm run lint
+git diff --diff-filter=ACM --name-only origin/<baseBranch>...HEAD
+git status --short   # untracked files this rework added
+npx eslint <files you added/modified, from the list above>
 npm run typecheck
 npm test
 ```
 
-If any command fails:
+Lint only the exact files you added or modified this rework round (eslint takes
+file paths directly) — not the whole workspace. A pre-existing lint violation in
+a file you did not touch is not yours to fix; do not reformat or "clean up"
+files outside your changes just because the full-project lint would also flag them.
+
+Typecheck has no reliable single-file mode, so it still runs project-wide — but
+only fix errors in files you added or modified. Leave pre-existing errors in
+untouched files alone; report them in `outputs/response.md` if they block a
+clean typecheck run, don't silently fix unrelated code.
+
+If any command fails on your own files:
 
 1. Fix the root cause — never disable a rule, loosen a type, or delete a failing
    assertion to get past the gate.

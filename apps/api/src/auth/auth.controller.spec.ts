@@ -11,6 +11,7 @@ import { AuthService } from './auth.service';
 const mockAuthService = {
   pinLogin: jest.fn(),
   login: jest.fn(),
+  loginLegacy: jest.fn(),
   setup2fa: jest.fn(),
   verify2fa: jest.fn(),
 };
@@ -128,6 +129,16 @@ describe('AuthController — POST /auth/login', () => {
     });
 
     expect(result).toEqual({ challenge: 'abc123' });
+  });
+
+  it('accepts the existing admin-web login payload', async () => {
+    mockAuthService.loginLegacy.mockResolvedValue({ accessToken: 'jwt', user: {
+      id: 'u1', email: 'owner@example.com', role: 'OWNER', tenantId: 't1', fullName: 'Owner',
+    } });
+    const controller = makeController();
+    const result = await controller.login({ login: 'owner@example.com', password: 'secret' });
+    expect(result).toHaveProperty('user');
+    expect(mockAuthService.loginLegacy).toHaveBeenCalledWith('owner@example.com', 'secret', '0.0.0.0');
   });
 
   it('passes the client IP to password-login rate limiting', async () => {

@@ -58,4 +58,20 @@ describe('CacheService', () => {
       );
     });
   });
+
+  describe('consumeJson', () => {
+    it('uses atomic Redis GETDEL and parses the value', async () => {
+      const payload = { type: 'login', userId: 'u1' };
+      const redis = { getdel: jest.fn().mockResolvedValue(JSON.stringify(payload)) };
+      const service = new CacheService(redis as never);
+      await expect(service.consumeJson('totp:challenge:id')).resolves.toEqual(payload);
+      expect(redis.getdel).toHaveBeenCalledWith('totp:challenge:id');
+    });
+
+    it('fails closed when Redis cannot consume a challenge', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const service = new CacheService({ getdel: jest.fn().mockRejectedValue(new Error('Redis down')) } as never);
+      await expect(service.consumeJson('totp:challenge:id')).rejects.toThrow('temporarily unavailable');
+    });
+  });
 });
