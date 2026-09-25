@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { TableStatus } from '@prisma/client';
+jest.mock('puppeteer', () => ({}), { virtual: true });
+jest.mock('qrcode', () => ({}), { virtual: true });
 import type { TenantRequest } from '../auth/tenant-context.guard';
 import { HallsService } from './halls.service';
 import { TablesController } from './tables.controller';
@@ -41,6 +43,20 @@ describe('TablesController', () => {
 
     it('rejects invalid tableIds', async () => {
       await expect(controller.generateQrPdf(req, { tableIds: [1] }, {} as never)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('asynchronous PDF access', () => {
+    it('scopes status and file access to the authenticated tenant', async () => {
+      pdfService.getJob.mockResolvedValue({ status: 'ready' });
+      pdfService.getFile.mockResolvedValue(Buffer.from('%PDF'));
+      const response = { set: jest.fn(), send: jest.fn() };
+
+      await controller.getQrPdfJob(req, 'job-1');
+      await controller.downloadQrPdf(req, 'job-1', response as never);
+
+      expect(pdfService.getJob).toHaveBeenCalledWith('job-1', 'tenant-1');
+      expect(pdfService.getFile).toHaveBeenCalledWith('job-1', 'tenant-1');
     });
   });
 

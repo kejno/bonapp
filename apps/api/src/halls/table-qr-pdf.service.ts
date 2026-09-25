@@ -22,6 +22,10 @@ export interface PdfJob {
   error?: string;
 }
 
+interface PdfJobRecord extends PdfJob {
+  tenantId: string;
+}
+
 @Injectable()
 export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
   private browser?: Awaited<ReturnType<typeof puppeteer.launch>>;
@@ -34,17 +38,17 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    this.worker = new Worker('table-qr-pdf', async (job: Job<{ jobId: string; cacheKey: string; name: string; logoUrl: string | null; tables: Array<{ id: string; tableNumber: number; qrToken: string }> }>) => {
-      const { jobId, cacheKey, name, logoUrl, tables } = job.data;
+    this.worker = new Worker('table-qr-pdf', async (job: Job<{ jobId: string; tenantId: string; cacheKey: string; name: string; logoUrl: string | null; tables: Array<{ id: string; tableNumber: number; qrToken: string }> }>) => {
+      const { jobId, tenantId, cacheKey, name, logoUrl, tables } = job.data;
       try {
         const cachedPdf = await this.cache.getJson<string>(`${FILE_PREFIX}${cacheKey}`);
         const pdf = cachedPdf ? Buffer.from(cachedPdf, 'base64') : await this.render(name, logoUrl, tables);
         if (!cachedPdf) await this.cache.setJson(`${FILE_PREFIX}${cacheKey}`, pdf.toString('base64'), PDF_TTL_SECONDS);
         await this.cache.setJson(`${FILE_PREFIX}${jobId}`, pdf.toString('base64'), PDF_TTL_SECONDS);
         const statusUrl = `/api/v1/admin/tables/generate-qr-pdf/jobs/${jobId}`;
-        await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { status: 'ready', downloadUrl: `${statusUrl}/file` } satisfies PdfJob, JOB_TTL_SECONDS);
+        await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { tenantId, status: 'ready', downloadUrl: `${statusUrl}/file` } satisfies PdfJobRecord, JOB_TTL_SECONDS);
       } catch {
-        await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { status: 'failed', error: 'Не удалось сформировать PDF' } satisfies PdfJob, JOB_TTL_SECONDS);
+        await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { tenantId, status: 'failed', error: 'Не удалось сформировать PDF' } satisfies PdfJobRecord, JOB_TTL_SECONDS);
       }
     }, { connection: this.connection.duplicate({ maxRetriesPerRequest: null }) });
   }
@@ -71,21 +75,30 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     }
     const jobId = randomUUID();
     const statusUrl = `/api/v1/admin/tables/generate-qr-pdf/jobs/${jobId}`;
-    await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { status: 'pending' } satisfies PdfJob, JOB_TTL_SECONDS);
-    await this.queue.add('generate', { jobId, cacheKey: key, name: tenant.name, logoUrl: tenant.logoUrl, tables }, { removeOnComplete: true, removeOnFail: true });
+    await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { tenantId, status: 'pending' } satisfies PdfJobRecord, JOB_TTL_SECONDS);
+    await this.queue.add('generate', { jobId, tenantId, cacheKey: key, name: tenant.name, logoUrl: tenant.logoUrl, tables }, { removeOnComplete: true, removeOnFail: true });
     return { jobId, statusUrl };
   }
 
-  async getJob(jobId: string): Promise<PdfJob> {
-    const job = await this.cache.getJson<PdfJob>(`${JOB_PREFIX}${jobId}`);
-    if (!job) throw new NotFoundException('PDF job not found');
-    return job;
+  async getJob(jobId: string, tenantId: string): Promise<PdfJob> {
+    const job = await this.getOwnedJob(jobId, tenantId);
+    const publicJob: PdfJob = { status: job.status };
+    if (job.downloadUrl) publicJob.downloadUrl = job.downloadUrl;
+    if (job.error) publicJob.error = job.error;
+    return publicJob;
   }
 
-  async getFile(jobId: string): Promise<Buffer> {
+  async getFile(jobId: string, tenantId: string): Promise<Buffer> {
+    await this.getOwnedJob(jobId, tenantId);
     const file = await this.cache.getJson<string>(`${FILE_PREFIX}${jobId}`);
     if (!file) throw new NotFoundException('PDF file not found');
     return Buffer.from(file, 'base64');
+  }
+
+  private async getOwnedJob(jobId: string, tenantId: string): Promise<PdfJobRecord> {
+    const job = await this.cache.getJson<PdfJobRecord>(`${JOB_PREFIX}${jobId}`);
+    if (!job || job.tenantId !== tenantId) throw new NotFoundException('PDF job not found');
+    return job;
   }
 
   async onModuleDestroy(): Promise<void> {

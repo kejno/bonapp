@@ -132,13 +132,13 @@ export class TablesController {
   }
 
   @Get('generate-qr-pdf/jobs/:jobId')
-  getQrPdfJob(@Param('jobId') jobId: string) {
-    return this.tableQrPdfService!.getJob(jobId);
+  getQrPdfJob(@Req() req: TenantRequest, @Param('jobId') jobId: string) {
+    return this.tableQrPdfService!.getJob(jobId, req.user!.tenantId!);
   }
 
   @Get('generate-qr-pdf/jobs/:jobId/file')
-  async downloadQrPdf(@Param('jobId') jobId: string, @Res() res: Response) {
-    const file = await this.tableQrPdfService!.getFile(jobId);
+  async downloadQrPdf(@Req() req: TenantRequest, @Param('jobId') jobId: string, @Res() res: Response) {
+    const file = await this.tableQrPdfService!.getFile(jobId, req.user!.tenantId!);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="tables-qr.pdf"' });
     return res.send(file);
   }
