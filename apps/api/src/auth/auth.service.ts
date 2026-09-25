@@ -423,15 +423,15 @@ export class AuthService {
     );
 
     const totpFailKey = `totp:fails:${user.id}`;
+    await this.ensureAttemptAllowed(
+      totpFailKey,
+      TOTP_FAIL_LIMIT,
+      TOTP_FAIL_WINDOW_SECONDS,
+      'Too many TOTP verification attempts. Please wait.',
+    );
 
     const counter = totpVerifyGetCounter(secretBase32, code);
     if (counter === null) {
-      await this.recordFailedAttempt(
-        totpFailKey,
-        TOTP_FAIL_LIMIT,
-        TOTP_FAIL_WINDOW_SECONDS,
-        'Too many TOTP verification attempts. Please wait.',
-      );
       throw new UnauthorizedException('Invalid TOTP code');
     }
 
@@ -440,12 +440,6 @@ export class AuthService {
     const totpUsedTtl = TOTP_STEP_SECONDS * (TOTP_WINDOW * 2 + 2);
     const marked = await this.cache.setJsonIfAbsent(usedKey, 1, totpUsedTtl);
     if (!marked) {
-      await this.recordFailedAttempt(
-        totpFailKey,
-        TOTP_FAIL_LIMIT,
-        TOTP_FAIL_WINDOW_SECONDS,
-        'Too many TOTP verification attempts. Please wait.',
-      );
       throw new UnauthorizedException('TOTP code already used');
     }
 
@@ -473,25 +467,6 @@ export class AuthService {
 
   isStaffRole(role: string): boolean {
     return STAFF_ROLES.has(role);
-  }
-
-  private async recordFailedAttempt(
-    key: string,
-    limit: number,
-    windowSeconds: number,
-    message: string,
-  ): Promise<void> {
-    const attempts = await this.cache.increment(key, windowSeconds);
-    if (attempts > limit) {
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message,
-          retryAfter: windowSeconds,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
   }
 
   private async ensureAttemptAllowed(
