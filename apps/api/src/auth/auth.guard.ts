@@ -20,6 +20,7 @@ interface AuthenticatedRequest extends Request {
 interface JwtPayload {
   tenantId?: unknown;
   userId?: unknown;
+  sub?: unknown;
   role?: unknown;
   exp?: unknown;
   type?: unknown;
@@ -87,9 +88,10 @@ export class AuthGuard implements CanActivate {
         throw new UnauthorizedException();
       }
 
+      const userId = payload.userId ?? payload.sub;
       if (
-        payload.userId !== undefined &&
-        (typeof payload.userId !== 'string' || !payload.userId.trim())
+        userId !== undefined &&
+        (typeof userId !== 'string' || !userId.trim())
       ) {
         throw new UnauthorizedException();
       }
@@ -103,7 +105,7 @@ export class AuthGuard implements CanActivate {
 
       return {
         tenantId: payload.tenantId,
-        ...(typeof payload.userId === 'string' ? { userId: payload.userId } : {}),
+        ...(typeof userId === 'string' ? { userId } : {}),
         ...(typeof payload.role === 'string'
           ? { role: payload.role as UserRole }
           : {}),

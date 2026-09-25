@@ -59,6 +59,21 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('supports legacy JWTs that identify the user with the sub claim', () => {
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'legacy-user-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+    const { context, request } = mockContext(`Bearer ${token}`);
+
+    expect(guard.canActivate(context)).toBe(true);
+    expect(request.user).toEqual({
+      tenantId: 'tenant-1',
+      userId: 'legacy-user-1',
+      role: 'OWNER',
+    });
+  });
+
   it('should throw UnauthorizedException when Authorization header is absent', () => {
     const { context } = mockContext();
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
