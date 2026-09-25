@@ -39,6 +39,11 @@ export interface ItemFilters {
   isInStopList?: boolean;
 }
 
+export interface ReorderItemsDto {
+  categoryId: string;
+  itemIds: string[];
+}
+
 export interface CreateItemDto {
   id?: string;
   name: string;
@@ -162,11 +167,29 @@ export class MenuCatalogService {
       where,
       orderBy: [
         { category: { sortOrder: 'asc' } },
-        { name: 'asc' },
+        { sortOrder: 'asc' },
         { id: 'asc' },
       ],
     });
     return items.map((item) => this.mapItem(item));
+  }
+
+  async reorderItems(tenantId: string, dto: ReorderItemsDto): Promise<void> {
+    const db = this.prisma.forTenant(tenantId);
+    const existing = await db.menuItem.findMany({
+      where: { tenantId, categoryId: dto.categoryId },
+      select: { id: true },
+    });
+    const expected = new Set(existing.map((item) => item.id));
+    if (dto.itemIds.length !== expected.size || new Set(dto.itemIds).size !== dto.itemIds.length || dto.itemIds.some((id) => !expected.has(id))) {
+      throw new BadRequestException('itemIds must contain every item in the category exactly once');
+    }
+    await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await Promise.all(dto.itemIds.map((id, sortOrder) => tx.menuItem.update({
+        where: { tenantId_id: { tenantId, id } }, data: { sortOrder },
+      })));
+    });
+    await this.invalidateMenu(tenantId);
   }
 
   async createItem(tenantId: string, dto: CreateItemDto) {
@@ -179,16 +202,24 @@ export class MenuCatalogService {
       if (existing) return this.mapItem(existing);
     }
     try {
-      const item = await this.prisma.forTenant(tenantId).menuItem.create({
-        data: {
-          ...(dto.id ? { id: dto.id } : {}),
-          tenantId,
-          name: dto.name.trim(),
-          categoryId: dto.categoryId,
-          priceByn: dto.price / 100,
-          description: dto.description,
-          imageUrl: dto.imageUrl,
-        },
+      const item = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+        const existing = await tx.menuItem.findMany({
+          where: { tenantId, categoryId: dto.categoryId },
+          select: { sortOrder: true },
+        });
+        const sortOrder = (existing ?? []).reduce((next, current) => Math.max(next, current.sortOrder + 1), 0);
+        return tx.menuItem.create({
+          data: {
+            ...(dto.id ? { id: dto.id } : {}),
+            tenantId,
+            name: dto.name.trim(),
+            categoryId: dto.categoryId,
+            priceByn: dto.price / 100,
+            description: dto.description,
+            imageUrl: dto.imageUrl,
+            sortOrder,
+          },
+        });
       });
       await this.invalidateMenu(tenantId);
       return this.mapItem(item);
@@ -237,10 +268,32 @@ export class MenuCatalogService {
     if (dto.posItemId !== undefined) data.posItemId = dto.posItemId;
 
     try {
-      const item = await this.prisma.forTenant(tenantId).menuItem.update({
-        where: { tenantId_id: { tenantId, id: itemId } },
-        data,
-      });
+      const item = dto.categoryId === undefined
+        ? await this.prisma.forTenant(tenantId).menuItem.update({
+          where: { tenantId_id: { tenantId, id: itemId } },
+          data,
+        })
+        : await this.prisma.transactionForTenant(tenantId, async (tx) => {
+          const current = await tx.menuItem.findUnique({
+            where: { tenantId_id: { tenantId, id: itemId } },
+            select: { categoryId: true },
+          });
+          if (!current || current.categoryId === dto.categoryId) {
+            return tx.menuItem.update({
+              where: { tenantId_id: { tenantId, id: itemId } },
+              data,
+            });
+          }
+          const destinationItems = await tx.menuItem.findMany({
+            where: { tenantId, categoryId: dto.categoryId },
+            select: { sortOrder: true },
+          });
+          const sortOrder = destinationItems.reduce((next, candidate) => Math.max(next, candidate.sortOrder + 1), 0);
+          return tx.menuItem.update({
+            where: { tenantId_id: { tenantId, id: itemId } },
+            data: { ...data, sortOrder },
+          });
+        });
       await this.invalidateMenu(tenantId);
       return this.mapItem(item);
     } catch (e) {

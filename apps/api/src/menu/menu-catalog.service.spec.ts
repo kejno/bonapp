@@ -10,6 +10,7 @@ const CACHE_KEY = 'menu:tenant:tenant-1';
 describe('MenuCatalogService', () => {
   let prisma: {
     forTenant: jest.Mock;
+    transactionForTenant: jest.Mock;
     menuCategory: {
       findMany: jest.Mock;
       create: jest.Mock;
@@ -32,6 +33,7 @@ describe('MenuCatalogService', () => {
   beforeEach(() => {
     prisma = {
       forTenant: jest.fn(),
+      transactionForTenant: jest.fn(),
       menuCategory: {
         findMany: jest.fn(),
         create: jest.fn(),
@@ -48,6 +50,7 @@ describe('MenuCatalogService', () => {
       },
     };
     prisma.forTenant.mockReturnValue(prisma);
+    prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma));
     cache = { del: jest.fn() };
     storage = { getPresignedUploadUrl: jest.fn() };
     service = new MenuCatalogService(
@@ -228,7 +231,7 @@ describe('MenuCatalogService', () => {
         where: { tenantId: 'tenant-1' },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
@@ -257,7 +260,7 @@ describe('MenuCatalogService', () => {
         },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
@@ -272,14 +275,50 @@ describe('MenuCatalogService', () => {
         where: { tenantId: 'tenant-1', isActive: false, isInStopList: true },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
     });
+
+    it('reorders every item in a category and invalidates menu cache', async () => {
+      const update = jest.fn().mockResolvedValue({});
+      prisma.menuItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { update: jest.Mock } }) => Promise<unknown>) => callback({ menuItem: { update } }));
+
+      await service.reorderItems('tenant-1', { categoryId: 'cat-1', itemIds: ['b', 'a'] });
+
+      expect(update).toHaveBeenCalledWith({ where: { tenantId_id: { tenantId: 'tenant-1', id: 'b' } }, data: { sortOrder: 0 } });
+      expect(update).toHaveBeenCalledWith({ where: { tenantId_id: { tenantId: 'tenant-1', id: 'a' } }, data: { sortOrder: 1 } });
+      expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
+    });
+
+    it('rejects incomplete or duplicate order without updating items', async () => {
+      prisma.menuItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+
+      await expect(service.reorderItems('tenant-1', { categoryId: 'cat-1', itemIds: ['a', 'a'] })).rejects.toThrow(BadRequestException);
+      expect(prisma.transactionForTenant).not.toHaveBeenCalled();
+    });
   });
 
   describe('createItem', () => {
+    it('assigns the next category sort order while creating the item', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'item-3', name: 'Latte', priceByn: 5.5 });
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { findMany: jest.Mock; create: jest.Mock } }) => Promise<unknown>) => callback({
+        menuItem: {
+          findMany: jest.fn().mockResolvedValue([{ sortOrder: 0 }, { sortOrder: 4 }]),
+          create,
+        },
+      }));
+
+      await service.createItem('tenant-1', { name: 'Latte', categoryId: 'cat-1', price: 550 });
+
+      expect(create).toHaveBeenCalledWith({ data: {
+        tenantId: 'tenant-1', name: 'Latte', categoryId: 'cat-1', priceByn: 5.5,
+        description: undefined, imageUrl: undefined, sortOrder: 5,
+      } });
+    });
+
     it('returns the existing item when a retried create uses the same client id', async () => {
       const existing = { id: 'item-1', name: 'Latte', priceByn: 5.5 };
       prisma.menuItem.findUnique.mockResolvedValue(existing);
@@ -294,7 +333,10 @@ describe('MenuCatalogService', () => {
 
     it('creates an item and invalidates the menu cache', async () => {
       const created = { id: 'item-1', name: 'Latte', priceByn: 5.5 };
-      prisma.menuItem.create.mockResolvedValue(created);
+      const create = jest.fn().mockResolvedValue(created);
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { findMany: jest.Mock; create: jest.Mock } }) => Promise<unknown>) => callback({
+        menuItem: { findMany: jest.fn().mockResolvedValue([]), create },
+      }));
 
       const result = await service.createItem('tenant-1', {
         name: 'Latte',
@@ -302,7 +344,7 @@ describe('MenuCatalogService', () => {
         price: 550,
       });
 
-      expect(prisma.menuItem.create).toHaveBeenCalledWith({
+      expect(create).toHaveBeenCalledWith({
         data: {
           tenantId: 'tenant-1',
           name: 'Latte',
@@ -310,6 +352,7 @@ describe('MenuCatalogService', () => {
           priceByn: 5.5,
           description: undefined,
           imageUrl: undefined,
+          sortOrder: 0,
         },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
@@ -354,6 +397,7 @@ describe('MenuCatalogService', () => {
           priceByn: 0,
           description: undefined,
           imageUrl: undefined,
+          sortOrder: 0,
         },
       });
     });
@@ -377,6 +421,7 @@ describe('MenuCatalogService', () => {
           priceByn: 4,
           description: 'Classic',
           imageUrl: 'https://cdn.example.com/cap.jpg',
+          sortOrder: 0,
         },
       });
     });
