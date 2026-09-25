@@ -66,7 +66,7 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
 
   async generate(tenantId: string, tableIds?: string[]): Promise<Buffer | { jobId: string; statusUrl: string }> {
     const tenant = await this.prisma.forTenant(tenantId).tenant.findUnique({
-      where: { id: tenantId }, select: { name: true, logoUrl: true },
+      where: { id: tenantId }, select: { name: true, logoUrl: true, updatedAt: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     const tables = await this.prisma.forTenant(tenantId).table.findMany({
@@ -76,7 +76,7 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     });
     if (tableIds && tables.length !== new Set(tableIds).size) throw new NotFoundException('One or more tables not found');
     if (!tables.length) throw new NotFoundException('No tables found');
-    const key = this.cacheKey(tenantId, tenant.name, tables.map((t) => `${t.id}:${t.tableNumber}:${t.qrToken}`), tenant.logoUrl);
+    const key = this.cacheKey(tenantId, tenant.name, tables.map((t) => `${t.id}:${t.tableNumber}:${t.qrToken}`), tenant.logoUrl, tenant.updatedAt);
     const cached = await this.cache.getJson<string>(`${FILE_PREFIX}${key}`);
     if (tables.length <= QR_PDF_SYNC_LIMIT) {
       if (cached) return Buffer.from(cached, 'base64');
@@ -123,8 +123,8 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     await this.cache.setJson(`${FILE_PREFIX}${jobId}`, pdf.toString('base64'), JOB_TTL_SECONDS);
   }
 
-  private cacheKey(tenantId: string, name: string, ids: string[], logoUrl: string | null): string {
-    return createHash('sha256').update(JSON.stringify([tenantId, name, [...ids].sort(), logoUrl])).digest('hex');
+  private cacheKey(tenantId: string, name: string, ids: string[], logoUrl: string | null, tenantUpdatedAt: Date): string {
+    return createHash('sha256').update(JSON.stringify([tenantId, name, [...ids].sort(), logoUrl, tenantUpdatedAt])).digest('hex');
   }
 
   private async render(name: string, logoUrl: string | null, tables: Array<{ tableNumber: number; qrToken: string }>): Promise<Buffer> {

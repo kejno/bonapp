@@ -35,6 +35,31 @@ describe('TableQrPdfService job ownership', () => {
 });
 
 describe('TableQrPdfService cache identity', () => {
+  it('invalidates the PDF cache when a logo is replaced at the same URL', async () => {
+    const service = Object.create(TableQrPdfService.prototype) as TableQrPdfService;
+    const requestedKeys: string[] = [];
+    const cache = {
+      getJson: jest.fn((key: string): Promise<null> => {
+        requestedKeys.push(key);
+        return Promise.resolve(null);
+      }),
+      setJson: jest.fn(),
+    };
+    const tenant = { name: 'Cafe', logoUrl: 'https://storage.example.com/bonapp/logo.png', updatedAt: new Date('2026-01-01T00:00:00.000Z') };
+    const prisma = { forTenant: () => ({ tenant: { findUnique: jest.fn().mockImplementation(() => ({ ...tenant })) }, table: { findMany: jest.fn().mockResolvedValue([{ id: 'table-1', tableNumber: 1, qrToken: 'token' }]) } }) };
+    (service as unknown as { cache: typeof cache; prisma: typeof prisma }).cache = cache;
+    (service as unknown as { prisma: typeof prisma }).prisma = prisma;
+    const renderer = jest.fn(() => Promise.resolve(Buffer.from('%PDF-')));
+    (service as unknown as { render: typeof renderer }).render = renderer;
+
+    await service.generate('tenant-1');
+    tenant.updatedAt = new Date('2026-01-02T00:00:00.000Z');
+    await service.generate('tenant-1');
+
+    expect(tenant.logoUrl).toBe('https://storage.example.com/bonapp/logo.png');
+    expect(requestedKeys[0]).not.toBe(requestedKeys[1]);
+  });
+
   it('includes the tenant name in the PDF cache key', async () => {
     const service = Object.create(TableQrPdfService.prototype) as TableQrPdfService;
     const requestedKeys: string[] = [];
