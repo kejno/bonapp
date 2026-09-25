@@ -33,38 +33,28 @@ describe('CacheService', () => {
   });
 
   describe('increment', () => {
-    it('increments a key and sets TTL on first call', async () => {
-      const redis = {
-        incr: jest.fn().mockResolvedValue(1),
-        expire: jest.fn().mockResolvedValue(1),
-      };
+    it('increments and sets the initial TTL in one atomic Redis script', async () => {
+      const redis = { eval: jest.fn().mockResolvedValue(1) };
       const service = new CacheService(redis as never);
 
       const result = await service.increment('pin:attempts:t1:ip', 900);
 
       expect(result).toBe(1);
-      expect(redis.incr).toHaveBeenCalledWith('pin:attempts:t1:ip');
-      expect(redis.expire).toHaveBeenCalledWith('pin:attempts:t1:ip', 900);
+      expect(redis.eval).toHaveBeenCalledTimes(1);
+      expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, 'pin:attempts:t1:ip', '900');
     });
 
-    it('does not reset TTL on subsequent increments', async () => {
-      const redis = {
-        incr: jest.fn().mockResolvedValue(3),
-        expire: jest.fn().mockResolvedValue(1),
-      };
+    it('preserves the existing TTL on subsequent increments', async () => {
+      const redis = { eval: jest.fn().mockResolvedValue(3) };
       const service = new CacheService(redis as never);
 
-      const result = await service.increment('pin:attempts:t1:ip', 900);
-
-      expect(result).toBe(3);
-      expect(redis.expire).not.toHaveBeenCalled();
+      await expect(service.increment('pin:attempts:t1:ip', 900)).resolves.toBe(3);
+      expect(redis.eval).toHaveBeenCalledTimes(1);
     });
 
     it('fails closed when Redis is unavailable', async () => {
       jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const redis = {
-        incr: jest.fn().mockRejectedValue(new Error('Redis down')),
-      };
+      const redis = { eval: jest.fn().mockRejectedValue(new Error('Redis down')) };
       const service = new CacheService(redis as never);
 
       await expect(service.increment('key', 60)).rejects.toThrow(

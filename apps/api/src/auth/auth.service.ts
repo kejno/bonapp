@@ -216,26 +216,27 @@ export class AuthService {
         select: { id: true, role: true, pinHash: true, isBlocked: true },
       });
 
-    let matchedUser: { id: string; role: string } | null = null;
+    const matchedUsers: Array<{ id: string; role: string; isLegacyPin: boolean }> = [];
     for (const user of staffUsers) {
       const isLegacyPin = user.pinHash !== null && /^\d{4}$/.test(user.pinHash);
       const pinMatches = user.pinHash && (isLegacyPin
         ? pin === user.pinHash
         : await compare(pin, user.pinHash));
       if (!user.isBlocked && pinMatches) {
-        matchedUser = { id: user.id, role: user.role };
-        if (isLegacyPin) {
-          await this.prisma.forTenant(tenant.id).user.update({
-            where: { id: user.id },
-            data: { pinHash: await hash(pin, BCRYPT_COST) },
-          });
-        }
-        break;
+        matchedUsers.push({ id: user.id, role: user.role, isLegacyPin });
       }
     }
 
-    if (!matchedUser) {
+    if (matchedUsers.length !== 1) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const [matchedUser] = matchedUsers;
+    if (matchedUser.isLegacyPin) {
+      await this.prisma.forTenant(tenant.id).user.update({
+        where: { id: matchedUser.id },
+        data: { pinHash: await hash(pin, BCRYPT_COST) },
+      });
     }
 
     await this.cache.del(rateLimitKey);

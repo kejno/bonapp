@@ -277,6 +277,23 @@ describe('AuthService — pinLogin', () => {
     expect(result.accessToken).toBeDefined();
   });
 
+  it('rejects an ambiguous PIN shared by multiple staff users', async () => {
+    const sharedHash1 = await hash(pin, 10);
+    const sharedHash2 = await hash(pin, 10);
+    const prisma = {
+      findTenantBySlug: jest.fn().mockResolvedValue({ id: tenantId }),
+      forTenant: jest.fn().mockReturnValue({
+        user: { findMany: jest.fn().mockResolvedValue([
+          { id: 'user-1', role: 'CASHIER', pinHash: sharedHash1, isBlocked: false },
+          { id: 'user-2', role: 'WAITER', pinHash: sharedHash2, isBlocked: false },
+        ]) },
+      }),
+    };
+    const service = makeService(prisma, { increment: jest.fn().mockResolvedValue(1), del: jest.fn().mockResolvedValue(undefined) });
+
+    await expect(service.pinLogin(tenantSlug, pin, '127.0.0.1')).rejects.toThrow(UnauthorizedException);
+  });
+
   it('rejects PIN login for a blocked staff account', async () => {
     const pinHash = await hash(pin, 10);
     const prisma = {

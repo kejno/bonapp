@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from './cache.constants';
 
+const INCREMENT_WITH_TTL_SCRIPT = `\nlocal count = redis.call('INCR', KEYS[1])\nif count == 1 then\n  local expiry = redis.pcall('EXPIRE', KEYS[1], ARGV[1])\n  if type(expiry) == 'table' and expiry.err then\n    redis.call('DEL', KEYS[1])\n    return expiry\n  end\nend\nreturn count\n`;
+
 @Injectable()
 export class CacheService {
   private readonly logger = new Logger(CacheService.name);
@@ -83,11 +85,12 @@ export class CacheService {
 
   async increment(key: string, ttlSeconds: number): Promise<number> {
     try {
-      const count = await this.redis.incr(key);
-      if (count === 1) {
-        await this.redis.expire(key, ttlSeconds);
-      }
-      return count;
+      return await this.redis.eval(
+        INCREMENT_WITH_TTL_SCRIPT,
+        1,
+        key,
+        String(ttlSeconds),
+      ) as number;
     } catch (error) {
       this.logCacheError('increment', key, error);
       throw new ServiceUnavailableException('Rate limiting is temporarily unavailable');
