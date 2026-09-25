@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Optional,
   Req,
   Res,
   UseGuards,
@@ -14,6 +15,8 @@ import type { Request, Response } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
+import { StaffAuthService } from '../staff-auth/staff-auth.service';
+import type { LoginResponse } from '../staff-auth/staff-auth.dto';
 
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
@@ -24,7 +27,10 @@ interface AuthenticatedRequest extends Request {
 @Controller('auth')
 @SkipTenantGuard()
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    @Optional() private readonly staffAuthService?: StaffAuthService,
+  ) {}
 
   @Post('pin-login')
   async pinLogin(
@@ -50,8 +56,17 @@ export class AuthController {
     @Body() body: unknown,
     @Req() req?: Request,
     @Res({ passthrough: true }) response?: Response,
-  ): Promise<{ accessToken: string; user: { id: string; email: string; role: string; tenantId: string; fullName: string } } | { challenge: string }> {
+  ): Promise<LoginResponse | { accessToken: string; user: { id: string; email: string; role: string; tenantId: string; fullName: string } } | { challenge: string }> {
     try {
+      if (isValidStaffLoginBody(body)) {
+        if (!this.staffAuthService) throw new BadRequestException('Staff authentication is unavailable');
+        return await this.staffAuthService.login(
+          body.tenantId,
+          body.email,
+          body.password,
+          req?.ip ?? '0.0.0.0',
+        );
+      }
       let result: Awaited<ReturnType<AuthService['login']>>;
       if (isValidLoginBody(body)) {
         result = await this.authService.login(body.tenantSlug, body.email, body.password, req?.ip ?? '0.0.0.0');
@@ -130,6 +145,18 @@ export class AuthController {
       response.setHeader('Retry-After', String(exceptionResponse.retryAfter));
     }
   }
+}
+
+function isValidStaffLoginBody(
+  body: unknown,
+): body is { tenantId: string; email: string; password: string } {
+  if (typeof body !== 'object' || body === null) return false;
+  const value = body as Record<string, unknown>;
+  return (
+    typeof value.tenantId === 'string' && value.tenantId.trim().length > 0 &&
+    typeof value.email === 'string' && value.email.trim().length > 0 &&
+    typeof value.password === 'string' && value.password.length > 0
+  );
 }
 
 function isValidPinLoginBody(body: unknown): body is { tenantSlug: string; pin: string } {

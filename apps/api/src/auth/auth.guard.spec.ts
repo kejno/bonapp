@@ -1,15 +1,24 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { AdminRoleGuard } from './admin-role.guard';
 import { AuthGuard } from './auth.guard';
 
 function mockContext(authHeader?: string): {
   context: ExecutionContext;
-  request: { headers: Record<string, string>; user?: { tenantId: string } };
+  request: {
+    headers: Record<string, string>;
+    user?: { tenantId: string; role?: string };
+  };
 } {
   const request: {
     headers: Record<string, string>;
-    user?: { tenantId: string };
+    user?: { tenantId: string; role?: string };
   } = {
     headers: authHeader ? { authorization: authHeader } : {},
   };
@@ -34,7 +43,17 @@ function createToken(payload: Record<string, unknown>, secret: string): string {
 
 function makeGuard(secret = 'test-jwt-secret'): AuthGuard {
   const config = { getOrThrow: () => secret } as unknown as ConfigService;
-  return new AuthGuard(config);
+  const prisma = {
+    forTenant: () => ({
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          mustChangePassword: false,
+          role: 'OWNER',
+        }),
+      },
+    }),
+  };
+  return new AuthGuard(config, prisma as unknown as PrismaService);
 }
 
 describe('AuthGuard', () => {
@@ -44,14 +63,14 @@ describe('AuthGuard', () => {
     guard = makeGuard();
   });
 
-  it('validates a JWT and assigns its tenant context to the request', () => {
+  it('validates a JWT and assigns its tenant context to the request', async () => {
     const token = createToken(
-      { tenantId: 'tenant-1', userId: 'user-1', role: 'OWNER' },
+      { tenantId: 'tenant-1', sub: 'user-1', type: 'access', role: 'OWNER' },
       'test-jwt-secret',
     );
     const { context, request } = mockContext(`Bearer ${token}`);
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.user).toEqual({
       tenantId: 'tenant-1',
       userId: 'user-1',
@@ -59,64 +78,73 @@ describe('AuthGuard', () => {
     });
   });
 
-  it('supports legacy JWTs that identify the user with the sub claim', () => {
+  it('uses the current staff role so a revoked admin role cannot pass AdminRoleGuard', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 0,
+      role: 'WAITER',
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
-      { tenantId: 'tenant-1', sub: 'legacy-user-1', role: 'OWNER' },
+      { tenantId: 'tenant-1', userId: 'staff-1', type: 'access', role: 'OWNER' },
       'test-jwt-secret',
     );
     const { context, request } = mockContext(`Bearer ${token}`);
 
-    expect(guard.canActivate(context)).toBe(true);
-    expect(request.user).toEqual({
-      tenantId: 'tenant-1',
-      userId: 'legacy-user-1',
-      role: 'OWNER',
+    await expect(guarded.canActivate(context)).resolves.toBe(true);
+    expect(request.user?.role).toBe('WAITER');
+    expect(() => new AdminRoleGuard().canActivate(context)).toThrow(ForbiddenException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
     });
   });
 
-  it('should throw UnauthorizedException when Authorization header is absent', () => {
+  it('should throw UnauthorizedException when Authorization header is absent', async () => {
     const { context } = mockContext();
-    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('rejects a token with an invalid signature or missing tenant claim', () => {
+  it('rejects a token with an invalid signature or missing tenant claim', async () => {
     const invalidSignature = createToken(
       { tenantId: 'tenant-1' },
       'other-secret',
     );
     const noTenant = createToken({}, 'test-jwt-secret');
 
-    expect(() =>
+    await expect(
       guard.canActivate(mockContext(`Bearer ${invalidSignature}`).context),
-    ).toThrow(UnauthorizedException);
-    expect(() =>
+    ).rejects.toThrow(UnauthorizedException);
+    await expect(
       guard.canActivate(mockContext(`Bearer ${noTenant}`).context),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('rejects an expired token', () => {
+  it('rejects an expired token', async () => {
     const expiredToken = createToken(
       { tenantId: 'tenant-1', exp: Math.floor(Date.now() / 1000) - 1 },
       'test-jwt-secret',
     );
 
-    expect(() =>
+    await expect(
       guard.canActivate(mockContext(`Bearer ${expiredToken}`).context),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('rejects a token with an unknown role', () => {
+  it('rejects a token with an unknown role', async () => {
     const token = createToken(
-      { tenantId: 'tenant-1', userId: 'user-1', role: 'UNKNOWN' },
+      { tenantId: 'tenant-1', sub: 'user-1', role: 'UNKNOWN' },
       'test-jwt-secret',
     );
 
-    expect(() => guard.canActivate(mockContext(`Bearer ${token}`).context)).toThrow(
+    await expect(guard.canActivate(mockContext(`Bearer ${token}`).context)).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('rejects a refresh token even when it has a valid signature', () => {
+  it('rejects a refresh token even when it has a valid signature', async () => {
     const refreshToken = createToken(
       {
         tenantId: 'tenant-1',
@@ -126,9 +154,129 @@ describe('AuthGuard', () => {
       'test-jwt-secret',
     );
 
-    expect(() =>
+    await expect(
       guard.canActivate(mockContext(`Bearer ${refreshToken}`).context),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('blocks staff whose password must be changed', async () => {
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = {
+      forTenant: () => ({
+        user: { findFirst: jest.fn().mockResolvedValue({ mustChangePassword: true }) },
+      }),
+    };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'user-1', type: 'access', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('blocks staff using a legacy access token with only the sub claim', async () => {
+    const findFirst = jest.fn().mockResolvedValue({ mustChangePassword: true });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'staff-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(ForbiddenException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
+    });
+  });
+
+  it('rejects blocked staff and includes the block state in the database query', async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = {
+      forTenant: () => ({ user: { findFirst } }),
+    };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', userId: 'staff-1', type: 'access', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
+    });
+  });
+
+  it('rejects a staff access token after its session version is revoked', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 2,
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      {
+        tenantId: 'tenant-1',
+        sub: 'staff-1',
+        userId: 'staff-1',
+        type: 'access',
+        sessionVersion: 1,
+      },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
+    });
+  });
+
+  it('rejects a legacy sub-only token after the password changes', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 1,
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'staff-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('preserves valid legacy tenant tokens without a matching staff account', async () => {
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = {
+      forTenant: () => ({ user: { findFirst: jest.fn().mockResolvedValue(null) } }),
+    };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'legacy-user', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).resolves.toBe(true);
   });
 
   it('throws at construction when JWT_SECRET is not configured', () => {
@@ -137,6 +285,8 @@ describe('AuthGuard', () => {
         throw new Error(`Config key "${key}" not found`);
       },
     } as unknown as ConfigService;
-    expect(() => new AuthGuard(config)).toThrow('Config key "JWT_SECRET" not found');
+    expect(
+      () => new AuthGuard(config, {} as unknown as PrismaService),
+    ).toThrow('Config key "JWT_SECRET" not found');
   });
 });
