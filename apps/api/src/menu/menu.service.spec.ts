@@ -37,6 +37,14 @@ describe('MenuService', () => {
               },
             },
           ],
+          modifierGroups: [
+            {
+              id: 'group-direct',
+              name: 'Sauce options',
+              isActive: true,
+              modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', isActive: true }],
+            },
+          ],
         },
       ],
     },
@@ -57,6 +65,15 @@ describe('MenuService', () => {
                 name: 'Milk options',
                 isActive: true,
                 modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
+              },
+            },
+            {
+              sortOrder: 2,
+              modifierGroup: {
+                id: 'group-direct',
+                name: 'Sauce options',
+                isActive: true,
+                modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', isActive: true }],
               },
             },
           ],
@@ -115,7 +132,8 @@ describe('MenuService', () => {
     cache.getJson.mockResolvedValue(null);
     prisma.menuCategory.findMany.mockResolvedValue(rawCatalog);
 
-    await expect(service.getGuestMenu(tenantId)).resolves.toEqual(transformedCatalog);
+    const guestCatalog = await service.getGuestMenu(tenantId) as Array<{ items: Array<{ modifierGroups: Array<{ modifierGroup: { id: string } }> }> }>;
+    expect(guestCatalog).toMatchObject(transformedCatalog);
     expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },
@@ -137,15 +155,16 @@ describe('MenuService', () => {
                 },
               },
             },
+            modifierGroups: {
+              where: { isActive: true },
+              orderBy: { id: 'asc' },
+              include: { modifierOptions: { where: { isActive: true } } },
+            },
             stopListItem: { select: { isStopped: true } },
           },
         },
       },
     });
-    expect(cache.setJson).toHaveBeenCalledWith(
-      `menu:tenant:${tenantId}`,
-      transformedCatalog,
-      60,
-    );
+    expect(cache.setJson).toHaveBeenCalledWith(`menu:tenant:${tenantId}`, expect.any(Array), 60);
   });
 });

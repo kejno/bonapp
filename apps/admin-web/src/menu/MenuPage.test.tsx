@@ -122,6 +122,20 @@ describe('MenuPage save retry', () => {
     expect(screen.getByRole('textbox', { name: /Название/ })).toHaveFocus();
   });
 
+  it('shows the validation message beside invalid nutrition fields', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить блюдо' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), { target: { value: 'Борщ' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Категория' }), { target: { value: 'category-1' } });
+    fireEvent.change(screen.getByLabelText('Цена, BYN'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Питание & Аллергены' }));
+    fireEvent.change(screen.getByLabelText('Ккал'), { target: { value: '180.5' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Сохранить' }).closest('form')!);
+    expect(await screen.findByText('Ккал: укажите целое неотрицательное число')).toBeInTheDocument();
+    expect(requests.filter(({ method }) => method === 'POST' || method === 'PUT')).toHaveLength(0);
+  });
+
   it('reuses one client id when a create response is lost', async () => {
     let loseFirstResponse = true;
     vi.mocked(fetch).mockImplementation(async (input, init) => {

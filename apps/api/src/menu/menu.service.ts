@@ -37,6 +37,11 @@ export class MenuService {
                 },
               },
             },
+            modifierGroups: {
+              where: { isActive: true },
+              orderBy: { id: 'asc' },
+              include: { modifierOptions: { where: { isActive: true } } },
+            },
             stopListItem: { select: { isStopped: true } },
           },
         },
@@ -45,7 +50,7 @@ export class MenuService {
 
     const menu = categories.map(({ menuItems, ...category }) => ({
       ...category,
-      items: menuItems.map(({ menuItemModifierGroups, ...item }) => ({
+      items: menuItems.map(({ menuItemModifierGroups, modifierGroups = [], ...item }) => ({
         id: item.id,
         name: item.name,
         description: item.description,
@@ -63,8 +68,16 @@ export class MenuService {
         isHit: item.isHit,
         isActive: item.isActive,
         stopListItem: item.stopListItem,
-        modifierGroups: menuItemModifierGroups
-          .filter(({ modifierGroup }) => modifierGroup.isActive)
+        modifierGroups: [
+          ...menuItemModifierGroups
+            .filter(({ modifierGroup }) => modifierGroup.isActive)
+            .map(({ sortOrder, modifierGroup }) => ({ sortOrder, modifierGroup })),
+          ...modifierGroups
+            .filter(({ isActive }) => isActive)
+            .map((modifierGroup, index) => ({ sortOrder: menuItemModifierGroups.length + index, modifierGroup })),
+        ]
+          .filter((entry, index, entries) => entries.findIndex(({ modifierGroup }) => modifierGroup.id === entry.modifierGroup.id) === index)
+          .sort((left, right) => left.sortOrder - right.sortOrder)
           .map(({ sortOrder, modifierGroup }) => ({
             sortOrder,
             modifierGroup,
