@@ -31,6 +31,9 @@ describe('BNP-378: unknown guest QR token', () => {
       .get('/api/v1/guest/session/unknown-token');
 
     expect(response.status).toBe(404);
+    expect(response.body).not.toHaveProperty('tenant');
+    expect(response.body).not.toHaveProperty('table');
+    expect(response.body).not.toHaveProperty('activeOrder');
     expect(prisma.findTableByQrToken).toHaveBeenCalledWith('unknown-token');
   });
 });
