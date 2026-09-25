@@ -58,3 +58,30 @@ at least one Test Case blocks merge:
 1. Replace the CSS selector with a role-based locator (getByRole/getByText), matching the existing specs in apps/api/test/
 2. Replace waitForTimeout with an auto-retrying expect(...) assertion
 ```
+
+### outputs/pr_review_general.md — wrong-seam example
+
+`BNP-88.e2e-spec.ts` FAILED for the right reason (a real regression), but
+only by reading `OrderService`'s private `_pendingQueue` field directly —
+there's no public method that surfaces the stuck-order state a real caller
+would observe. This is an architectural finding, not a fixable test-code
+nitpick, so it goes in the general comment rather than an inline comment on
+the test file:
+
+```markdown
+## Automated Test PR Review — BLOCK
+
+**Summary**: BNP-88 correctly catches a real regression (orders stuck in
+PENDING past the 60s cancellation window), but only by reaching into
+`OrderService`'s private `_pendingQueue` — there is no public seam that
+exposes this state to a caller. The test result is trustworthy; the seam it
+uses is not sustainable.
+
+**Next Steps**:
+1. Do not ask for a "better test" here — no better test is currently
+   possible at this seam.
+2. `OrderService` needs a public query (e.g. `getStuckOrders(threshold)`)
+   that the test — and any real caller who needs this state — can call
+   instead of reaching into `_pendingQueue`. Route this back to
+   story/bug development as an architecture gap, not a test-automation fix.
+```
