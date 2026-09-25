@@ -50,6 +50,7 @@ describe('MenuCatalogService', () => {
       },
     };
     prisma.forTenant.mockReturnValue(prisma);
+    prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma));
     cache = { del: jest.fn() };
     storage = { getPresignedUploadUrl: jest.fn() };
     service = new MenuCatalogService(
@@ -301,9 +302,29 @@ describe('MenuCatalogService', () => {
   });
 
   describe('createItem', () => {
+    it('assigns the next category sort order while creating the item', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'item-3', name: 'Latte', priceByn: 5.5 });
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { findMany: jest.Mock; create: jest.Mock } }) => Promise<unknown>) => callback({
+        menuItem: {
+          findMany: jest.fn().mockResolvedValue([{ sortOrder: 0 }, { sortOrder: 4 }]),
+          create,
+        },
+      }));
+
+      await service.createItem('tenant-1', { name: 'Latte', categoryId: 'cat-1', price: 550 });
+
+      expect(create).toHaveBeenCalledWith({ data: {
+        tenantId: 'tenant-1', name: 'Latte', categoryId: 'cat-1', priceByn: 5.5,
+        description: undefined, imageUrl: undefined, sortOrder: 5,
+      } });
+    });
+
     it('creates an item and invalidates the menu cache', async () => {
       const created = { id: 'item-1', name: 'Latte', priceByn: 5.5 };
-      prisma.menuItem.create.mockResolvedValue(created);
+      const create = jest.fn().mockResolvedValue(created);
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { findMany: jest.Mock; create: jest.Mock } }) => Promise<unknown>) => callback({
+        menuItem: { findMany: jest.fn().mockResolvedValue([]), create },
+      }));
 
       const result = await service.createItem('tenant-1', {
         name: 'Latte',
@@ -311,7 +332,7 @@ describe('MenuCatalogService', () => {
         price: 550,
       });
 
-      expect(prisma.menuItem.create).toHaveBeenCalledWith({
+      expect(create).toHaveBeenCalledWith({
         data: {
           tenantId: 'tenant-1',
           name: 'Latte',
@@ -319,6 +340,7 @@ describe('MenuCatalogService', () => {
           priceByn: 5.5,
           description: undefined,
           imageUrl: undefined,
+          sortOrder: 0,
         },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
@@ -363,6 +385,7 @@ describe('MenuCatalogService', () => {
           priceByn: 0,
           description: undefined,
           imageUrl: undefined,
+          sortOrder: 0,
         },
       });
     });
@@ -386,6 +409,7 @@ describe('MenuCatalogService', () => {
           priceByn: 4,
           description: 'Classic',
           imageUrl: 'https://cdn.example.com/cap.jpg',
+          sortOrder: 0,
         },
       });
     });

@@ -1,6 +1,7 @@
 export interface MenuItem {
   id: string;
   name: string;
+  description?: string | null;
   categoryId: string;
   price: number;
   imageUrl: string | null;

@@ -5,6 +5,8 @@ import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import MenuPage from './pages/MenuPage';
+import OrderPage from './pages/OrderPage';
+import TablesPage from './pages/TablesPage';
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,22 @@ function App() {
             }
           />
           <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
+          <Route
+            path="/tables"
+            element={
+              <ProtectedRoute>
+                <TablesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:orderId"
+            element={
+              <ProtectedRoute>
+                <OrderPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>

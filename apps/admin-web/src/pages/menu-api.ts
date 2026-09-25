@@ -28,7 +28,7 @@ export const menuApi = {
   items: (token: string) => request<MenuItem[]>('/admin/menu/items', token),
   createItem: (token: string, item: { name: string; categoryId: string; price: number }) =>
     request<MenuItem>('/admin/menu/items', token, { method: 'POST', body: JSON.stringify(item) }),
-  updateItem: (token: string, id: string, patch: Partial<Pick<MenuItem, 'isActive'>>) =>
+  updateItem: (token: string, id: string, patch: Partial<Pick<MenuItem, 'name' | 'categoryId' | 'price' | 'description' | 'imageUrl' | 'isActive'>>) =>
     request<MenuItem>(`/admin/menu/items/${encodeURIComponent(id)}`, token, { method: 'PUT', body: JSON.stringify(patch) }),
   stopList: (token: string, id: string, isInStopList: boolean) =>
     request<MenuItem>(`/admin/menu/items/${encodeURIComponent(id)}/stop-list`, token, { method: 'PATCH', body: JSON.stringify({ isInStopList }) }),

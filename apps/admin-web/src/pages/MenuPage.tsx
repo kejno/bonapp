@@ -13,6 +13,7 @@ export default function MenuPage() {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<MenuTab>('all');
   const [isCreateOpen, setCreateOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const categoriesQuery = useQuery({ queryKey: [...key, 'categories'], queryFn: () => menuApi.categories(token!), enabled: Boolean(token) });
   const itemsQuery = useQuery({ queryKey: [...key, 'items'], queryFn: () => menuApi.items(token!), enabled: Boolean(token) });
@@ -43,8 +44,12 @@ export default function MenuPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (item: { name: string; categoryId: string; price: number }) => menuApi.createItem(token!, item),
+    mutationFn: (item: { name: string; categoryId: string; price: number; description?: string; imageUrl?: string }) => menuApi.createItem(token!, item),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: [...key, 'items'] }); setCreateOpen(false); },
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, item }: { id: string; item: { name: string; categoryId: string; price: number; description: string | null; imageUrl: string | null } }) => menuApi.updateItem(token!, id, item),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: [...key, 'items'] }); setEditingItem(null); },
   });
 
   const categories = categoriesQuery.data ?? [];
@@ -69,7 +74,7 @@ export default function MenuPage() {
     <main className="min-h-svh bg-background text-on-background">
       <header className="flex h-16 items-center justify-between border-b border-outline-variant/40 bg-surface-card px-8">
         <div className="font-semibold">Bonapp <span className="ml-2 text-on-background/50">/ Каталог меню</span></div>
-        <button className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary" onClick={() => setCreateOpen(true)}>+ Добавить блюдо</button>
+        <button className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary" onClick={() => { setEditingItem(null); setCreateOpen(true); }}>+ Добавить блюдо</button>
       </header>
       <div className="mx-auto flex max-w-7xl gap-8 px-8 py-8">
         <aside className="w-56 shrink-0">
@@ -93,7 +98,7 @@ export default function MenuPage() {
               <tbody className="divide-y divide-outline-variant/30">
                 {filteredItems.map((item) => <tr key={item.id} draggable={canReorder} onDragStart={() => setDraggedId(item.id)} onDragOver={(event) => { if (canReorder) event.preventDefault(); }} onDrop={() => reorderItems(item.id)} className={draggedId === item.id ? 'opacity-40' : ''}>
                   <td className="px-4 py-3 text-on-background/40" aria-label={canReorder ? 'Перетащить для сортировки' : undefined}>{canReorder ? '⠿' : ''}</td>
-                  <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="h-10 w-10 overflow-hidden rounded-lg bg-background">{item.imageUrl && <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />}</div><span className="font-medium">{item.name}</span></div></td>
+                  <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="h-10 w-10 overflow-hidden rounded-lg bg-background">{item.imageUrl && <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />}</div><button type="button" className="font-medium text-primary hover:underline" onClick={() => { setCreateOpen(false); setEditingItem(item); }}>{item.name}</button></div></td>
                   <td className="px-4 py-3">{(item.price / 100).toFixed(2)} BYN</td><td className="px-4 py-3 text-on-background/65">{item.kitchenDepartment ?? '—'}</td>
                   <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs ${item.isActive ? 'bg-success-container text-on-success-container' : 'bg-background text-on-background/60'}`}>{item.isActive ? 'Активно' : 'Неактивно'}</span></td>
                   <td className="px-4 py-3"><button type="button" role="switch" aria-label={`86 Стоп-лист: ${item.name}`} aria-checked={item.isInStopList} disabled={!item.isActive || stopListMutation.isPending} onClick={() => stopListMutation.mutate({ id: item.id, value: !item.isInStopList })} className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${item.isInStopList ? 'bg-primary' : 'bg-outline-variant'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${item.isInStopList ? 'translate-x-6' : 'translate-x-1'}`} /></button></td>
@@ -105,15 +110,17 @@ export default function MenuPage() {
           </div>
         </section>
       </div>
-      {isCreateOpen && <CreateItemDialog categories={categories} busy={createMutation.isPending} onClose={() => setCreateOpen(false)} onSubmit={(item) => createMutation.mutate(item)} error={createMutation.isError ? 'Не удалось добавить блюдо. Проверьте данные и повторите попытку.' : ''} />}
+      {(isCreateOpen || editingItem) && <ItemDialog key={editingItem?.id ?? 'new'} item={editingItem} categories={categories} busy={editingItem ? updateMutation.isPending : createMutation.isPending} onClose={() => { setCreateOpen(false); setEditingItem(null); }} onSubmit={(item) => editingItem ? updateMutation.mutate({ id: editingItem.id, item: { ...item, description: item.description ?? null, imageUrl: item.imageUrl ?? null } }) : createMutation.mutate(item)} error={(editingItem ? updateMutation.isError : createMutation.isError) ? 'Не удалось сохранить блюдо. Проверьте данные и повторите попытку.' : ''} />}
     </main>
   );
 }
 
-function CreateItemDialog({ categories, busy, error, onClose, onSubmit }: { categories: { id: string; name: string }[]; busy: boolean; error: string; onClose: () => void; onSubmit: (item: { name: string; categoryId: string; price: number }) => void }) {
-  const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
-  const [price, setPrice] = useState('');
-  function submit(event: FormEvent) { event.preventDefault(); const amount = Number(price.replace(',', '.')); if (name.trim() && categoryId && Number.isFinite(amount) && amount >= 0) onSubmit({ name: name.trim(), categoryId, price: Math.round(amount * 100) }); }
-  return <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="create-title" className="w-full max-w-lg rounded-xl bg-surface-card p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 id="create-title" className="text-lg font-semibold">Новое блюдо</h2><button aria-label="Закрыть" onClick={onClose}>×</button></div><form onSubmit={submit} className="space-y-4"><label className="block text-sm">Название<input required autoFocus value={name} onChange={(event) => setName(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label><label className="block text-sm">Категория<select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2">{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="block text-sm">Цена, BYN<input required type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label>{error && <p role="alert" className="text-sm text-error">{error}</p>}<div className="flex justify-end gap-2 pt-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm">Отмена</button><button disabled={busy || categories.length === 0} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary disabled:opacity-50">{busy ? 'Сохраняем…' : 'Добавить блюдо'}</button></div></form></section></div>;
+function ItemDialog({ item, categories, busy, error, onClose, onSubmit }: { item: MenuItem | null; categories: { id: string; name: string }[]; busy: boolean; error: string; onClose: () => void; onSubmit: (item: { name: string; categoryId: string; price: number; description?: string; imageUrl?: string }) => void }) {
+  const [name, setName] = useState(item?.name ?? '');
+  const [categoryId, setCategoryId] = useState(item?.categoryId ?? categories[0]?.id ?? '');
+  const [price, setPrice] = useState(item ? (item.price / 100).toFixed(2) : '');
+  const [description, setDescription] = useState(item?.description ?? '');
+  const [imageUrl, setImageUrl] = useState(item?.imageUrl ?? '');
+  function submit(event: FormEvent) { event.preventDefault(); const amount = Number(price.replace(',', '.')); if (name.trim() && categoryId && Number.isFinite(amount) && amount >= 0) onSubmit({ name: name.trim(), categoryId, price: Math.round(amount * 100), description, imageUrl }); }
+  return <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="item-title" className="w-full max-w-lg rounded-xl bg-surface-card p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 id="item-title" className="text-lg font-semibold">{item ? 'Редактирование блюда' : 'Новое блюдо'}</h2><button aria-label="Закрыть" onClick={onClose}>×</button></div><form onSubmit={submit} className="space-y-4"><label className="block text-sm">Название<input required autoFocus value={name} onChange={(event) => setName(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label><label className="block text-sm">Категория<select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2">{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="block text-sm">Описание<textarea value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label><label className="block text-sm">Фото (URL)<input type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label><label className="block text-sm">Цена, BYN<input required type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} className="mt-1 block w-full rounded-lg border border-outline-variant bg-surface px-3 py-2" /></label>{error && <p role="alert" className="text-sm text-error">{error}</p>}<div className="flex justify-end gap-2 pt-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm">Отмена</button><button disabled={busy || categories.length === 0} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary disabled:opacity-50">{busy ? 'Сохраняем…' : item ? 'Сохранить' : 'Добавить блюдо'}</button></div></form></section></div>;
 }

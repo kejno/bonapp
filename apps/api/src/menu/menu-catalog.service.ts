@@ -184,15 +184,23 @@ export class MenuCatalogService {
     this.validateName(dto.name);
     this.validatePrice(dto.price);
     try {
-      const item = await this.prisma.forTenant(tenantId).menuItem.create({
-        data: {
-          tenantId,
-          name: dto.name.trim(),
-          categoryId: dto.categoryId,
-          priceByn: dto.price / 100,
-          description: dto.description,
-          imageUrl: dto.imageUrl,
-        },
+      const item = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+        const existing = await tx.menuItem.findMany({
+          where: { tenantId, categoryId: dto.categoryId },
+          select: { sortOrder: true },
+        });
+        const sortOrder = (existing ?? []).reduce((next, current) => Math.max(next, current.sortOrder + 1), 0);
+        return tx.menuItem.create({
+          data: {
+            tenantId,
+            name: dto.name.trim(),
+            categoryId: dto.categoryId,
+            priceByn: dto.price / 100,
+            description: dto.description,
+            imageUrl: dto.imageUrl,
+            sortOrder,
+          },
+        });
       });
       await this.invalidateMenu(tenantId);
       return this.mapItem(item);

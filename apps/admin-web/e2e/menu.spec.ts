@@ -27,10 +27,13 @@ test('updates stop-list state in the menu without reloading', async ({ page }) =
   await page.getByRole('link', { name: 'Каталог меню' }).click();
   await expect(page.getByRole('button', { name: 'Напитки' })).toBeVisible();
   await page.getByRole('button', { name: 'Напитки' }).click();
+  let documentLoads = 0;
+  page.on('load', () => { documentLoads += 1; });
 
   const stopListSwitch = page.getByRole('switch', { name: '86 Стоп-лист: Кофе' });
   await expect(stopListSwitch).toHaveAttribute('aria-checked', 'false');
   await stopListSwitch.click();
   await expect(stopListSwitch).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByText('Кофе')).toBeVisible();
+  expect(documentLoads).toBe(0);
 });

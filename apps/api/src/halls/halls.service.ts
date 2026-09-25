@@ -1,11 +1,16 @@
 import {
   ConflictException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
+import { createGuestTableUrl } from './guest-table-url';
 
 export interface CreateAreaDto {
   name: string;
@@ -38,6 +43,30 @@ const ACTIVE_TABLE_STATUSES = new Set<TableStatus>([
   TableStatus.BILL_REQUESTED,
 ]);
 
+function getGuestMenuBaseUrl(): string {
+  const configuredUrl = process.env.GUEST_MENU_URL?.trim();
+  if (!configuredUrl && process.env.NODE_ENV === 'production') {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be configured in production');
+  }
+
+  const menuUrl = configuredUrl || 'http://localhost:5173/menu';
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(menuUrl);
+  } catch {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be a valid absolute URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new InternalServerErrorException('GUEST_MENU_URL must use HTTP or HTTPS');
+  }
+  if (process.env.NODE_ENV === 'production' &&
+      (parsedUrl.protocol !== 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(parsedUrl.hostname))) {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be a public HTTPS URL in production');
+  }
+  return parsedUrl.toString();
+}
+
 @Injectable()
 export class HallsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,7 +90,51 @@ export class HallsService {
   listTables(tenantId: string) {
     return this.prisma.forTenant(tenantId).table.findMany({
       orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+      include: {
+        orders: {
+          where: { status: { notIn: ['PAID', 'CANCELLED'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, totalAmountByn: true, guestSessionId: true },
+        },
+      },
     });
+  }
+
+  async generateQrPdf(tenantId: string, tableIds: string[]): Promise<Buffer> {
+    const menuBaseUrl = getGuestMenuBaseUrl();
+    const tables = await this.prisma.forTenant(tenantId).table.findMany({
+      where: { id: { in: tableIds } },
+      orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+      include: { area: { select: { name: true } } },
+    });
+    if (tables.length !== tableIds.length) {
+      throw new NotFoundException('One or more tables were not found');
+    }
+
+    const document = new PDFDocument({ size: 'A4', margin: 40 });
+    document.registerFont('DejaVuSans', join(__dirname, '..', 'assets', 'DejaVuSans.ttf'));
+    document.font('DejaVuSans');
+    const chunks: Buffer[] = [];
+    const finished = new Promise<Buffer>((resolve, reject) => {
+      document.on('data', (chunk: Buffer) => chunks.push(chunk));
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
+    });
+    for (const [index, table] of tables.entries()) {
+      if (index > 0 && index % 4 === 0) document.addPage();
+      const slot = index % 4;
+      const x = slot % 2 === 0 ? 55 : 315;
+      const y = Math.floor(slot / 2) === 0 ? 70 : 410;
+      const guestTableUrl = createGuestTableUrl(menuBaseUrl, table.qrToken);
+      const qr = await QRCode.toBuffer(guestTableUrl, { type: 'png', width: 220, margin: 1 });
+      document.fontSize(18).text(`Стол ${table.tableNumber}`, x, y, { width: 220, align: 'center' });
+      document.fontSize(11).text(table.area.name, x, y + 26, { width: 220, align: 'center' });
+      document.image(qr, x + 35, y + 48, { width: 150, height: 150 });
+      document.fontSize(8).text(guestTableUrl, x, y + 205, { width: 220, align: 'center' });
+    }
+    document.end();
+    return finished;
   }
 
   async createTable(tenantId: string, dto: CreateTableDto) {
