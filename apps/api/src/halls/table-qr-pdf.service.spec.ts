@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import sharp from 'sharp';
 jest.mock('puppeteer', () => ({}), { virtual: true });
 jest.mock('qrcode', () => ({}), { virtual: true });
 import { TableQrPdfService } from './table-qr-pdf.service';
@@ -105,6 +106,33 @@ describe('TableQrPdfService logo size validation', () => {
   it('rejects a declared image MIME type when the bytes do not match it', async () => {
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     jest.spyOn(global, 'fetch').mockResolvedValue(new Response(bytes, {
+      headers: { 'content-type': 'image/png' },
+    }));
+
+    await expect(logoData('https://example.com/bonapp/logo.png')).resolves.toMatch(fallbackPrefix);
+  });
+
+  it('resizes decoded logos to bounded dimensions before passing them to Chromium', async () => {
+    const oversizedDimensionsLogo = await sharp({
+      create: { width: 2400, height: 1200, channels: 4, background: '#e0533c' },
+    }).png().toBuffer();
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(oversizedDimensionsLogo, {
+      headers: { 'content-type': 'image/png' },
+    }));
+
+    const dataUrl = await logoData('https://example.com/bonapp/logo.png');
+    const decoded = Buffer.from(dataUrl.split(',')[1], 'base64');
+    const metadata = await sharp(decoded).metadata();
+
+    expect(metadata.width).toBeLessThanOrEqual(1200);
+    expect(metadata.height).toBeLessThanOrEqual(500);
+  });
+
+  it('falls back when a logo exceeds the decoded pixel limit', async () => {
+    const excessivePixelLogo = await sharp({
+      create: { width: 5000, height: 4000, channels: 4, background: '#e0533c' },
+    }).png().toBuffer();
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(excessivePixelLogo, {
       headers: { 'content-type': 'image/png' },
     }));
 

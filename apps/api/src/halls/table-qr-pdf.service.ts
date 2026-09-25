@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import puppeteer from 'puppeteer';
 import QRCode from 'qrcode';
+import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import { Queue, Worker } from 'bullmq';
@@ -16,6 +17,9 @@ const JOB_TTL_SECONDS = 86400;
 const JOB_PREFIX = 'tables:qr-pdf:job:';
 const FILE_PREFIX = 'tables:qr-pdf:file:';
 const MAX_LOGO_BYTES = 2_000_000;
+const MAX_LOGO_PIXELS = 16_000_000;
+const MAX_LOGO_WIDTH = 1200;
+const MAX_LOGO_HEIGHT = 500;
 const LOGO_SIGNATURES: Record<string, (bytes: Uint8Array) => boolean> = {
   'image/png': (bytes) => bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a,
   'image/jpeg': (bytes) => bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
@@ -136,7 +140,7 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
       }
     }
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.sheet{height:281mm;page-break-after:always;display:flex;flex-direction:column}.grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}.grid article{border:1px dashed #888;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}.grid article:after{content:'';position:absolute;top:50%;left:0;right:0;border-top:1px dotted #aaa}.logo{max-width:42mm;max-height:18mm;object-fit:contain}.qr{width:42mm;height:42mm}.table{font-size:24pt;font-weight:bold;margin:6mm}h1{font-size:14pt}footer{text-align:center;font-size:8pt;padding:2mm}</style></head><body>${sheets.join('')}</body></html>`;
-    this.browser ??= await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    this.browser ??= await puppeteer.launch({ headless: true });
     const page = await this.browser.newPage();
     try { await page.setContent(html, { waitUntil: 'load' }); return Buffer.from(await page.pdf({ format: 'A4', printBackground: true })); }
     finally { await page.close(); }
@@ -196,7 +200,11 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
       }
       const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), size);
       if (!signatureMatches(bytes)) throw new Error('Logo content does not match its MIME type');
-      return `data:${type};base64,${bytes.toString('base64')}`;
+      const safeLogo = await sharp(bytes, { limitInputPixels: MAX_LOGO_PIXELS })
+        .resize(MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT, { fit: 'inside', withoutEnlargement: true })
+        .png()
+        .toBuffer();
+      return `data:image/png;base64,${safeLogo.toString('base64')}`;
     } catch { return this.logoData(null); }
   }
 }
