@@ -25,6 +25,7 @@ const ALLOWED_STATUSES = new Set<string>([
   TableStatus.OCCUPIED,
   TableStatus.BILL_REQUESTED,
 ]);
+const MAX_QR_PDF_TABLES = 100;
 
 interface CreateTableBody {
   tableNumber: number;
@@ -197,6 +198,11 @@ export class TablesController {
         : undefined;
     if (!isNonEmptyStringArray(tableIds)) {
       throw new BadRequestException('tableIds must be a non-empty array of table IDs');
+    }
+    if (tableIds.length > MAX_QR_PDF_TABLES) {
+      throw new BadRequestException(
+        `tableIds must contain no more than ${MAX_QR_PDF_TABLES} table IDs`,
+      );
     }
     const pdf = await this.hallsService.generateQrPdf(req.user!.tenantId!, tableIds);
     response.type('application/pdf').setHeader(

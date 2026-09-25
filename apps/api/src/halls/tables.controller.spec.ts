@@ -235,5 +235,14 @@ describe('TablesController', () => {
         expect(service.generateQrPdf).not.toHaveBeenCalled();
       },
     );
+
+    it('rejects selections larger than the per-request PDF limit', async () => {
+      const tableIds = Array.from({ length: 101 }, (_, index) => `t${index + 1}`);
+
+      await expect(
+        controller.generateQrPdf(req, { tableIds }, {} as never),
+      ).rejects.toThrow(BadRequestException);
+      expect(service.generateQrPdf).not.toHaveBeenCalled();
+    });
   });
 });
