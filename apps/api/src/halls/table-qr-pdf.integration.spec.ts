@@ -32,6 +32,10 @@ describe('Table QR PDF integration', () => {
     Object.assign(service, {
       cache,
       prisma,
+      render: jest.fn().mockResolvedValue(Buffer.concat([
+        Buffer.from('%PDF-'),
+        Buffer.alloc(1024),
+      ])),
       onModuleInit: () => undefined,
       onModuleDestroy: () => undefined,
     });
@@ -45,7 +49,10 @@ describe('Table QR PDF integration', () => {
     })
       .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(TenantContextGuard).useValue({ canActivate: (context: { switchToHttp: () => { getRequest: () => { user: unknown } } }) => {
-        context.switchToHttp().getRequest().user = { tenantId: 'tenant-1' };
+        context.switchToHttp().getRequest().user = {
+          tenantId: 'tenant-1',
+          role: 'OWNER',
+        };
         return true;
       } })
       .compile();
