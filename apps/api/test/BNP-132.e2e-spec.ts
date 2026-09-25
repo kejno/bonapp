@@ -126,7 +126,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         cacheStore.delete(key);
         return Promise.resolve(value ?? null);
       }),
-      setJson: jest.fn().mockImplementation((key: string, value: unknown) => {
+      setJsonRequired: jest.fn().mockImplementation((key: string, value: unknown) => {
         cacheStore.set(key, value);
         return Promise.resolve();
       }),

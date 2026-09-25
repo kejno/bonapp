@@ -40,6 +40,19 @@ export class CacheService {
     }
   }
 
+  async setJsonRequired(
+    key: string,
+    value: unknown,
+    ttlSeconds: number,
+  ): Promise<void> {
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    } catch (error) {
+      this.logCacheError('required write', key, error);
+      throw new ServiceUnavailableException('Authentication challenge storage is temporarily unavailable');
+    }
+  }
+
   async setJsonIfAbsent(
     key: string,
     value: unknown,

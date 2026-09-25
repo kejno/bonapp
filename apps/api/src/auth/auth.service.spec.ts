@@ -328,15 +328,15 @@ describe('AuthService — login', () => {
 
   it('returns a challenge when TOTP is enabled', async () => {
     const prisma = await buildPrisma(true);
-    const setJson = jest.fn().mockResolvedValue(undefined);
-    const cache = { setJson, getJson: jest.fn().mockResolvedValue(null), del: jest.fn().mockResolvedValue(undefined) };
+    const setJsonRequired = jest.fn().mockResolvedValue(undefined);
+    const cache = { setJsonRequired, getJson: jest.fn().mockResolvedValue(null), del: jest.fn().mockResolvedValue(undefined) };
     const service = makeService(prisma, cache);
 
     const result = await service.login(tenantSlug, email, password);
 
     expect(result).not.toHaveProperty('accessToken');
     expect(result).toHaveProperty('challenge');
-    expect(setJson).toHaveBeenCalled();
+    expect(setJsonRequired).toHaveBeenCalled();
   });
 
   it('throws 401 for wrong password', async () => {
@@ -427,8 +427,8 @@ describe('AuthService — setup2fa', () => {
         },
       }),
     };
-    const setJson = jest.fn().mockResolvedValue(undefined);
-    const cache = { setJson };
+    const setJsonRequired = jest.fn().mockResolvedValue(undefined);
+    const cache = { setJsonRequired };
     const service = makeService(prisma, cache);
 
     const result = await service.setup2fa(userId, tenantId);
@@ -436,7 +436,7 @@ describe('AuthService — setup2fa', () => {
     expect(result.secret).toMatch(/^[A-Z2-7]+$/);
     expect(result.otpAuthUri).toContain('otpauth://totp/');
     expect(result.setupChallenge).toBeDefined();
-    expect(setJson).toHaveBeenCalledWith(
+    expect(setJsonRequired).toHaveBeenCalledWith(
       expect.stringContaining('totp:challenge:'),
       expect.objectContaining({ type: 'setup', userId, tenantId }),
       expect.any(Number),

@@ -18,6 +18,20 @@ describe('CacheService', () => {
     await expect(service.del('menu:tenant:tenant-1')).resolves.toBeUndefined();
   });
 
+  describe('setJsonRequired', () => {
+    it('stores a required value and fails closed when Redis is unavailable', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const redis = { set: jest.fn().mockResolvedValue('OK') };
+      const service = new CacheService(redis as never);
+
+      await expect(service.setJsonRequired('totp:challenge:id', { type: 'login' }, 180)).resolves.toBeUndefined();
+      expect(redis.set).toHaveBeenCalledWith('totp:challenge:id', '{"type":"login"}', 'EX', 180);
+
+      const unavailable = new CacheService({ set: jest.fn().mockRejectedValue(new Error('Redis down')) } as never);
+      await expect(unavailable.setJsonRequired('totp:challenge:id', { type: 'login' }, 180)).rejects.toThrow('temporarily unavailable');
+    });
+  });
+
   describe('increment', () => {
     it('increments a key and sets TTL on first call', async () => {
       const redis = {

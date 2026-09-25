@@ -311,7 +311,7 @@ export class AuthService {
         userId: user.id,
         tenantId: tenant.id,
       };
-      await this.cache.setJson(
+      await this.cache.setJsonRequired(
         `totp:challenge:${challengeId}`,
         payload,
         LOGIN_CHALLENGE_TTL_SECONDS,
@@ -386,7 +386,7 @@ export class AuthService {
       userId: user.id,
       tenantId,
     };
-    await this.cache.setJson(
+    await this.cache.setJsonRequired(
       `totp:challenge:${challengeId}`,
       payload,
       SETUP_CHALLENGE_TTL_SECONDS,
