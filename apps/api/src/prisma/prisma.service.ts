@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 
 export const TENANT_SCOPED_MODELS = new Set([
@@ -202,6 +202,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
           },
         },
       },
+    });
+  }
+
+  async transactionForTenant<T>(
+    tenantId: string,
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('app.current_tenant_id', ${tenantId}, true)
+      `;
+      return operation(tx);
     });
   }
 

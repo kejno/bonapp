@@ -61,7 +61,8 @@ function isValidCreateTable(body: unknown): body is CreateTableBody {
     typeof b['areaId'] === 'string' &&
     b['areaId'].trim().length > 0 &&
     (b['seatsCount'] === undefined || isPositiveInteger(b['seatsCount'])) &&
-    (b['label'] === undefined || typeof b['label'] === 'string')
+    (b['label'] === undefined ||
+      (typeof b['label'] === 'string' && b['label'].trim().length > 0))
   );
 }
 

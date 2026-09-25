@@ -71,6 +71,8 @@ describe('TablesController', () => {
       [{ tableNumber: 0, areaId: 'a1' }],
       [{ tableNumber: 5, areaId: '' }],
       [{ tableNumber: 5, areaId: 'a1', seatsCount: 0 }],
+      [{ tableNumber: 5, areaId: 'a1', label: '' }],
+      [{ tableNumber: 5, areaId: 'a1', label: '   ' }],
       [null],
     ])('throws BadRequestException for invalid create payload %p', (body) => {
       expect(() => controller.create(req, body)).toThrow(BadRequestException);

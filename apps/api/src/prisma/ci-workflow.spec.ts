@@ -31,7 +31,7 @@ describe('CI workflow', () => {
       'localstack/localstack:4.11.1',
     );
     expect(workflow).toContain('--publish 9000:4566');
-    expect(workflow).toContain('SERVICES=s3');
+    expect(workflow).not.toContain('SERVICES=s3');
     expect(workflow).toContain('--health-cmd "curl -f http://localhost:4566/_localstack/health"');
     expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} minio');
     expect(workflow).toContain('BNP-319.e2e-spec.ts');
