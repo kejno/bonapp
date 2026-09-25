@@ -34,6 +34,13 @@ describe('BNP-373 TOTP verification', () => {
     fireEvent.change(codeInput, { target: { value: '000000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
     expect(await screen.findByText('Неверный код подтверждения')).toBeInTheDocument();
+    expect(useAuthStore.getState().accessToken).toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(codeInput).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Подтвердить' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Добро пожаловать, Admin' })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+
     fireEvent.change(codeInput, { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('access-token'));
