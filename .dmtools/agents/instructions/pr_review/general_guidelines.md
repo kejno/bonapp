@@ -12,7 +12,9 @@ flowchart TD
     INCDIFF --> FILES2["3. Read full content of files touched<br/>by incremental_diff.txt + open-thread files"]
     FILES --> CODEGRAPH["4. Use CodeGraph:<br/>callers/callees of changed symbols,<br/>search for sensitive patterns,<br/>impact analysis"]
     FILES2 --> CODEGRAPH
-    CODEGRAPH --> DIMS["5. Evaluate review dimensions:<br/>Security · Architecture/OOP · Code quality<br/>Test coverage · Duplication · Backward compatibility"]
+    CODEGRAPH --> STANDARDS["5a. Standards pass:<br/>Security · Architecture/OOP · Code quality<br/>Duplication · Smell baseline · Workflow/CI safety"]
+    STANDARDS --> SPEC["5b. Spec pass:<br/>diff against ticket ACs —<br/>missing, extra, or wrong behavior"]
+    SPEC --> DIMS["5c. Merge findings from both passes,<br/>keep each tagged Standards or Spec"]
     DIMS --> SEVERITY["6. Classify each finding:<br/>BLOCKING / IMPORTANT / SUGGESTION"]
     SEVERITY --> SCOPE{"First review?"}
     SCOPE -->|Yes| EXHAUST["7. Exhaustive pass:<br/>re-read changed files,<br/>surface ALL remaining issues"]
@@ -98,20 +100,97 @@ grep -rn "changedFunctionName" --include="*.ts" .
 grep -rn "secrets\.\|github\.token" .
 ```
 
-## 5. Review dimensions
+## 5. Review dimensions — two axes, run as separate passes
 
-Rate the PR across all relevant dimensions:
+Run **Standards** and **Spec** as two distinct passes over the same diff. Do not
+interleave them into one mental pass — a change can pass one axis and fail the
+other (code that follows every convention but implements the wrong thing, or
+code that does exactly what the ticket asked but breaks project conventions).
+Tag every finding with its axis (`Standards` or `Spec`) so the two never get
+reranked against each other; a BLOCKING Spec gap does not excuse skipping a
+BLOCKING Standards issue, and vice versa.
+
+### 5a. Standards pass
+
+Does the diff conform to this repo's documented conventions (`instruction.md`,
+linter/formatter config, existing patterns in sibling files)?
 
 | Dimension | What to check |
 |---|---|
 | **Security** | injection, unsafe interpolation, secret leakage, missing permissions, unsafe defaults |
-| **Architecture / OOP** | SRP, coupling, abstraction consistency, provider/repository boundaries |
+| **Architecture / OOP** | SRP, coupling, abstraction consistency, provider/repository boundaries — see deep-module check below |
 | **Code quality** | naming, complexity, error handling, logging, comments |
-| **Tests** | coverage for new/changed paths, meaningful assertions, no brittle string-only tests |
+| **Tests** | coverage for new/changed paths, meaningful assertions, no brittle string-only tests — see interface-is-the-test-surface below |
 | **Duplication** | copy-paste, duplicated logic across files, duplicated configuration |
 | **Backward compatibility** | public API changes, migration paths, default behavior |
 | **Performance** | unnecessary rebuilds, heavy sync operations, missing timeouts |
 | **Workflow / CI safety** | (when `.github/workflows/` changes) secret declarations, ref pinning, permissions, timeouts |
+
+**Smell baseline** — on top of whatever the repo documents, always check the
+diff against this fixed set of Fowler code smells (*Refactoring*, ch.3). Each
+smell is a labelled heuristic, never a hard violation: a documented repo
+convention always overrides the baseline, and skip anything already enforced
+by lint/formatter tooling.
+
+| Smell | What it looks like | Fix direction |
+|---|---|---|
+| **Mysterious Name** | name doesn't reveal what it does or holds | rename; if no honest name comes, the design's murky |
+| **Duplicated Code** | same logic shape in more than one hunk/file | extract the shared shape |
+| **Feature Envy** | method reaches into another object's data more than its own | move the method onto the data it envies |
+| **Data Clumps** | same few fields/params keep travelling together | bundle into one type |
+| **Primitive Obsession** | a primitive/string standing in for a domain concept | give the concept its own small type |
+| **Repeated Switches** | same switch/if-cascade on the same type recurs | polymorphism, or one shared map |
+| **Shotgun Surgery** | one logical change forces scattered edits across many files | gather what changes together into one module |
+| **Divergent Change** | one file/module edited for several unrelated reasons | split so each module changes for one reason |
+| **Speculative Generality** | abstraction/params/hooks added for needs the spec doesn't have | delete it; inline back until a real need shows |
+| **Message Chains** | long `a.b().c().d()` navigation the caller shouldn't depend on | hide the walk behind one method |
+| **Middle Man** | a class/function that mostly just delegates onward | cut it, call the real target direct |
+| **Refused Bequest** | subclass/implementer ignores or overrides most of what it inherits | drop the inheritance, use composition |
+
+Cite hard violations (documented standard + rule) separately from smell
+judgement calls (name the smell, quote the hunk) — hard violations can justify
+a higher severity by themselves, smells are advisory unless they compound into
+a real risk.
+
+**Deep-module check** — for any new class, provider, or module introduced or
+significantly reshaped in the diff, apply this to the Architecture/OOP line
+instead of a vague "SRP/coupling" judgement:
+
+- **The deletion test.** Imagine deleting the new module and inlining it at
+  its call site(s). If the complexity vanishes, it was a pass-through —
+  flag it as unnecessary indirection (SUGGESTION, or IMPORTANT if it also
+  adds an unjustified interface/DI surface). If the complexity reappears at
+  every caller, the module is earning its keep — no finding.
+- **One adapter means a hypothetical seam, two means a real one.** If the
+  diff introduces an interface/port (e.g. a new injectable abstraction over
+  a NestJS provider) with only one implementation and no second adapter in
+  sight (no test double, no alternate backend), flag it as speculative
+  indirection — same fix direction as Speculative Generality above.
+- This is a judgement call like the smell baseline, not a hard rule — a
+  single-adapter seam can be justified when the ticket or `instruction.md`
+  states a near-term second adapter is planned (e.g. swapping Оплати for
+  ЕРИП behind the same port).
+
+**Interface-is-the-test-surface check** — for the Tests line, flag a test as
+a finding (not just "coverage ok/not ok") when it verifies behavior by
+reaching past the module's public interface: mocking internal collaborators,
+asserting on call counts/order, or checking side effects through a side
+channel (e.g. querying the DB directly instead of calling the service method
+a real caller would use). Such a test can pass while the actual behavior is
+broken, and breaks on safe refactors — cite the specific line it bypasses and
+what public call it should assert on instead.
+
+### 5b. Spec pass
+
+Does the diff faithfully implement what `ticket.md` (ACs) and any linked
+spec/confluence doc asked for? Check, independently of the Standards pass:
+
+- requirements the ticket asked for that are missing or partially done
+- behavior in the diff that wasn't asked for (scope creep)
+- requirements that look implemented but where the implementation looks wrong
+  against the stated AC
+
+Quote the specific AC or ticket line for each Spec finding.
 
 ## 6. Severity classification
 
@@ -144,8 +223,12 @@ The goal: every BLOCKING/IMPORTANT issue is raised the first time the code that 
 Write the standard review artifacts:
 
 - `outputs/pr_review.json` — structured data with `recommendation`, `summary`, `inlineComments`, `issueCounts`
-- `outputs/pr_review_general.md` — 1-2 paragraph general PR comment
-- `outputs/pr_review_comments/*.md` — one file per detailed inline comment
+- `outputs/pr_review_general.md` — 1-2 paragraph general PR comment, with the
+  Spec-axis findings (if any) called out separately from Standards-axis
+  findings — don't merge them into one undifferentiated list
+- `outputs/pr_review_comments/*.md` — one file per detailed inline comment.
+  Start each comment with its axis tag, e.g. `**[Spec]**` or
+  `**[Standards]**`, so the author knows which question it answers
 
 **Inline comment lines must be present in the full PR diff (`pr_diff.txt`), even on a re-review.** GitHub review threads can only be attached to added or context lines inside a diff hunk against the base branch — `incremental_diff.txt` only scopes *which* findings to look for, it is never what a comment line number is validated against. If `pr_diff.txt` is truncated, run `git diff origin/{baseBranch}...HEAD` to locate the correct line numbers. Findings on unchanged code outside the diff belong in `outputs/pr_review_general.md`, not as inline comments.
 
