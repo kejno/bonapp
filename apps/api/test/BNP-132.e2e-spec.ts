@@ -275,6 +275,11 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       expect(isChallengeResponse(firstFactorBody)).toBe(true);
       if (!isChallengeResponse(firstFactorBody)) return;
       expect(firstFactor.body).not.toHaveProperty('accessToken');
+      expect(firstFactor.headers['set-cookie']).toBeUndefined();
+      await request(app.getHttpServer())
+        .post('/api/v1/admin/tenant/logo')
+        .set('Authorization', `Bearer ${firstFactorBody.challenge}`)
+        .expect(401);
       await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
         .send({
