@@ -14,6 +14,7 @@ describe('TablesController', () => {
     deleteTable: jest.fn(),
     bulkCreateTables: jest.fn(),
     updateTableStatus: jest.fn(),
+    generateQrPdf: jest.fn(),
   };
   const pdfService = { generate: jest.fn(), getJob: jest.fn(), getFile: jest.fn() };
   const controller = new TablesController(service as unknown as HallsService, pdfService as never);
@@ -254,4 +255,5 @@ describe('TablesController', () => {
       expect(service.updateTableStatus).not.toHaveBeenCalled();
     });
   });
+
 });
