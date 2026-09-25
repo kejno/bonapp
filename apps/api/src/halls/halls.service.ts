@@ -95,7 +95,7 @@ export class HallsService {
           where: { status: { notIn: ['PAID', 'CANCELLED'] } },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, status: true, totalAmountByn: true },
+          select: { id: true, status: true, totalAmountByn: true, guestSessionId: true },
         },
       },
     });

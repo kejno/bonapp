@@ -15,7 +15,7 @@ export interface DiningTable {
   seatsCount: number;
   areaId: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'BILL_REQUESTED' | string;
-  orders?: Array<{ id: string; status: string; totalAmountByn: string | number }>;
+  orders?: Array<{ id: string; status: string; totalAmountByn: string | number; guestSessionId: string | null }>;
 }
 
 export interface TableInput {

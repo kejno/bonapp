@@ -103,12 +103,24 @@ describe('TablesPage', () => {
   it('links the current order to its details screen', async () => {
     vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
     vi.mocked(tablesApi.getTables).mockResolvedValue([
-      { ...tables[0], orders: [{ id: 'order-1', status: 'IN_PROGRESS', totalAmountByn: 12 } ] },
+      { ...tables[0], orders: [{ id: 'order-1', status: 'IN_PROGRESS', totalAmountByn: 12, guestSessionId: null }] },
     ]);
     renderPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
     expect(screen.getByText(/Заказ order-1/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Открыть заказ' })).toHaveAttribute('href', '/orders/order-1');
+  });
+
+  it('shows the guest session associated with the current order', async () => {
+    vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
+    vi.mocked(tablesApi.getTables).mockResolvedValue([
+      { ...tables[0], orders: [{ id: 'order-1', status: 'IN_PROGRESS', totalAmountByn: 12, guestSessionId: 'guest-session-1' }] },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
+    expect(screen.getByText('Сессия гостя')).toBeInTheDocument();
+    expect(screen.getByText('guest-session-1')).toBeInTheDocument();
   });
 });
