@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Post,
   Put,
@@ -57,6 +58,7 @@ export class MenuCatalogController {
   }
 
   @Delete('categories/:id')
+  @HttpCode(204)
   deleteCategory(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.catalogService.deleteCategory(req.user!.tenantId!, id);
   }
@@ -93,6 +95,7 @@ export class MenuCatalogController {
   }
 
   @Delete('items/:id')
+  @HttpCode(204)
   deleteItem(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.catalogService.deleteItem(req.user!.tenantId!, id);
   }
@@ -166,6 +169,12 @@ export class MenuCatalogController {
     }
     if (typeof b.price !== 'number' || !Number.isInteger(b.price) || b.price < 0) {
       throw new BadRequestException('price is required and must be a non-negative integer in minor currency units');
+    }
+    if ('description' in b && b.description !== null && typeof b.description !== 'string') {
+      throw new BadRequestException('description must be a string or null');
+    }
+    if ('imageUrl' in b && b.imageUrl !== null && typeof b.imageUrl !== 'string') {
+      throw new BadRequestException('imageUrl must be a string or null');
     }
     return {
       name: b.name,

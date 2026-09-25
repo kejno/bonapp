@@ -19,7 +19,10 @@ describe('BNP-147: menu catalog CRUD', () => {
       .post('/api/v1/admin/menu/categories')
       .set(authorization)
       .send({ name: 'Desserts', sortOrder: 1, isVisible: true })
-      .expect(201)) as unknown as { body: { id: string } };
+      .expect(201)) as unknown as { body: { id: string; isVisible: boolean; isActive?: boolean } };
+
+    expect(category.body.isVisible).toBe(true);
+    expect(category.body.isActive).toBeUndefined();
 
     const item = (await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/menu/items')
@@ -67,7 +70,7 @@ describe('BNP-147: menu catalog CRUD', () => {
     await request(fixture.app.getHttpServer())
       .delete(`/api/v1/admin/menu/categories/${category.body.id}`)
       .set(authorization)
-      .expect(200);
+      .expect(204);
 
     await expect(
       fixture.prisma.menuItem.findUnique({ where: { id: item.body.id } }),

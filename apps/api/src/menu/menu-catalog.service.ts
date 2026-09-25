@@ -63,10 +63,11 @@ export class MenuCatalogService {
   ) {}
 
   async listCategories(tenantId: string) {
-    return this.prisma.forTenant(tenantId).menuCategory.findMany({
+    const categories = await this.prisma.forTenant(tenantId).menuCategory.findMany({
       where: { tenantId },
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
+    return categories.map((category) => this.mapCategory(category));
   }
 
   async createCategory(tenantId: string, dto: CreateCategoryDto) {
@@ -82,7 +83,7 @@ export class MenuCatalogService {
         },
       });
       await this.invalidateMenu(tenantId);
-      return category;
+      return this.mapCategory(category);
     } catch (e) {
       if (this.isUniqueConstraintError(e)) {
         throw new ConflictException('pos_category_id is already used by another category in this tenant');
@@ -107,7 +108,7 @@ export class MenuCatalogService {
         data,
       });
       await this.invalidateMenu(tenantId);
-      return category;
+      return this.mapCategory(category);
     } catch (e) {
       if (this.isNotFoundError(e)) {
         throw new NotFoundException(`Category ${categoryId} not found`);
@@ -223,7 +224,7 @@ export class MenuCatalogService {
   async presignMenuItemUpload(
     tenantId: string,
     contentType: string,
-  ): Promise<{ uploadUrl: string; uploadFields?: Record<string, string>; imageUrl: string }> {
+  ): Promise<{ uploadUrl: string; uploadFields: Record<string, string>; imageUrl: string }> {
     const ext = ALLOWED_IMAGE_TYPES[contentType];
     if (!ext) {
       throw new BadRequestException(
@@ -236,15 +237,16 @@ export class MenuCatalogService {
       contentType,
       600,
     );
-    return {
-      uploadUrl,
-      ...(uploadFields === undefined ? {} : { uploadFields }),
-      imageUrl: publicUrl,
-    };
+    return { uploadUrl, uploadFields, imageUrl: publicUrl };
   }
 
   private async invalidateMenu(tenantId: string): Promise<void> {
     await this.cache.del(menuCacheKey(tenantId));
+  }
+
+  private mapCategory<T extends { isActive: boolean }>(category: T): Omit<T, 'isActive'> & { isVisible: boolean } {
+    const { isActive, ...rest } = category;
+    return { ...rest, isVisible: isActive };
   }
 
   private validateName(name: string): void {

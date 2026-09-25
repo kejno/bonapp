@@ -44,4 +44,18 @@ describe('MenuCatalogController', () => {
       }),
     ).toThrow(BadRequestException);
   });
+
+  it.each([
+    ['imageUrl', 42],
+    ['description', true],
+  ])('rejects a non-string %s when creating an item', (field, value) => {
+    expect(() =>
+      (controller as unknown as { parseCreateItem(body: unknown): unknown }).parseCreateItem({
+        name: 'Latte',
+        categoryId: 'category-1',
+        price: 500,
+        [field]: value,
+      }),
+    ).toThrow(BadRequestException);
+  });
 });

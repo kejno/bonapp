@@ -60,8 +60,8 @@ describe('MenuCatalogService', () => {
   describe('listCategories', () => {
     it('returns categories ordered by sortOrder then id', async () => {
       const cats = [
-        { id: 'a', sortOrder: 1 },
-        { id: 'b', sortOrder: 2 },
+        { id: 'a', sortOrder: 1, isActive: true },
+        { id: 'b', sortOrder: 2, isActive: false },
       ];
       prisma.menuCategory.findMany.mockResolvedValue(cats);
 
@@ -72,7 +72,11 @@ describe('MenuCatalogService', () => {
         where: { tenantId: 'tenant-1' },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       });
-      expect(result).toEqual(cats);
+      expect(result).toEqual([
+        { id: 'a', sortOrder: 1, isVisible: true },
+        { id: 'b', sortOrder: 2, isVisible: false },
+      ]);
+      expect(result[0]).not.toHaveProperty('isActive');
     });
   });
 
@@ -97,7 +101,14 @@ describe('MenuCatalogService', () => {
         },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
-      expect(result).toEqual(created);
+      expect(result).toEqual({
+        id: 'cat-1',
+        name: 'Drinks',
+        sortOrder: 1,
+        posCategoryId: null,
+        isVisible: true,
+      });
+      expect(result).not.toHaveProperty('isActive');
     });
 
     it('rejects a name that is empty after trimming', async () => {
@@ -131,7 +142,7 @@ describe('MenuCatalogService', () => {
 
   describe('updateCategory', () => {
     it('updates a category and invalidates the menu cache', async () => {
-      const updated = { id: 'cat-1', name: 'Updated' };
+      const updated = { id: 'cat-1', name: 'Updated', isActive: false };
       prisma.menuCategory.update.mockResolvedValue(updated);
 
       const result = await service.updateCategory('tenant-1', 'cat-1', { name: 'Updated' });
@@ -141,7 +152,8 @@ describe('MenuCatalogService', () => {
         data: { name: 'Updated' },
       });
       expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
-      expect(result).toEqual(updated);
+      expect(result).toEqual({ id: 'cat-1', name: 'Updated', isVisible: false });
+      expect(result).not.toHaveProperty('isActive');
     });
 
     it('maps isVisible to isActive in the update data', async () => {
@@ -438,6 +450,7 @@ describe('MenuCatalogService', () => {
     it('returns uploadUrl and imageUrl for a valid content type', async () => {
       storage.getPresignedUploadUrl.mockResolvedValue({
         uploadUrl: 'https://s3.example.com/presigned',
+        uploadFields: { key: 'tenants/tenant-1/menu/uuid.jpg' },
         publicUrl: 'https://cdn.example.com/tenants/tenant-1/menu/uuid.jpg',
       });
 
@@ -450,14 +463,15 @@ describe('MenuCatalogService', () => {
       );
       expect(result).toEqual({
         uploadUrl: 'https://s3.example.com/presigned',
+        uploadFields: { key: 'tenants/tenant-1/menu/uuid.jpg' },
         imageUrl: 'https://cdn.example.com/tenants/tenant-1/menu/uuid.jpg',
       });
     });
 
     it('generates distinct keys for each call', async () => {
       storage.getPresignedUploadUrl
-        .mockResolvedValueOnce({ uploadUrl: 'url-1', publicUrl: 'pub-1' })
-        .mockResolvedValueOnce({ uploadUrl: 'url-2', publicUrl: 'pub-2' });
+        .mockResolvedValueOnce({ uploadUrl: 'url-1', uploadFields: {}, publicUrl: 'pub-1' })
+        .mockResolvedValueOnce({ uploadUrl: 'url-2', uploadFields: {}, publicUrl: 'pub-2' });
 
       await service.presignMenuItemUpload('tenant-1', 'image/png');
       await service.presignMenuItemUpload('tenant-1', 'image/png');
