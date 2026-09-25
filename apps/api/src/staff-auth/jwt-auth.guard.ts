@@ -46,10 +46,10 @@ export class JwtAuthGuard implements CanActivate {
     };
 
     const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
-      where: { id: payload.userId, isActive: true },
-      select: { mustChangePassword: true },
+      where: { id: payload.userId, isActive: true, isBlocked: false },
+      select: { isBlocked: true, mustChangePassword: true },
     });
-    if (!user) throw new UnauthorizedException();
+    if (!user || user.isBlocked) throw new UnauthorizedException();
     if (user.mustChangePassword && context.getHandler().name !== 'changePassword') {
       throw new ForbiddenException('Password change required');
     }

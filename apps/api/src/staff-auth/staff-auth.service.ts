@@ -57,10 +57,10 @@ export class StaffAuthService {
 
     const db = this.prisma.forTenant(tenantId);
     const user = await db.user.findFirst({
-      where: { email, isActive: true },
+      where: { email, isActive: true, isBlocked: false },
     });
 
-    if (!user) {
+    if (!user || user.isBlocked) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -68,8 +68,6 @@ export class StaffAuthService {
     if (!valid) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
-    await this.resetAttempts(ip);
 
     const { accessToken, refreshToken } = buildTokenPair(
       user.id,
@@ -102,10 +100,10 @@ export class StaffAuthService {
 
     const db = this.prisma.forTenant(payload.tenantId);
     const user = await db.user.findFirst({
-      where: { id: payload.userId, isActive: true },
-      select: { id: true, role: true },
+      where: { id: payload.userId, isActive: true, isBlocked: false },
+      select: { id: true, role: true, isBlocked: true },
     });
-    if (!user) throw new UnauthorizedException();
+    if (!user || user.isBlocked) throw new UnauthorizedException();
 
     const claimed = await this.redis.set(
       rtBlacklistKey(payload.jti),
@@ -188,7 +186,4 @@ export class StaffAuthService {
     }
   }
 
-  private async resetAttempts(ip: string): Promise<void> {
-    await this.redis.del(loginAttemptsKey(ip));
-  }
 }

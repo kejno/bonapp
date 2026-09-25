@@ -115,6 +115,50 @@ describe('StaffAuthService', () => {
       expect(result.mustChangePassword).toBe(true);
     });
 
+    it('rejects blocked staff accounts even when the password is valid', async () => {
+      const hash = await makeUserHash('correctpass');
+      const prisma = {
+        forTenant: () => ({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: USER_ID,
+              role: 'WAITER',
+              isBlocked: true,
+              passwordHash: hash,
+            }),
+          },
+        }),
+      };
+      const service = new StaffAuthService(prisma as never, makeRedis() as never, makeConfig());
+
+      await expect(service.login(TENANT_ID, 'staff@test.com', 'correctpass', '127.0.0.1'))
+        .rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('keeps successful attempts in the IP rate-limit window', async () => {
+      const hash = await makeUserHash('correctpass');
+      const prisma = {
+        forTenant: () => ({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: USER_ID,
+              role: 'WAITER',
+              isBlocked: false,
+              mustChangePassword: false,
+              passwordHash: hash,
+            }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        }),
+      };
+      const redis = makeRedis();
+      const service = new StaffAuthService(prisma as never, redis as never, makeConfig());
+
+      await service.login(TENANT_ID, 'staff@test.com', 'correctpass', '127.0.0.1');
+
+      expect(redis.del).not.toHaveBeenCalled();
+    });
+
     it('throws 401 on wrong password', async () => {
       const hash = await makeUserHash('correctpass');
       const prisma = {
@@ -327,6 +371,26 @@ describe('StaffAuthService', () => {
       const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
       const redis = makeRedis();
       const service = new StaffAuthService(makeActivePrisma(null) as never, redis as never, makeConfig());
+
+      await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it('rejects refresh for blocked staff accounts', async () => {
+      const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
+      const redis = makeRedis();
+      const prisma = {
+        forTenant: () => ({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: USER_ID,
+              role: 'WAITER',
+              isBlocked: true,
+            }),
+          },
+        }),
+      };
+      const service = new StaffAuthService(prisma as never, redis as never, makeConfig());
 
       await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(redis.set).not.toHaveBeenCalled();

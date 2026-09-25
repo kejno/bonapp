@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,5 +47,23 @@ describe('JwtAuthGuard', () => {
     const request = { headers: { authorization: `Bearer ${accessToken}` } } as StaffRequest;
 
     await expect(guard.canActivate(makeContext(request, 'changePassword'))).resolves.toBe(true);
+  });
+
+  it('rejects already issued tokens for blocked users', async () => {
+    const { accessToken } = buildTokenPair('user-1', 'tenant-1', UserRole.WAITER, SECRET);
+    const prisma = {
+      forTenant: () => ({
+        user: { findFirst: jest.fn().mockResolvedValue({ isBlocked: true, mustChangePassword: false }) },
+      }),
+    };
+    const guard = new JwtAuthGuard(
+      { getOrThrow: () => SECRET } as unknown as ConfigService,
+      prisma as unknown as PrismaService,
+    );
+    const request = { headers: { authorization: `Bearer ${accessToken}` } } as StaffRequest;
+
+    await expect(guard.canActivate(makeContext(request, 'protectedAction'))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 });

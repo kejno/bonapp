@@ -14,6 +14,13 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import type { StaffRequest } from './jwt-auth.guard';
 import type { TokenPair } from './staff-auth.dto';
 
+function requestBodyRecord(body: unknown): Record<string, unknown> {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new BadRequestException('Request body must be an object');
+  }
+  return body as Record<string, unknown>;
+}
+
 @Controller('auth')
 export class StaffAuthController {
   constructor(private readonly staffAuthService: StaffAuthService) {}
@@ -22,7 +29,7 @@ export class StaffAuthController {
   @HttpCode(HttpStatus.OK)
   @SkipTenantGuard()
   async refresh(@Body() body: unknown): Promise<TokenPair> {
-    const refreshToken = (body as Record<string, unknown>)['refreshToken'];
+    const refreshToken = requestBodyRecord(body)['refreshToken'];
     if (typeof refreshToken !== 'string' || !refreshToken) {
       throw new BadRequestException('refreshToken is required');
     }
@@ -33,7 +40,7 @@ export class StaffAuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @SkipTenantGuard()
   async logout(@Body() body: unknown): Promise<void> {
-    const refreshToken = (body as Record<string, unknown>)['refreshToken'];
+    const refreshToken = requestBodyRecord(body)['refreshToken'];
     if (typeof refreshToken !== 'string' || !refreshToken) {
       throw new BadRequestException('refreshToken is required');
     }
@@ -47,7 +54,7 @@ export class StaffAuthController {
     @Body() body: unknown,
     @Req() req: StaffRequest,
   ): Promise<void> {
-    const b = body as Record<string, unknown>;
+    const b = requestBodyRecord(body);
     const currentPassword = b['currentPassword'];
     const newPassword = b['newPassword'];
     if (
