@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import QRCode from 'qrcode';
+import puppeteer from 'puppeteer';
 import { AuthGuard } from '../src/auth/auth.guard';
 import { TenantContextGuard } from '../src/auth/tenant-context.guard';
 import { HallsService } from '../src/halls/halls.service';
@@ -19,6 +20,7 @@ describe('BNP-387: PDF for selected tables', () => {
   const pdfService = Object.create(
     TableQrPdfService.prototype,
   ) as TableQrPdfService;
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>>;
 
   beforeAll(async () => {
     const cache = {
@@ -43,15 +45,24 @@ describe('BNP-387: PDF for selected tables', () => {
       }),
     };
     let renderedHtml = '';
-    const page = {
-      setContent: jest.fn((html: string) => { renderedHtml = html; }),
-      pdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-selected-tables')),
-      close: jest.fn(),
-    };
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    const newPage = browser.newPage.bind(browser);
+    jest.spyOn(browser, 'newPage').mockImplementation(async (...args) => {
+      const page = await newPage(...args);
+      const setContent = page.setContent.bind(page);
+      jest.spyOn(page, 'setContent').mockImplementation(async (html, options) => {
+        renderedHtml = html;
+        await setContent(html, options);
+      });
+      return page;
+    });
     Object.assign(pdfService, {
       cache,
       prisma,
-      browser: { newPage: jest.fn().mockResolvedValue(page), close: jest.fn() },
+      browser,
       getRenderedHtml: () => renderedHtml,
       onModuleInit: () => undefined,
       onModuleDestroy: () => undefined,
@@ -99,7 +110,7 @@ describe('BNP-387: PDF for selected tables', () => {
       .expect('Content-Type', /application\/pdf/);
     const pdf = response.body as Buffer;
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
-    expect(pdf.toString()).toBe('%PDF-selected-tables');
+    expect(pdf.length).toBeGreaterThan(1000);
     const findMany = (
       pdfService as unknown as {
         prisma: { forTenant: () => { table: { findMany: jest.Mock } } };
