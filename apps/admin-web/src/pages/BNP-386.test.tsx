@@ -31,5 +31,6 @@ describe('BNP-386: добавление стола', () => {
       tableNumber: 9, label: 'У перил', seatsCount: 5, areaId: area.id,
     }));
     expect(await screen.findByRole('button', { name: 'Стол 9, Свободен' })).toHaveAttribute('data-status', 'FREE');
+    expect(screen.getByText('У перил')).toBeVisible();
   });
 });

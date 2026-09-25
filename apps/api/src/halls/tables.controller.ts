@@ -13,19 +13,19 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { TableStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
-import type { Response } from 'express';
 import { HallsService } from './halls.service';
+import { TableQrPdfService } from './table-qr-pdf.service';
 
 const ALLOWED_STATUSES = new Set<string>([
   TableStatus.AVAILABLE,
   TableStatus.OCCUPIED,
   TableStatus.BILL_REQUESTED,
 ]);
-const MAX_QR_PDF_TABLES = 100;
 
 interface CreateTableBody {
   tableNumber: number;
@@ -54,12 +54,6 @@ interface StatusUpdateBody {
 
 function isPositiveInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
-function isNonEmptyStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length > 0 && value.every(
-    (item: unknown) => typeof item === 'string' && item.trim().length > 0,
-  );
 }
 
 function isValidCreateTable(body: unknown): body is CreateTableBody {
@@ -114,7 +108,41 @@ function isValidStatusUpdate(body: unknown): body is StatusUpdateBody {
 @Controller('api/v1/admin/tables')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TablesController {
-  constructor(private readonly hallsService: HallsService) {}
+  constructor(
+    private readonly hallsService: HallsService,
+    private readonly tableQrPdfService?: TableQrPdfService,
+  ) {}
+
+  @Post('generate-qr-pdf')
+  @HttpCode(200)
+  async generateQrPdf(@Req() req: TenantRequest, @Body() body: unknown, @Res() res: Response) {
+    if (body !== undefined && (typeof body !== 'object' || body === null ||
+      ('tableIds' in body && (!Array.isArray((body as { tableIds?: unknown }).tableIds) ||
+        !(body as { tableIds: unknown[] }).tableIds.every((id) =>
+          typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id),
+        ))))) {
+      throw new BadRequestException('tableIds must be an array of UUIDs');
+    }
+    const tableIds = (body as { tableIds?: string[] } | undefined)?.tableIds;
+    const result = await this.tableQrPdfService!.generate(req.user!.tenantId!, tableIds);
+    if (Buffer.isBuffer(result)) {
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="tables-qr.pdf"' });
+      return res.send(result);
+    }
+    return res.status(202).json(result);
+  }
+
+  @Get('generate-qr-pdf/jobs/:jobId')
+  getQrPdfJob(@Req() req: TenantRequest, @Param('jobId') jobId: string) {
+    return this.tableQrPdfService!.getJob(jobId, req.user!.tenantId!);
+  }
+
+  @Get('generate-qr-pdf/jobs/:jobId/file')
+  async downloadQrPdf(@Req() req: TenantRequest, @Param('jobId') jobId: string, @Res() res: Response) {
+    const file = await this.tableQrPdfService!.getFile(jobId, req.user!.tenantId!);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="tables-qr.pdf"' });
+    return res.send(file);
+  }
 
   @Get()
   list(@Req() req: TenantRequest) {
@@ -184,30 +212,5 @@ export class TablesController {
       id,
       body.status as TableStatus,
     );
-  }
-
-  @Post('generate-qr-pdf')
-  async generateQrPdf(
-    @Req() req: TenantRequest,
-    @Body() body: unknown,
-    @Res() response: Response,
-  ) {
-    const tableIds =
-      typeof body === 'object' && body !== null
-        ? (body as Record<string, unknown>)['tableIds']
-        : undefined;
-    if (!isNonEmptyStringArray(tableIds)) {
-      throw new BadRequestException('tableIds must be a non-empty array of table IDs');
-    }
-    if (tableIds.length > MAX_QR_PDF_TABLES) {
-      throw new BadRequestException(
-        `tableIds must contain no more than ${MAX_QR_PDF_TABLES} table IDs`,
-      );
-    }
-    const pdf = await this.hallsService.generateQrPdf(req.user!.tenantId!, tableIds);
-    response.type('application/pdf').setHeader(
-      'Content-Disposition',
-      'attachment; filename="table-qr-codes.pdf"',
-    ).send(pdf);
   }
 }
