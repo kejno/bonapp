@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma, TableStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HallsService } from './halls.service';
+import QRCode from 'qrcode';
 
 describe('HallsService', () => {
   let prisma: {
@@ -95,8 +96,88 @@ describe('HallsService', () => {
       expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
       expect(prisma.table.findMany).toHaveBeenCalledWith({
         orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+        include: {
+          orders: {
+            where: { status: { notIn: ['PAID', 'CANCELLED'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, status: true, totalAmountByn: true, guestSessionId: true },
+          },
+        },
       });
       expect(result).toBe(tables);
+    });
+  });
+
+  describe('generateQrPdf', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalGuestMenuUrl = process.env.GUEST_MENU_URL;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalGuestMenuUrl === undefined) delete process.env.GUEST_MENU_URL;
+      else process.env.GUEST_MENU_URL = originalGuestMenuUrl;
+    });
+
+    it('creates a PDF with token URLs for every selected table in tenant-scoped order', async () => {
+      process.env.NODE_ENV = 'test';
+      process.env.GUEST_MENU_URL = 'https://guest.example/menu';
+      const selectedTables = [
+        { id: 't1', tableNumber: 1, qrToken: 'secret-1', area: { name: 'Main' } },
+        { id: 't2', tableNumber: 2, qrToken: 'secret-2', area: { name: 'Терраса' } },
+        { id: 't3', tableNumber: 3, qrToken: 'secret-3', area: { name: 'VIP' } },
+        { id: 't4', tableNumber: 4, qrToken: 'secret-4', area: { name: 'Main' } },
+        { id: 't5', tableNumber: 5, qrToken: 'secret-5', area: { name: 'Main' } },
+      ];
+      prisma.table.findMany.mockResolvedValue(selectedTables);
+      const qrSpy = jest.spyOn(QRCode, 'toBuffer');
+      const qrImage = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0WQAAAAASUVORK5CYII=',
+        'base64',
+      );
+      qrSpy.mockResolvedValue(qrImage as never);
+
+      const result = await service.generateQrPdf('tenant-1', ['t1', 't2', 't3', 't4', 't5']);
+
+      expect(prisma.forTenant).toHaveBeenCalledWith('tenant-1');
+      expect(prisma.table.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['t1', 't2', 't3', 't4', 't5'] } },
+        orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
+        include: { area: { select: { name: true } } },
+      });
+      expect(Buffer.isBuffer(result)).toBe(true);
+      expect(result.subarray(0, 4).toString()).toBe('%PDF');
+      expect(result.toString('latin1')).toContain('DejaVuSans');
+      expect(result.toString('latin1')).toContain('/ToUnicode');
+      expect(qrSpy).toHaveBeenCalledTimes(5);
+      expect(qrSpy.mock.calls.map(([url]) => url).sort()).toEqual([
+        'https://guest.example/menu?qr_token=secret-1',
+        'https://guest.example/menu?qr_token=secret-2',
+        'https://guest.example/menu?qr_token=secret-3',
+        'https://guest.example/menu?qr_token=secret-4',
+        'https://guest.example/menu?qr_token=secret-5',
+      ]);
+      qrSpy.mockRestore();
+    });
+
+    it('rejects when any selected table is outside the tenant or does not exist', async () => {
+      process.env.NODE_ENV = 'test';
+      process.env.GUEST_MENU_URL = 'https://guest.example/menu';
+      prisma.table.findMany.mockResolvedValue([
+        { id: 't1', tableNumber: 1, qrToken: 'secret-1', area: { name: 'Main' } },
+      ]);
+
+      await expect(service.generateQrPdf('tenant-1', ['t1', 'foreign-table']))
+        .rejects.toThrow(NotFoundException);
+    });
+
+    it('requires a configured public menu URL in production', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.GUEST_MENU_URL;
+
+      await expect(service.generateQrPdf('tenant-1', ['t1']))
+        .rejects.toThrow('GUEST_MENU_URL must be configured');
+      expect(prisma.table.findMany).not.toHaveBeenCalled();
     });
   });
 

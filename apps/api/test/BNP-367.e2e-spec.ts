@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
+type MenuItemResponse = { id: string };
+
 describe('BNP-367: menu item CRUD and filters', () => {
   const fixture = new MenuCacheTestFixture();
 
@@ -14,10 +16,11 @@ describe('BNP-367: menu item CRUD and filters', () => {
       .set(authorization)
       .send({ name: 'Flat white', categoryId: fixture.categoryId, price: 450, imageUrl: 'https://images.test/flat-white.jpg' })
       .expect(201);
+    const createdItem = created.body as MenuItemResponse;
     expect(created.body).toMatchObject({ name: 'Flat white', categoryId: fixture.categoryId, price: 450 });
 
     const updated = await request(fixture.app.getHttpServer())
-      .put(`/api/v1/admin/menu/items/${created.body.id}`)
+      .put(`/api/v1/admin/menu/items/${createdItem.id}`)
       .set(authorization)
       .send({ name: 'Large flat white', price: 550, isActive: false })
       .expect(200);
@@ -28,13 +31,13 @@ describe('BNP-367: menu item CRUD and filters', () => {
       .query({ category: fixture.categoryId, is_active: 'false', is_in_stop_list: 'false' })
       .set(authorization)
       .expect(200);
-    expect(filtered.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.id, name: 'Large flat white' })]));
+    expect(filtered.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: createdItem.id, name: 'Large flat white' })]));
     expect(filtered.body).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: fixture.itemId })]));
 
     await request(fixture.app.getHttpServer())
-      .delete(`/api/v1/admin/menu/items/${created.body.id}`)
+      .delete(`/api/v1/admin/menu/items/${createdItem.id}`)
       .set(authorization)
       .expect(204);
-    await expect(fixture.prisma.menuItem.findUnique({ where: { id: created.body.id } })).resolves.toBeNull();
+    await expect(fixture.prisma.menuItem.findUnique({ where: { id: createdItem.id } })).resolves.toBeNull();
   });
 });

@@ -6,6 +6,11 @@ problem. Those failures are cheap to catch here and expensive to catch in review
 
 **Do not finish the rework until this gate passes.**
 
+Before running the commands below, also re-check every new or updated test
+against the tautological/implementation-coupled test-quality gate in
+`tdd_approach.md` — a green suite with a test that passes by construction is
+not verification, it's a false pass that review will catch anyway.
+
 ## Mandatory checks before writing outputs
 
 Run these from the repository root, in order. All must pass:

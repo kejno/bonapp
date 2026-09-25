@@ -370,6 +370,7 @@ function writePRContext(inputFolder, prDetails, diff, markdown, rawThreads) {
     prInfo += '- **Author**: ' + (prDetails.user ? prDetails.user.login : 'unknown') + '\n';
     prInfo += '- **Branch**: `' + (prDetails.head ? prDetails.head.ref : 'unknown') +
               '` → `' + (prDetails.base ? prDetails.base.ref : 'unknown') + '`\n';
+    prInfo += '- **Head SHA**: ' + (prDetails.head ? prDetails.head.sha : 'unknown') + '\n';
     prInfo += '- **State**: ' + prDetails.state + '\n';
     prInfo += '- **Files Changed**: ' + (prDetails.changed_files || 0) + '\n';
     prInfo += '- **Additions**: +' + (prDetails.additions || 0) + '\n';
@@ -402,10 +403,43 @@ function writePRContext(inputFolder, prDetails, diff, markdown, rawThreads) {
     console.log('✅ PR context written to', inputFolder);
 }
 
+/**
+ * Diff between a previously-reviewed commit and the current head — the set of
+ * changes a re-review actually needs to look at after a rework round.
+ * Falls back to null (caller should fall back to the full PR diff) when the
+ * SHA is missing, unreachable (force-push/rebase rewrote history), or when
+ * there's nothing new (same SHA — rework added no commits).
+ */
+function getIncrementalDiff(lastReviewedSha, headBranch, workingDir) {
+    if (!lastReviewedSha) return null;
+    var cmdOpts = workingDir ? { workingDirectory: workingDir } : {};
+    var cmd = function(command) { return cli_execute_command(Object.assign({}, cmdOpts, { command: command })); };
+    try {
+        var headSha = cleanCommandOutput(cmd('git rev-parse HEAD') || '').trim();
+        if (headSha && headSha === lastReviewedSha) {
+            console.log('Incremental diff: HEAD unchanged since last review (' + lastReviewedSha + ') — no new commits');
+            return '';
+        }
+        try {
+            cmd('git cat-file -e ' + lastReviewedSha);
+        } catch (e) {
+            console.warn('Last reviewed SHA ' + lastReviewedSha + ' not reachable locally (force-push/rebase?) — falling back to full diff');
+            return null;
+        }
+        const diff = cmd('git diff ' + lastReviewedSha + '...' + (headBranch || 'HEAD')) || '';
+        console.log('Incremental diff size (since ' + lastReviewedSha + '):', diff.length, 'chars');
+        return cleanCommandOutput(diff);
+    } catch (e) {
+        console.warn('Failed to compute incremental diff since ' + lastReviewedSha + ':', e.message || e);
+        return null;
+    }
+}
+
 module.exports = {
     cleanCommandOutput: cleanCommandOutput,
     checkoutPRBranch: checkoutPRBranch,
     getPRDiff: getPRDiff,
+    getIncrementalDiff: getIncrementalDiff,
     detectMergeConflicts: detectMergeConflicts,
     trimLargeTextForInput: trimLargeTextForInput,
     writeInputFile: writeInputFile,
