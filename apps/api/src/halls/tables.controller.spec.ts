@@ -12,6 +12,7 @@ describe('TablesController', () => {
     deleteTable: jest.fn(),
     bulkCreateTables: jest.fn(),
     updateTableStatus: jest.fn(),
+    generateQrPdf: jest.fn(),
   };
   const controller = new TablesController(service as unknown as HallsService);
   const req = { user: { tenantId: 'tenant-1' } } as TenantRequest;
@@ -210,6 +211,38 @@ describe('TablesController', () => {
     ])('throws BadRequestException for invalid status payload %p', (body) => {
       expect(() => controller.updateStatus(req, 't1', body)).toThrow(BadRequestException);
       expect(service.updateTableStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('generateQrPdf', () => {
+    it('generates a PDF for selected tables in the authenticated tenant', async () => {
+      const pdf = Buffer.from('%PDF');
+      service.generateQrPdf.mockResolvedValue(pdf);
+      const response = { type: jest.fn().mockReturnThis(), setHeader: jest.fn().mockReturnThis(), send: jest.fn() };
+
+      await controller.generateQrPdf(req, { tableIds: ['t1', 't2'] }, response as never);
+
+      expect(service.generateQrPdf).toHaveBeenCalledWith('tenant-1', ['t1', 't2']);
+      expect(response.type).toHaveBeenCalledWith('application/pdf');
+      expect(response.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="table-qr-codes.pdf"');
+      expect(response.send).toHaveBeenCalledWith(pdf);
+    });
+
+    it.each([undefined, {}, { tableIds: [] }, { tableIds: ['t1', 4] }])(
+      'rejects an invalid table selection %p',
+      async (body) => {
+        await expect(controller.generateQrPdf(req, body, {} as never)).rejects.toThrow(BadRequestException);
+        expect(service.generateQrPdf).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects selections larger than the per-request PDF limit', async () => {
+      const tableIds = Array.from({ length: 101 }, (_, index) => `t${index + 1}`);
+
+      await expect(
+        controller.generateQrPdf(req, { tableIds }, {} as never),
+      ).rejects.toThrow(BadRequestException);
+      expect(service.generateQrPdf).not.toHaveBeenCalled();
     });
   });
 });

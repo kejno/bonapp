@@ -10,12 +10,14 @@ import {
   Post,
   Put,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { TableStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
+import type { Response } from 'express';
 import { HallsService } from './halls.service';
 
 const ALLOWED_STATUSES = new Set<string>([
@@ -23,6 +25,7 @@ const ALLOWED_STATUSES = new Set<string>([
   TableStatus.OCCUPIED,
   TableStatus.BILL_REQUESTED,
 ]);
+const MAX_QR_PDF_TABLES = 100;
 
 interface CreateTableBody {
   tableNumber: number;
@@ -51,6 +54,12 @@ interface StatusUpdateBody {
 
 function isPositiveInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(
+    (item: unknown) => typeof item === 'string' && item.trim().length > 0,
+  );
 }
 
 function isValidCreateTable(body: unknown): body is CreateTableBody {
@@ -175,5 +184,30 @@ export class TablesController {
       id,
       body.status as TableStatus,
     );
+  }
+
+  @Post('generate-qr-pdf')
+  async generateQrPdf(
+    @Req() req: TenantRequest,
+    @Body() body: unknown,
+    @Res() response: Response,
+  ) {
+    const tableIds =
+      typeof body === 'object' && body !== null
+        ? (body as Record<string, unknown>)['tableIds']
+        : undefined;
+    if (!isNonEmptyStringArray(tableIds)) {
+      throw new BadRequestException('tableIds must be a non-empty array of table IDs');
+    }
+    if (tableIds.length > MAX_QR_PDF_TABLES) {
+      throw new BadRequestException(
+        `tableIds must contain no more than ${MAX_QR_PDF_TABLES} table IDs`,
+      );
+    }
+    const pdf = await this.hallsService.generateQrPdf(req.user!.tenantId!, tableIds);
+    response.type('application/pdf').setHeader(
+      'Content-Disposition',
+      'attachment; filename="table-qr-codes.pdf"',
+    ).send(pdf);
   }
 }
