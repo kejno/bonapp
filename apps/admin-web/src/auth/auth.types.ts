@@ -10,6 +10,7 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   requiresTOTP?: true;
+  challenge?: string;
   accessToken?: string;
   user?: AuthUser;
 }

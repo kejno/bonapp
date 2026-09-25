@@ -251,6 +251,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Looks up a tenant by slug without tenant context (used by auth endpoints
+   * that receive a tenant slug before a JWT is available).
+   */
+  findTenantBySlug(slug: string) {
+    return this.client.tenant.findUnique({ where: { slug } });
+  }
+
+  findTenantById(id: string) {
+    return this.client.tenant.findUnique({ where: { id } });
+  }
+
+  /**
    * Returns a tenant-scoped Prisma client based on the current
    * AsyncLocalStorage context set by TenantContextMiddleware.
    * Throws when no tenant context is active so request handlers cannot

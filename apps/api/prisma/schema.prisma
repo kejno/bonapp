@@ -58,24 +58,24 @@ model Tenant {
 }
 
 model User {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
-  tenant              Tenant    @relation(fields: [tenantId], references: [id])
-  email               String
-  passwordHash        String    @map("password_hash")
-  fullName            String    @map("full_name")
-  phone               String?
-  role                UserRole
-  pinCode             String?   @map("pin_code")
-  isActive            Boolean   @default(true) @map("is_active")
-  mustChangePassword  Boolean   @default(true) @map("must_change_password")
-  sessionVersion      Int       @default(0) @map("session_version")
-  isBlocked           Boolean   @default(false) @map("is_blocked")
-  totpSecret          String?   @map("totp_secret")
-  totpEnabled         Boolean   @default(false) @map("totp_enabled")
-  lastLoginAt         DateTime? @map("last_login_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  assignedOrders      Order[]   @relation("AssignedWaiterOrders")
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  email          String
+  passwordHash   String    @map("password_hash")
+  fullName       String    @map("full_name")
+  phone          String?
+  role           UserRole
+  pinHash        String?   @map("pin_hash")
+  mustChangePassword Boolean @default(true) @map("must_change_password")
+  sessionVersion Int       @default(0) @map("session_version")
+  totpSecret     String?   @map("totp_secret")
+  totpEnabled    Boolean   @default(false) @map("totp_enabled")
+  isActive       Boolean   @default(true) @map("is_active")
+  isBlocked      Boolean   @default(false) @map("is_blocked")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  assignedOrders Order[]   @relation("AssignedWaiterOrders")
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])

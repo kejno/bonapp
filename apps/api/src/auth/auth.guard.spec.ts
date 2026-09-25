@@ -212,6 +212,24 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('rejects a legacy sub-only token after the password changes', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 1,
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'staff-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
   it('preserves valid legacy tenant tokens without a matching staff account', async () => {
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
     const prisma = {

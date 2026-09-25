@@ -63,9 +63,8 @@ export class AuthGuard implements CanActivate {
         !payload.staffUserId && payload.tokenType !== 'access';
       if (!user && !isLegacySubOnlyToken) throw new UnauthorizedException();
       if (
-        payload.tokenType === 'access' &&
-        payload.staffUserId &&
-        payload.sessionVersion !== user?.sessionVersion
+        user &&
+        (payload.sessionVersion ?? 0) !== (user.sessionVersion ?? 0)
       ) {
         throw new UnauthorizedException();
       }

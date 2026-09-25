@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginRequest } from '../auth/auth.api';
+import { loginRequest, verifyTotpRequest } from '../auth/auth.api';
 import { useAuthStore } from '../auth/auth.store';
 import type { AuthUser } from '../auth/auth.types';
 import {
@@ -25,6 +25,7 @@ export default function LoginPage() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
+  const [challenge, setChallenge] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,6 +43,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const result = await loginRequest({ login: login.trim(), password });
+      if (result.challenge) {
+        setChallenge(result.challenge);
+        setStep('totp');
+        return;
+      }
       if (result.requiresTOTP) {
         setStep('totp');
         return;
@@ -70,11 +76,9 @@ export default function LoginPage() {
     setServerError('');
     setLoading(true);
     try {
-      const result = await loginRequest({
-        login: login.trim(),
-        password,
-        totpCode,
-      });
+      const result = challenge
+        ? await verifyTotpRequest(challenge, totpCode)
+        : await loginRequest({ login: login.trim(), password, totpCode });
       if (result.accessToken && result.user) {
         setAuth(result.accessToken, result.user as AuthUser);
         navigate('/dashboard');
@@ -222,6 +226,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => {
                   setStep('credentials');
+                  setChallenge(null);
                   setTotpCode('');
                   setErrors({});
                   setServerError('');
