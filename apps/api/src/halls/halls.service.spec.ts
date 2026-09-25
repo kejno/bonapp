@@ -131,6 +131,11 @@ describe('HallsService', () => {
       ];
       prisma.table.findMany.mockResolvedValue(selectedTables);
       const qrSpy = jest.spyOn(QRCode, 'toBuffer');
+      const qrImage = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0WQAAAAASUVORK5CYII=',
+        'base64',
+      );
+      qrSpy.mockResolvedValue(qrImage as never);
 
       const result = await service.generateQrPdf('tenant-1', ['t1', 't2', 't3', 't4', 't5']);
 
