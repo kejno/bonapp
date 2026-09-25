@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { hash } from 'bcryptjs';
-import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CacheService } from '../src/cache/cache.service';
@@ -63,6 +63,15 @@ function isAccessTokenResponse(value: unknown): value is { accessToken: string }
   );
 }
 
+function isChallengeResponse(value: unknown): value is { challenge: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'challenge' in value &&
+    typeof value.challenge === 'string'
+  );
+}
+
 function isTotpSetupResponse(
   value: unknown,
 ): value is { secret: string; otpAuthUri: string; setupChallenge: string } {
@@ -81,11 +90,22 @@ function isTotpSetupResponse(
 describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
   let app: INestApplication<App>;
   let cacheStore: Map<string, unknown>;
+  let owner: {
+    id: string; tenantId: string; role: string; email: string; fullName: string;
+    passwordHash: string; totpSecret: string | null; totpEnabled: boolean;
+    isActive: boolean; isBlocked: boolean; sessionVersion: number;
+  };
 
   beforeEach(async () => {
     cacheStore = new Map();
 
     const cashierPinHash = await hash(CASHIER_PIN, 10);
+    owner = {
+      id: OWNER_ID, tenantId: TENANT_ID, role: 'OWNER', email: 'owner@bnp132.com',
+      fullName: 'BNP Owner', passwordHash: await hash('secret123', 10),
+      totpSecret: null, totpEnabled: false, isActive: true, isBlocked: false,
+      sessionVersion: 0,
+    };
 
     const mockPrisma: Partial<PrismaService> = {
       findTenantBySlug: jest.fn().mockImplementation((slug: string) => {
@@ -97,17 +117,11 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
           findMany: jest.fn().mockResolvedValue([
             { id: CASHIER_ID, role: 'CASHIER', pinHash: cashierPinHash, isBlocked: false },
           ]),
-          findFirst: jest.fn().mockResolvedValue({
-            id: OWNER_ID,
-            role: 'OWNER',
-            email: 'owner@bnp132.com',
-            passwordHash: await hash('secret123', 10),
-            totpSecret: null,
-            totpEnabled: false,
-            isActive: true,
-            isBlocked: false,
+          findFirst: jest.fn().mockImplementation(() => Promise.resolve({ ...owner })),
+          update: jest.fn().mockImplementation(({ data }: { data: Partial<typeof owner> }) => {
+            Object.assign(owner, data);
+            return Promise.resolve({ ...owner });
           }),
-          update: jest.fn().mockResolvedValue({}),
         },
       }),
     };
@@ -216,91 +230,99 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       expect(responseBody.otpAuthUri).toContain('otpauth://totp/');
     });
 
-    it('2FA setup → verify (setup challenge) → returns {totpEnabled: true}', async () => {
-      const { secretBase32 } = totpGenerateSecret();
+    it('runs setup → verify through HTTP and stores an AES-256-GCM ciphertext', async () => {
+      const setup = await request(app.getHttpServer())
+        .post('/api/v1/auth/2fa/setup')
+        .set(
+          'Authorization',
+          `Bearer ${makeJwt({ tenantId: TENANT_ID, sub: OWNER_ID, role: 'OWNER' })}`,
+        )
+        .expect(201);
+      expect(isTotpSetupResponse(setup.body)).toBe(true);
+      if (!isTotpSetupResponse(setup.body)) return;
 
-      const keyBuf = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
-      const iv = randomBytes(12);
-      const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
-      const enc = Buffer.concat([cipher.update(secretBase32, 'utf8'), cipher.final()]);
-      const tag = cipher.getAuthTag();
-      const encryptedSecret = `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
+      expect(owner.totpSecret).toMatch(/^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/i);
+      expect(owner.totpSecret).not.toContain(setup.body.secret);
+      expect(owner.totpEnabled).toBe(false);
+      const [ivHex, tagHex, ciphertextHex] = owner.totpSecret!.split(':');
+      const decipher = createDecipheriv(
+        'aes-256-gcm',
+        Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex'),
+        Buffer.from(ivHex, 'hex'),
+      );
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      const decryptedSecret = Buffer.concat([
+        decipher.update(Buffer.from(ciphertextHex, 'hex')),
+        decipher.final(),
+      ]).toString('utf8');
+      expect(decryptedSecret).toBe(setup.body.secret);
+      expect(totpVerify(decryptedSecret, genTotpCode(decryptedSecret))).toBe(true);
 
-      const challengeId = 'setup-challenge-bnp132';
-      cacheStore.set(`totp:challenge:${challengeId}`, {
-        type: 'setup',
-        userId: OWNER_ID,
-        tenantId: TENANT_ID,
-      });
-
-      const mockPrismaForVerify = app.get(PrismaService);
-      (mockPrismaForVerify.forTenant as jest.Mock).mockReturnValue({
-        user: {
-          findFirst: jest.fn().mockResolvedValue({
-            id: OWNER_ID,
-            role: 'OWNER',
-            totpSecret: encryptedSecret,
-            totpEnabled: false,
-          }),
-          update: jest.fn().mockResolvedValue({}),
-        },
-      });
-
-      const code = genTotpCode(secretBase32);
-      const isValid = totpVerify(secretBase32, code);
-      if (!isValid) {
-        throw new Error('Generated TOTP code is invalid — timing issue in test');
-      }
-
+      const setupChallenge = setup.body.setupChallenge;
+      const setupSecret = setup.body.secret;
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
-        .send({ challenge: challengeId, code })
+        .send({ challenge: setupChallenge, code: genTotpCode(setupSecret) })
         .expect(200);
 
       expect(response.body).toEqual({ totpEnabled: true });
+      expect(owner.totpEnabled).toBe(true);
     });
 
-    it('2FA verify returns JWT for login challenge', async () => {
-      const { secretBase32 } = totpGenerateSecret();
+    it('requires TOTP after password login, rejects a wrong code, then issues a scoped short-lived JWT', async () => {
+      const secret = totpGenerateSecret().secretBase32;
+      const key = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
+      const iv = Buffer.alloc(12, 7);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+      owner.totpSecret = `${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${ciphertext.toString('hex')}`;
+      owner.totpEnabled = true;
 
-      const keyBuf = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
-      const iv = randomBytes(12);
-      const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
-      const enc = Buffer.concat([cipher.update(secretBase32, 'utf8'), cipher.final()]);
-      const tag = cipher.getAuthTag();
-      const encryptedSecret = `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
+      const firstFactor = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ tenantSlug: TENANT_SLUG, email: owner.email, password: 'secret123' })
+        .expect(200);
+      const firstFactorBody: unknown = firstFactor.body;
+      expect(isChallengeResponse(firstFactorBody)).toBe(true);
+      if (!isChallengeResponse(firstFactorBody)) return;
+      expect(firstFactor.body).not.toHaveProperty('accessToken');
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/2fa/verify')
+        .send({
+          challenge: firstFactorBody.challenge,
+          code: String((Number(genTotpCode(secret)) + 1) % 1_000_000).padStart(6, '0'),
+        })
+        .expect(401);
 
-      const challengeId = 'login-challenge-bnp132';
-      cacheStore.set(`totp:challenge:${challengeId}`, {
-        type: 'login',
-        userId: OWNER_ID,
-        tenantId: TENANT_ID,
-      });
-
-      const mockPrismaForVerify = app.get(PrismaService);
-      (mockPrismaForVerify.forTenant as jest.Mock).mockReturnValue({
-        user: {
-          findFirst: jest.fn().mockResolvedValue({
-            id: OWNER_ID,
-            role: 'OWNER',
-            totpSecret: encryptedSecret,
-            totpEnabled: true,
-          }),
-        },
-      });
-
-      const code = genTotpCode(secretBase32);
-      const isValid = totpVerify(secretBase32, code);
-      if (!isValid) {
-        throw new Error('Generated TOTP code is invalid — timing issue in test');
-      }
-
+      const secondLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ tenantSlug: TENANT_SLUG, email: owner.email, password: 'secret123' })
+        .expect(200);
+      const secondLoginBody: unknown = secondLogin.body;
+      expect(isChallengeResponse(secondLoginBody)).toBe(true);
+      if (!isChallengeResponse(secondLoginBody)) return;
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
-        .send({ challenge: challengeId, code })
+        .send({ challenge: secondLoginBody.challenge, code: genTotpCode(secret) })
         .expect(200);
 
-      expect(response.body).toHaveProperty('accessToken');
+      const responseBody: unknown = response.body;
+      expect(isAccessTokenResponse(responseBody)).toBe(true);
+      if (!isAccessTokenResponse(responseBody)) return;
+      const claims = JSON.parse(
+        Buffer.from(responseBody.accessToken.split('.')[1], 'base64url').toString(),
+      ) as Record<string, unknown>;
+      expect(claims).toMatchObject({ tenantId: TENANT_ID, userId: OWNER_ID, role: 'OWNER' });
+      expect(claims.exp as number).toBeGreaterThan(Math.floor(Date.now() / 1000));
+      expect(claims.exp as number).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 86400);
+
+      const noAuth = await request(app.getHttpServer()).post('/api/v1/admin/tenant/logo').expect(401);
+      expect(noAuth.status).toBe(401);
+      const authorized = await request(app.getHttpServer())
+        .post('/api/v1/admin/tenant/logo')
+        .set('Authorization', `Bearer ${responseBody.accessToken}`)
+        .expect(400);
+      expect(authorized.status).not.toBe(401);
     });
 
     it('2FA verify returns 401 for expired or missing challenge', async () => {
