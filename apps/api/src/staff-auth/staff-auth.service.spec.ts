@@ -135,7 +135,7 @@ describe('StaffAuthService', () => {
         .rejects.toBeInstanceOf(UnauthorizedException);
     });
 
-    it('keeps successful attempts in the IP rate-limit window', async () => {
+    it('resets the IP rate-limit counter after successful authentication', async () => {
       const hash = await makeUserHash('correctpass');
       const prisma = {
         forTenant: () => ({
@@ -156,7 +156,7 @@ describe('StaffAuthService', () => {
 
       await service.login(TENANT_ID, 'staff@test.com', 'correctpass', '127.0.0.1');
 
-      expect(redis.del).not.toHaveBeenCalled();
+      expect(redis.del).toHaveBeenCalledWith('login_attempts:127.0.0.1');
     });
 
     it('throws 401 on wrong password', async () => {

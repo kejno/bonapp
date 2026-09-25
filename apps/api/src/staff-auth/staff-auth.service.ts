@@ -69,6 +69,8 @@ export class StaffAuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    await this.redis.del(loginAttemptsKey(ip));
+
     const { accessToken, refreshToken } = buildTokenPair(
       user.id,
       tenantId,
