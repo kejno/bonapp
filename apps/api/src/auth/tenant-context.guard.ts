@@ -4,11 +4,14 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { Request } from 'express';
 
 export interface TenantRequest extends Request {
   user?: {
     tenantId?: string;
+    userId?: string;
+    role?: UserRole;
   };
 }
 

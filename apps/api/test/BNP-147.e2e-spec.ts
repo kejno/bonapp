@@ -16,19 +16,19 @@ describe('BNP-147: menu catalog CRUD', () => {
   it('creates a category and item, updates the item, and cascades all item dependencies on category deletion', async () => {
     const authorization = { Authorization: `Bearer ${fixture.token()}` };
     const category = (await request(fixture.app.getHttpServer())
-      .post('/admin/menu/categories')
+      .post('/api/v1/admin/menu/categories')
       .set(authorization)
       .send({ name: 'Desserts', sortOrder: 1, isVisible: true })
       .expect(201)) as unknown as { body: { id: string } };
 
     const item = (await request(fixture.app.getHttpServer())
-      .post('/admin/menu/items')
+      .post('/api/v1/admin/menu/items')
       .set(authorization)
       .send({ name: 'Cheesecake', categoryId: category.body.id, price: 990 })
       .expect(201)) as unknown as { body: { id: string } };
 
     await request(fixture.app.getHttpServer())
-      .put(`/admin/menu/items/${item.body.id}`)
+      .put(`/api/v1/admin/menu/items/${item.body.id}`)
       .set(authorization)
       .send({ name: 'Berry cheesecake', price: 1090 })
       .expect(200);
@@ -65,7 +65,7 @@ describe('BNP-147: menu catalog CRUD', () => {
 
     await fixture.redis.set(fixture.cacheKey, 'stale-menu');
     await request(fixture.app.getHttpServer())
-      .delete(`/admin/menu/categories/${category.body.id}`)
+      .delete(`/api/v1/admin/menu/categories/${category.body.id}`)
       .set(authorization)
       .expect(200);
 
@@ -92,5 +92,32 @@ describe('BNP-147: menu catalog CRUD', () => {
       }),
     ).resolves.toBeNull();
     await expect(fixture.redis.get(fixture.cacheKey)).resolves.toBeNull();
+  });
+
+  it('rejects a waiter and permits a manager to administer the menu', async () => {
+    const waiterAuthorization = {
+      Authorization: `Bearer ${fixture.token('WAITER')}`,
+    };
+    const managerAuthorization = {
+      Authorization: `Bearer ${fixture.token('MANAGER')}`,
+    };
+
+    await request(fixture.app.getHttpServer())
+      .post('/api/v1/admin/menu/categories')
+      .set(waiterAuthorization)
+      .send({ name: 'Forbidden', sortOrder: 1, isVisible: true })
+      .expect(403);
+
+    await request(fixture.app.getHttpServer())
+      .post('/api/v1/admin/menu/categories')
+      .set(managerAuthorization)
+      .send({ name: 'Manager category', sortOrder: 2, isVisible: true })
+      .expect(201);
+
+    await request(fixture.app.getHttpServer())
+      .post('/api/v1/admin/media/presign')
+      .set(waiterAuthorization)
+      .send({ contentType: 'image/jpeg' })
+      .expect(403);
   });
 });

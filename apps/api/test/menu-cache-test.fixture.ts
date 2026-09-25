@@ -92,6 +92,7 @@ export class MenuCacheTestFixture {
       imports: [AppModule],
     }).compile();
     this.app = module.createNestApplication();
+    this.app.setGlobalPrefix('api/v1');
     await this.app.init();
     this.redis = this.app.get<Redis>(REDIS_CLIENT);
     await this.redis.connect();
@@ -149,13 +150,15 @@ export class MenuCacheTestFixture {
     this.stopContainer(this.postgresContainer);
   }
 
-  token(): string {
+  token(role = 'OWNER'): string {
     const header = Buffer.from(
       JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
     ).toString('base64url');
     const payload = Buffer.from(
       JSON.stringify({
         tenantId: this.tenantId,
+        sub: `user-${this.tenantId}`,
+        role,
         exp: Math.floor(Date.now() / 1000) + 300,
       }),
     ).toString('base64url');
