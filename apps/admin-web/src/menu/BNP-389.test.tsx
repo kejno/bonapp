@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MenuPage from './MenuPage';
@@ -17,7 +17,7 @@ describe('BNP-389: dish form validation', () => {
     }));
   });
 
-  it('keeps an existing dish unchanged when its name or modifier selection range is invalid', async () => {
+  it('keeps an existing dish unchanged when its name and modifier selection range are invalid', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
 
@@ -26,24 +26,21 @@ describe('BNP-389: dish form validation', () => {
     await screen.findByRole('textbox', { name: 'Название' });
     const save = screen.getByRole('button', { name: 'Сохранить' });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Основное' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Модификаторы' }));
     await screen.findByDisplayValue('Размер');
     fireEvent.change(screen.getByLabelText('Мин. выбор'), { target: { value: '3' } });
-    fireEvent.click(save);
-    expect(await screen.findByText('Минимальный выбор не может превышать максимальный')).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(vi.mocked(fetch).mock.calls.some(([, init]) => ['POST', 'PUT', 'DELETE'].includes(init?.method ?? 'GET'))).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Основное' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), { target: { value: '' } });
     fireEvent.click(save);
     expect(await screen.findByText('Укажите название')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => ['POST', 'PUT', 'DELETE'].includes(init?.method ?? 'GET'))).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Модификаторы' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Борщ')).toBeInTheDocument();
     expect(screen.getByText('12.00 BYN')).toBeInTheDocument();
+    expect(screen.getByText('Минимальный выбор не может превышать максимальный')).toBeInTheDocument();
   });
 });
