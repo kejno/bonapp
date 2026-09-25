@@ -91,6 +91,7 @@ export class AuthController {
   }
 
   @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
   async verify2fa(
     @Body() body: unknown,
     @Res({ passthrough: true }) response?: Response,

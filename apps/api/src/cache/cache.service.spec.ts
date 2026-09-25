@@ -74,4 +74,24 @@ describe('CacheService', () => {
       await expect(service.consumeJson('totp:challenge:id')).rejects.toThrow('temporarily unavailable');
     });
   });
+
+  describe('setJsonIfAbsent', () => {
+    it('uses atomic SET EX NX and returns whether the key was claimed', async () => {
+      const redis = { set: jest.fn().mockResolvedValue('OK') };
+      const service = new CacheService(redis as never);
+      await expect(service.setJsonIfAbsent('totp:used:u1:1', 1, 120)).resolves.toBe(true);
+      expect(redis.set).toHaveBeenCalledWith('totp:used:u1:1', '1', 'EX', 120, 'NX');
+    });
+
+    it('returns false when another request already claimed the key', async () => {
+      const service = new CacheService({ set: jest.fn().mockResolvedValue(null) } as never);
+      await expect(service.setJsonIfAbsent('key', 1, 60)).resolves.toBe(false);
+    });
+
+    it('fails closed when Redis is unavailable', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const service = new CacheService({ set: jest.fn().mockRejectedValue(new Error('Redis down')) } as never);
+      await expect(service.setJsonIfAbsent('key', 1, 60)).rejects.toThrow('temporarily unavailable');
+    });
+  });
 });

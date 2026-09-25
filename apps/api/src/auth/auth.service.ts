@@ -208,7 +208,7 @@ export class AuthService {
     const staffUsers = await this.prisma
       .forTenant(tenant.id)
       .user.findMany({
-        where: { role: { in: ['CASHIER', 'WAITER', 'CHEF'] }, isActive: true },
+        where: { role: { in: ['CASHIER', 'WAITER', 'CHEF'] }, isActive: true, isBlocked: false },
         select: { id: true, role: true, pinHash: true, isBlocked: true },
       });
 
@@ -291,7 +291,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.cache.del?.(loginRateLimitKey(tenant.id, ip));
+    await this.cache.del(loginRateLimitKey(tenant.id, ip));
 
     if (user.totpEnabled) {
       const totpFailCount = await this.cache.getJson<number>(`totp:fails:${user.id}`);
@@ -362,11 +362,14 @@ export class AuthService {
   }> {
     const user = await this.prisma.forTenant(tenantId).user.findFirst({
       where: { id: userId },
-      select: { id: true, role: true, email: true },
+      select: { id: true, role: true, email: true, totpEnabled: true },
     });
 
     if (!user || !MANAGER_ROLES.has(user.role)) {
       throw new ForbiddenException('Only OWNER or MANAGER can set up 2FA');
+    }
+    if (user.totpEnabled) {
+      throw new ForbiddenException('TOTP is already active. Disable it before re-configuring.');
     }
 
     const { secretBase32 } = totpGenerateSecret();
@@ -409,11 +412,11 @@ export class AuthService {
       .forTenant(stored.tenantId)
       .user.findFirst({
         where: { id: stored.userId },
-        select: { id: true, tenantId: true, email: true, fullName: true, role: true, totpSecret: true, totpEnabled: true, isBlocked: true },
+        select: { id: true, tenantId: true, email: true, fullName: true, role: true, totpSecret: true, totpEnabled: true, isBlocked: true, isActive: true },
       });
 
     if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
-    if (!user?.totpSecret) {
+    if (!user || user.isActive === false || !user.totpSecret) {
       throw new UnauthorizedException('TOTP not configured for this user');
     }
 
@@ -436,8 +439,10 @@ export class AuthService {
     }
 
     const usedKey = `totp:used:${user.id}:${counter}`;
-    const alreadyUsed = await this.cache.getJson<number>(usedKey);
-    if (alreadyUsed !== null) {
+    // TTL covers the full window in which this counter can still be valid
+    const totpUsedTtl = TOTP_STEP_SECONDS * (TOTP_WINDOW * 2 + 2);
+    const marked = await this.cache.setJsonIfAbsent(usedKey, 1, totpUsedTtl);
+    if (!marked) {
       await this.recordFailedAttempt(
         totpFailKey,
         TOTP_FAIL_LIMIT,
@@ -447,9 +452,6 @@ export class AuthService {
       throw new UnauthorizedException('TOTP code already used');
     }
 
-    // TTL covers the full window in which this counter can still be valid
-    const totpUsedTtl = TOTP_STEP_SECONDS * (TOTP_WINDOW * 2 + 2);
-    await this.cache.setJson(usedKey, 1, totpUsedTtl);
     await this.cache.del(totpFailKey);
 
     if (stored.type === 'setup') {

@@ -250,7 +250,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
         .send({ challenge: challengeId, code })
-        .expect(201);
+        .expect(200);
 
       expect(response.body).toEqual({ totpEnabled: true });
     });
@@ -293,7 +293,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
         .send({ challenge: challengeId, code })
-        .expect(201);
+        .expect(200);
 
       expect(response.body).toHaveProperty('accessToken');
     });

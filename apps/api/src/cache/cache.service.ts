@@ -40,6 +40,26 @@ export class CacheService {
     }
   }
 
+  async setJsonIfAbsent(
+    key: string,
+    value: unknown,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    try {
+      const result = await this.redis.set(
+        key,
+        JSON.stringify(value),
+        'EX',
+        ttlSeconds,
+        'NX',
+      );
+      return result === 'OK';
+    } catch (error) {
+      this.logCacheError('set if absent', key, error);
+      throw new ServiceUnavailableException('Cache temporarily unavailable');
+    }
+  }
+
   async del(key: string): Promise<void> {
     try {
       await this.redis.del(key);
