@@ -27,4 +27,16 @@ describe('dishSchema', () => {
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues.some((issue) => issue.path[0] === 'calories')).toBe(true);
   });
+
+  it.each([
+    ['weightGrams', '350.5'],
+    ['cookingTimeMinutes', '12.5'],
+  ])('rejects fractional %s because the API stores whole values', (field, value) => {
+    const result = dishSchema.safeParse({
+      name: 'Борщ', categoryId: 'cat-1', price: '12', kitchenDepartment: 'HOT',
+      isActive: true, isHit: false, allergens: [], [field]: value,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.some((issue) => issue.path[0] === field)).toBe(true);
+  });
 });

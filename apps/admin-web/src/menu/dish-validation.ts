@@ -11,8 +11,8 @@ const optionalInteger = (label: string) => z.string().optional().default('').ref
 export const dishSchema = z.object({
   name: z.string().trim().min(1, 'Укажите название'), description: z.string().max(1000).default(''),
   categoryId: z.string().min(1, 'Выберите категорию'), price: z.string().min(1, 'Укажите цену').refine((v) => Number.isFinite(Number(v)) && Number(v) >= 0, 'Цена должна быть неотрицательной'),
-  costPrice: optionalNumber('Себестоимость'), imageUrl: z.string().default(''), weightGrams: optionalNumber('Граммовка'),
-  kitchenDepartment: z.enum(['HOT', 'COLD', 'BAR']), cookingTimeMinutes: optionalNumber('Время приготовления'),
+  costPrice: optionalNumber('Себестоимость'), imageUrl: z.string().default(''), weightGrams: optionalInteger('Граммовка'),
+  kitchenDepartment: z.enum(['HOT', 'COLD', 'BAR']), cookingTimeMinutes: optionalInteger('Время приготовления'),
   isActive: z.boolean(), isHit: z.boolean(), calories: optionalInteger('Ккал'), proteins: optionalNumber('Белки'),
   fats: optionalNumber('Жиры'), carbs: optionalNumber('Углеводы'), allergens: z.array(z.enum(Object.keys(ALLERGENS) as [keyof typeof ALLERGENS, ...(keyof typeof ALLERGENS)[]])), posItemId: z.string().default(''),
 });
