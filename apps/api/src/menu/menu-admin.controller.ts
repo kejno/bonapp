@@ -35,9 +35,8 @@ function isValidCreateGroupBody(
   body: unknown,
 ): body is { name: string } & CreateModifierGroupData {
   if (typeof body !== 'object' || body === null) return false;
-  const { name } = body as Record<string, unknown>;
-  const { isRequired } = body as Record<string, unknown>;
-  return typeof name === 'string' && name.trim().length > 0 && (isRequired === undefined || typeof isRequired === 'boolean');
+  const { name, isRequired, id } = body as Record<string, unknown>;
+  return typeof name === 'string' && name.trim().length > 0 && (isRequired === undefined || typeof isRequired === 'boolean') && (id === undefined || (typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)));
 }
 
 function isValidUpdateGroupBody(body: unknown): body is UpdateGroupBody {
@@ -54,8 +53,8 @@ function isValidCreateOptionBody(
   body: unknown,
 ): body is { name: string } & CreateModifierOptionData {
   if (typeof body !== 'object' || body === null) return false;
-  const { name } = body as Record<string, unknown>;
-  return typeof name === 'string' && name.trim().length > 0;
+  const { name, id } = body as Record<string, unknown>;
+  return typeof name === 'string' && name.trim().length > 0 && (id === undefined || (typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)));
 }
 
 function isValidUpdateOptionBody(body: unknown): body is UpdateModifierOptionData {
@@ -108,6 +107,7 @@ export class MenuAdminController {
       req.user!.tenantId!,
       itemId.trim(),
       {
+        id: typeof rawBody['id'] === 'string' ? rawBody['id'] : undefined,
         name: body.name.trim(),
         minSelected: typeof rawBody['minSelected'] === 'number' ? rawBody['minSelected'] : undefined,
         maxSelected: typeof rawBody['maxSelected'] === 'number' ? rawBody['maxSelected'] : undefined,
@@ -162,6 +162,7 @@ export class MenuAdminController {
       req.user!.tenantId!,
       groupId.trim(),
       {
+        id: typeof rawBody['id'] === 'string' ? rawBody['id'] : undefined,
         name: body.name.trim(),
         extraPriceByn: typeof rawBody['extraPriceByn'] === 'number' ? rawBody['extraPriceByn'] : undefined,
         isDefault: typeof rawBody['isDefault'] === 'boolean' ? rawBody['isDefault'] : undefined,

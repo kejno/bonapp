@@ -173,6 +173,9 @@ export class MenuCatalogController {
     if (typeof b.price !== 'number' || !Number.isInteger(b.price) || b.price < 0) {
       throw new BadRequestException('price is required and must be a non-negative integer in minor currency units');
     }
+    if ('id' in b && (typeof b.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(b.id))) {
+      throw new BadRequestException('id must be a UUID');
+    }
     if ('description' in b && b.description !== undefined && typeof b.description !== 'string') {
       throw new BadRequestException('description must be a string');
     }
@@ -183,6 +186,7 @@ export class MenuCatalogController {
       throw new BadRequestException('imageUrl must be a string');
     }
     return {
+      id: typeof b.id === 'string' ? b.id : undefined,
       name: b.name,
       categoryId: b.categoryId.trim(),
       price: b.price,

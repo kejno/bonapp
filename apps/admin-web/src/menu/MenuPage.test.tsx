@@ -5,6 +5,7 @@ import MenuPage from './MenuPage';
 
 const requests: Array<{ url: string; method: string }> = [];
 const updatePayloads: Array<Record<string, unknown>> = [];
+const createPayloads: Array<Record<string, unknown>> = [];
 let failNextUpdate = false;
 let failGroupsLoad = false;
 let pendingUpload: (() => void) | null = null;
@@ -12,6 +13,7 @@ let pendingUpload: (() => void) | null = null;
 beforeEach(() => {
   requests.length = 0;
   updatePayloads.length = 0;
+  createPayloads.length = 0;
   failNextUpdate = true;
   failGroupsLoad = false;
   pendingUpload = null;
@@ -25,7 +27,7 @@ beforeEach(() => {
     if (url.endsWith('/menu/items/item-1/modifier-groups') && failGroupsLoad) return new Response(null, { status: 503 });
     if (url.endsWith('/menu/items') && method === 'GET') return Response.json([{ id: 'item-1', name: 'Борщ', categoryId: 'category-1', price: 1200, isActive: true }]);
     if (url.endsWith('/menu/categories')) return Response.json([{ id: 'category-1', name: 'Основное' }]);
-    if (url.endsWith('/menu/items') && method === 'POST') return Response.json({ id: 'item-1' });
+    if (url.endsWith('/menu/items') && method === 'POST') { createPayloads.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return Response.json({ id: 'item-1' }); }
     if (url.endsWith('/menu/items/item-1') && method === 'PUT' && failNextUpdate) {
       failNextUpdate = false;
       return new Response(null, { status: 503 });
@@ -108,6 +110,44 @@ describe('MenuPage save retry', () => {
     await waitFor(() => expect(requests.filter(({ url, method }) => url.endsWith('/menu/items') && method === 'POST')).toHaveLength(1));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(requests.filter(({ url, method }) => url.endsWith('/menu/items/item-1') && method === 'PUT')).toHaveLength(2);
+  });
+
+  it('moves to the tab containing the first invalid field', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить блюдо' }));
+    fireEvent.click(screen.getByRole('button', { name: 'POS' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await screen.findByText('Укажите название');
+    expect(screen.getByRole('textbox', { name: /Название/ })).toHaveFocus();
+  });
+
+  it('reuses one client id when a create response is lost', async () => {
+    let loseFirstResponse = true;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/menu/items') && init?.method === 'POST') {
+        createPayloads.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        if (loseFirstResponse) { loseFirstResponse = false; throw new Error('connection lost after commit'); }
+        return Response.json({ id: 'item-1' });
+      }
+      if (url.endsWith('/menu/categories')) return Response.json([{ id: 'category-1', name: 'Основное' }]);
+      if (url.endsWith('/menu/items') && init?.method !== 'POST') return Response.json([]);
+      if (url.endsWith('/menu/items/item-1')) return Response.json({ id: 'item-1' });
+      return Response.json([]);
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить блюдо' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), { target: { value: 'Борщ' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Категория' }), { target: { value: 'category-1' } });
+    fireEvent.change(screen.getByLabelText('Цена, BYN'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await screen.findByText('Не удалось сохранить блюдо. Проверьте данные и повторите попытку.');
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(createPayloads).toHaveLength(2);
+    expect(createPayloads[0]?.id).toBe(createPayloads[1]?.id);
   });
 
   it('shows modifier loading errors and prevents saving the incomplete configuration', async () => {

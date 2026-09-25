@@ -5,10 +5,12 @@ import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateModifierGroupData {
+  id?: string;
   name: string;
   minSelected?: number;
   maxSelected?: number;
-  isRequired?: boolean;}
+  isRequired?: boolean;
+}
 
 export interface UpdateModifierOptionData {
   name?: string;
@@ -17,6 +19,7 @@ export interface UpdateModifierOptionData {
 }
 
 export interface CreateModifierOptionData {
+  id?: string;
   name: string;
   extraPriceByn?: number;
   isDefault?: boolean;
@@ -128,8 +131,16 @@ export class MenuAdminService {
     });
     if (!item) throw new NotFoundException(`Menu item ${itemId} not found`);
 
+    if (data.id) {
+      const existing = await db.modifierGroup.findFirst({ where: { id: data.id, tenantId } });
+      if (existing) {
+        if (existing.itemId !== itemId) throw new NotFoundException(`Modifier group ${data.id} not found`);
+        return existing;
+      }
+    }
     const group = await db.modifierGroup.create({
       data: {
+        ...(data.id ? { id: data.id } : {}),
         tenantId,
         itemId,
         name: data.name,
@@ -177,8 +188,10 @@ export class MenuAdminService {
     });
     if (!group) throw new NotFoundException(`Modifier group ${groupId} not found`);
 
-    const option = await db.modifierOption.create({
+    const existing = data.id ? await db.modifierOption.findFirst({ where: { id: data.id, groupId } }) : null;
+    const option = existing ?? await db.modifierOption.create({
       data: {
+        ...(data.id ? { id: data.id } : {}),
         groupId,
         name: data.name,
         extraPriceByn: data.extraPriceByn ?? 0,

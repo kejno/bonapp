@@ -151,6 +151,15 @@ describe('MenuAdminService', () => {
 
   // --- createModifierGroup ---
 
+  it('returns an existing modifier group when creation is retried with the same id', async () => {
+    prisma.menuItem.findFirst.mockResolvedValue({ id: 'item-1' });
+    prisma.modifierGroup.findFirst.mockResolvedValue({ id: 'group-1', itemId: 'item-1' });
+
+    await service.createModifierGroup('tenant-1', 'item-1', { id: 'group-1', name: 'Size' });
+
+    expect(prisma.modifierGroup.create).not.toHaveBeenCalled();
+  });
+
   it('creates a modifier group with min/max selection and invalidates cache', async () => {
     prisma.menuItem.findFirst.mockResolvedValue({ id: 'item-1' });
     prisma.modifierGroup.create.mockResolvedValue({ id: 'group-1' });
