@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const migrationsDirectory = join(__dirname, '../../prisma/migrations');
@@ -48,5 +48,13 @@ describe('Prisma migration history', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it('uses a unique timestamp prefix for every migration', () => {
+    const timestamps = readdirSync(migrationsDirectory)
+      .filter((name) => /^\d{14}/.test(name))
+      .map((name) => name.slice(0, 14));
+
+    expect(new Set(timestamps).size).toBe(timestamps.length);
   });
 });
