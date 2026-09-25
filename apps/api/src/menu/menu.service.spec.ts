@@ -20,7 +20,20 @@ describe('MenuService', () => {
               modifierGroup: {
                 id: 'group-1',
                 name: 'Milk options',
+                isActive: true,
                 modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
+              },
+            },
+            {
+              menuItemId: 'item-1',
+              modifierGroupId: 'group-2',
+              tenantId: 'tenant-1',
+              sortOrder: 1,
+              modifierGroup: {
+                id: 'group-2',
+                name: 'Retired options',
+                isActive: false,
+                modifiers: [],
               },
             },
           ],
@@ -42,6 +55,7 @@ describe('MenuService', () => {
               modifierGroup: {
                 id: 'group-1',
                 name: 'Milk options',
+                isActive: true,
                 modifiers: [{ id: 'mod-1', name: 'Oat milk', sortOrder: 0 }],
               },
             },

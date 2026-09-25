@@ -19,7 +19,7 @@ describe('GuestMenuController', () => {
   );
 
   it('trims whitespace from tenantId before calling the service', () => {
-    controller.getMenu('  abc-tenant  ');
+    void controller.getMenu('  abc-tenant  ');
     expect(menuService.getGuestMenu).toHaveBeenCalledWith('abc-tenant');
   });
 });

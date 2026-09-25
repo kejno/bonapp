@@ -90,6 +90,46 @@ function action(params) {
             }
         }
 
+        // Development must not start on a Story whose parent Epic is still
+        // Blocked — the Epic being unavailable usually means the umbrella
+        // scope/dependencies aren't settled yet, even though the Story itself
+        // reached Ready For Development. Skip this cycle without touching
+        // status/labels; SM will retry the Story on its next pass, and the
+        // Epic's own unblock (unblock_resolved_dependencies) doesn't affect
+        // this check since it's evaluated fresh from Jira every time.
+        if (customParams.blockOnParentEpicStatus) {
+            try {
+                var parentKey = ticket.fields && ticket.fields.parent && ticket.fields.parent.key;
+                if (parentKey) {
+                    var parentTicket = jira_get_ticket({ key: parentKey, fields: ['status'] });
+                    var parentFields = parentTicket && parentTicket.fields ? parentTicket.fields : parentTicket;
+                    var parentStatus = parentFields && parentFields.status && parentFields.status.name;
+                    var blockedStatuses = [].concat(customParams.blockOnParentEpicStatus === true
+                        ? ['Blocked']
+                        : customParams.blockOnParentEpicStatus);
+                    if (parentStatus && blockedStatuses.indexOf(parentStatus) !== -1) {
+                        console.log('⏸️  Parent Epic ' + parentKey + ' is ' + parentStatus + ' - skipping ' + ticketKey);
+                        try {
+                            jira_post_comment({
+                                key: ticketKey,
+                                comment: 'h3. *Processing Skipped*\n\n' +
+                                    'Parent Epic ' + parentKey + ' is currently *' + parentStatus + '*.\n' +
+                                    'Development will not start until the Epic leaves that status.\n\n' +
+                                    '_No status or label change was made — the SM Agent will re-check on its next cycle._'
+                            });
+                        } catch (commentError) {
+                            console.warn('Failed to post skip comment:', commentError);
+                        }
+                        console.log('checkWipLabel result: stop processing (parent Epic blocked)');
+                        return false;
+                    }
+                    console.log('✅ Parent Epic ' + parentKey + ' status "' + parentStatus + '" - continuing');
+                }
+            } catch (epicError) {
+                console.warn('Failed to check parent Epic status (non-fatal):', epicError);
+            }
+        }
+
         // Optional: verify an open PR exists for review/rework agents.
         if (customParams.checkOpenPR) {
             try {

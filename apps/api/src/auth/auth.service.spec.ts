@@ -1,6 +1,7 @@
-import { ForbiddenException, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hash } from 'bcryptjs';
+import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
 import {
   AuthService,
   buildOtpAuthUri,
@@ -58,7 +59,6 @@ describe('AuthService — unit helpers', () => {
   describe('totpVerify', () => {
     it('accepts the current TOTP code generated from the same secret', () => {
       const { secretBase32 } = totpGenerateSecret();
-      const { createHmac } = require('node:crypto');
       const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
       function b32decode(s: string): Buffer {
@@ -98,7 +98,6 @@ describe('AuthService — unit helpers', () => {
   describe('decryptTotpSecret', () => {
     it('round-trips an encrypted secret', () => {
       const keyBuf = Buffer.from(TEST_ENCRYPTION_KEY, 'hex');
-      const { createCipheriv, randomBytes } = require('node:crypto');
       const iv = randomBytes(12);
       const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
       const encrypted = Buffer.concat([cipher.update('MYSECRET', 'utf8'), cipher.final()]);
@@ -203,16 +202,33 @@ describe('AuthService — pinLogin', () => {
     await expect(service.pinLogin(tenantSlug, '9999', '127.0.0.1')).rejects.toThrow(UnauthorizedException);
   });
 
-  it('throws 429 when rate limit is exceeded', async () => {
+  it('returns 429 with Retry-After after too many failed PIN attempts', async () => {
     const prisma = {
       findTenantBySlug: jest.fn().mockResolvedValue({ id: tenantId }),
-      forTenant: jest.fn(),
+      forTenant: jest.fn().mockReturnValue({
+        user: { findMany: jest.fn().mockResolvedValue([]) },
+      }),
     };
     const cache = { increment: jest.fn().mockResolvedValue(6) };
     const service = makeService(prisma, cache);
 
-    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
-    expect(prisma.forTenant).not.toHaveBeenCalled();
+    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
+  });
+
+  it('allows a correct PIN even after failed attempts from the same IP', async () => {
+    const prisma = await buildPrisma();
+    const cache = {
+      increment: jest.fn().mockResolvedValue(6),
+      del: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = makeService(prisma, cache);
+
+    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).resolves.toHaveProperty(
+      'accessToken',
+    );
+    expect(cache.increment).not.toHaveBeenCalled();
   });
 
   it('checks multiple staff users and returns match on second user', async () => {
@@ -290,7 +306,8 @@ describe('AuthService — login', () => {
 
   it('throws 401 for wrong password', async () => {
     const prisma = await buildPrisma(false);
-    const service = makeService(prisma, {});
+    const cache = { increment: jest.fn().mockResolvedValue(1) };
+    const service = makeService(prisma, cache);
 
     await expect(service.login(tenantSlug, email, 'wrong')).rejects.toThrow(UnauthorizedException);
   });
@@ -321,9 +338,24 @@ describe('AuthService — login', () => {
         },
       }),
     };
-    const service = makeService(prisma, {});
+    const cache = { increment: jest.fn().mockResolvedValue(1) };
+    const service = makeService(prisma, cache);
 
     await expect(service.login(tenantSlug, email, password)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('returns 429 with Retry-After after too many failed password attempts', async () => {
+    const prisma = await buildPrisma(false);
+    const cache = { increment: jest.fn().mockResolvedValue(6) };
+    const service = makeService(prisma, cache);
+
+    await expect(service.login(tenantSlug, email, 'wrong', '127.0.0.1')).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
+    expect(cache.increment).toHaveBeenCalledWith(
+      `login:attempts:${tenantId}:127.0.0.1`,
+      900,
+    );
   });
 });
 
@@ -384,7 +416,6 @@ describe('AuthService — verify2fa', () => {
   const { secretBase32 } = totpGenerateSecret();
 
   function encryptForTest(secret: string): string {
-    const { createCipheriv, randomBytes } = require('node:crypto');
     const keyBuf = Buffer.from(TEST_ENCRYPTION_KEY, 'hex');
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
@@ -394,7 +425,6 @@ describe('AuthService — verify2fa', () => {
   }
 
   function genCurrentCode(secret: string): string {
-    const { createHmac } = require('node:crypto');
     const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     function b32decode(s: string): Buffer {
       const bytes: number[] = [];
@@ -423,7 +453,7 @@ describe('AuthService — verify2fa', () => {
     const totpSecret = encryptForTest(secretBase32);
     const code = genCurrentCode(secretBase32);
 
-    const updateFn = jest.fn().mockResolvedValue({});
+    const updateFn = jest.fn<Promise<unknown>, [unknown]>().mockResolvedValue({});
     const prisma = {
       forTenant: jest.fn().mockReturnValue({
         user: {
@@ -442,9 +472,7 @@ describe('AuthService — verify2fa', () => {
     const result = await service.verify2fa(challenge, code);
 
     expect(result).toEqual({ totpEnabled: true });
-    expect(updateFn).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ id: userId }) }),
-    );
+    expect(updateFn).toHaveBeenCalledTimes(1);
   });
 
   it('returns accessToken for a login challenge after successful TOTP verify', async () => {

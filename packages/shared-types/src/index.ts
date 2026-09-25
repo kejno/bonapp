@@ -1,27 +1,42 @@
-export enum OrderStatus {
-  PENDING = 'PENDING',
-  CONFIRMED = 'CONFIRMED',
-  COOKING = 'COOKING',
-  READY = 'READY',
-  SERVED = 'SERVED',
-  CANCELLED = 'CANCELLED',
+export const OrderStatus = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  COOKING: 'COOKING',
+  READY: 'READY',
+  SERVED: 'SERVED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
+
+export const UserRole = {
+  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
+  MANAGER: 'MANAGER',
+  WAITER: 'WAITER',
+  CASHIER: 'CASHIER',
+  KITCHEN: 'KITCHEN',
+} as const;
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: string;
+  tenantId: string;
+  fullName: string;
 }
 
-export enum UserRole {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  MANAGER = 'MANAGER',
-  WAITER = 'WAITER',
-  CASHIER = 'CASHIER',
-  KITCHEN = 'KITCHEN',
-}
+export const PaymentMethod = {
+  CASH: 'CASH',
+  CARD: 'CARD',
+  OPLATI: 'OPLATI',
+  ERIP: 'ERIP',
+} as const;
 
-export enum PaymentMethod {
-  CASH = 'CASH',
-  CARD = 'CARD',
-  OPLATI = 'OPLATI',
-  ERIP = 'ERIP',
-}
+export type PaymentMethod =
+  (typeof PaymentMethod)[keyof typeof PaymentMethod];
 
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
 

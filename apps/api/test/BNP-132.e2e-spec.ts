@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { hash } from 'bcryptjs';
-import { createHmac } from 'node:crypto';
+import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CacheService } from '../src/cache/cache.service';
@@ -28,7 +28,6 @@ function makeJwt(payload: Record<string, unknown>): string {
 }
 
 function genTotpCode(secretBase32: string): string {
-  const { createHmac: hmac } = require('node:crypto');
   const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const bytes: number[] = [];
   let bits = 0, v = 0;
@@ -43,7 +42,7 @@ function genTotpCode(secretBase32: string): string {
   const buf = Buffer.allocUnsafe(8);
   buf.writeUInt32BE(Math.floor(step / 0x100000000), 0);
   buf.writeUInt32BE(step >>> 0, 4);
-  const digest = hmac('sha1', key).update(buf).digest();
+  const digest = createHmac('sha1', key).update(buf).digest();
   const offset = digest[19] & 0xf;
   const code = ((digest[offset] & 0x7f) << 24) | ((digest[offset+1] & 0xff) << 16) | ((digest[offset+2] & 0xff) << 8) | (digest[offset+3] & 0xff);
   return String(code % 1_000_000).padStart(6, '0');
@@ -54,6 +53,30 @@ const TENANT_SLUG = 'bnp132-cafe';
 const OWNER_ID = 'owner-bnp132';
 const CASHIER_ID = 'cashier-bnp132';
 const CASHIER_PIN = '7392';
+
+function isAccessTokenResponse(value: unknown): value is { accessToken: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'accessToken' in value &&
+    typeof value.accessToken === 'string'
+  );
+}
+
+function isTotpSetupResponse(
+  value: unknown,
+): value is { secret: string; otpAuthUri: string; setupChallenge: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'secret' in value &&
+    typeof value.secret === 'string' &&
+    'otpAuthUri' in value &&
+    typeof value.otpAuthUri === 'string' &&
+    'setupChallenge' in value &&
+    typeof value.setupChallenge === 'string'
+  );
+}
 
 describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
   let app: INestApplication<App>;
@@ -74,24 +97,14 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
           findMany: jest.fn().mockResolvedValue([
             { id: CASHIER_ID, role: 'CASHIER', pinHash: cashierPinHash },
           ]),
-          findUnique: jest.fn().mockImplementation(({ where }: { where: { email: string } }) => {
-            if (where.email === 'owner@bnp132.com') {
-              return Promise.resolve({
-                id: OWNER_ID,
-                role: 'OWNER',
-                passwordHash: '$2a$10$placeholder',
-                totpEnabled: false,
-                isActive: true,
-              });
-            }
-            return Promise.resolve(null);
-          }),
           findFirst: jest.fn().mockResolvedValue({
             id: OWNER_ID,
             role: 'OWNER',
             email: 'owner@bnp132.com',
+            passwordHash: await hash('secret123', 10),
             totpSecret: null,
             totpEnabled: false,
+            isActive: true,
           }),
           update: jest.fn().mockResolvedValue({}),
         },
@@ -138,9 +151,10 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         .send({ tenantSlug: TENANT_SLUG, pin: CASHIER_PIN })
         .expect(201);
 
-      expect(response.body).toHaveProperty('accessToken');
-      expect(typeof response.body.accessToken).toBe('string');
-      expect(response.body.accessToken.split('.').length).toBe(3);
+      const responseBody: unknown = response.body;
+      expect(isAccessTokenResponse(responseBody)).toBe(true);
+      if (!isAccessTokenResponse(responseBody)) return;
+      expect(responseBody.accessToken).toMatch(/^[^.]+\.[^.]+\.[^.]+$/);
     });
 
     it('returns 401 for wrong PIN', async () => {
@@ -165,12 +179,12 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
     });
 
     it('returns 429 when rate limit is exceeded', async () => {
-      const cache = app.get(CacheService) as Partial<CacheService>;
-      (cache.increment as jest.Mock).mockResolvedValue(6);
+      jest.spyOn(app.get(CacheService), 'increment').mockResolvedValue(6);
 
       await request(app.getHttpServer())
         .post('/api/v1/auth/pin-login')
-        .send({ tenantSlug: TENANT_SLUG, pin: CASHIER_PIN })
+        .send({ tenantSlug: TENANT_SLUG, pin: '0000' })
+        .expect('Retry-After', '900')
         .expect(429);
     });
   });
@@ -184,17 +198,16 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(201);
 
-      expect(response.body).toHaveProperty('secret');
-      expect(response.body).toHaveProperty('otpAuthUri');
-      expect(response.body).toHaveProperty('setupChallenge');
-      expect(response.body.secret).toMatch(/^[A-Z2-7]+$/);
-      expect(response.body.otpAuthUri).toContain('otpauth://totp/');
+      const responseBody: unknown = response.body;
+      expect(isTotpSetupResponse(responseBody)).toBe(true);
+      if (!isTotpSetupResponse(responseBody)) return;
+      expect(responseBody.secret).toMatch(/^[A-Z2-7]+$/);
+      expect(responseBody.otpAuthUri).toContain('otpauth://totp/');
     });
 
     it('2FA setup → verify (setup challenge) → returns {totpEnabled: true}', async () => {
       const { secretBase32 } = totpGenerateSecret();
 
-      const { createCipheriv, randomBytes } = require('node:crypto');
       const keyBuf = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
       const iv = randomBytes(12);
       const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
@@ -209,7 +222,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         tenantId: TENANT_ID,
       });
 
-      const mockPrismaForVerify = app.get(PrismaService) as Partial<PrismaService>;
+      const mockPrismaForVerify = app.get(PrismaService);
       (mockPrismaForVerify.forTenant as jest.Mock).mockReturnValue({
         user: {
           findFirst: jest.fn().mockResolvedValue({
@@ -239,7 +252,6 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
     it('2FA verify returns JWT for login challenge', async () => {
       const { secretBase32 } = totpGenerateSecret();
 
-      const { createCipheriv, randomBytes } = require('node:crypto');
       const keyBuf = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
       const iv = randomBytes(12);
       const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
@@ -254,7 +266,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         tenantId: TENANT_ID,
       });
 
-      const mockPrismaForVerify = app.get(PrismaService) as Partial<PrismaService>;
+      const mockPrismaForVerify = app.get(PrismaService);
       (mockPrismaForVerify.forTenant as jest.Mock).mockReturnValue({
         user: {
           findFirst: jest.fn().mockResolvedValue({

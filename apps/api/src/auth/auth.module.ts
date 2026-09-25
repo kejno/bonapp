@@ -7,6 +7,6 @@ import { TenantContextGuard } from './tenant-context.guard';
 @Module({
   controllers: [AuthController],
   providers: [AuthGuard, TenantContextGuard, AuthService],
-  exports: [AuthGuard, TenantContextGuard],
+  exports: [AuthGuard, TenantContextGuard, AuthService],
 })
 export class AuthModule {}

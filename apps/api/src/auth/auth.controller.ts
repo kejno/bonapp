@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  HttpException,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -24,22 +26,40 @@ export class AuthController {
   async pinLogin(
     @Body() body: unknown,
     @Req() req: Request,
+    @Res({ passthrough: true }) response?: Response,
   ): Promise<{ accessToken: string }> {
     if (!isValidPinLoginBody(body)) {
       throw new BadRequestException('tenantSlug and pin (4 digits) are required');
     }
     const ip = req.ip ?? '0.0.0.0';
-    return this.authService.pinLogin(body.tenantSlug, body.pin, ip);
+    try {
+      return await this.authService.pinLogin(body.tenantSlug, body.pin, ip);
+    } catch (error) {
+      this.setRetryAfterHeader(error, response);
+      throw error;
+    }
   }
 
   @Post('login')
   async login(
     @Body() body: unknown,
+    @Req() req?: Request,
+    @Res({ passthrough: true }) response?: Response,
   ): Promise<{ accessToken: string } | { challenge: string }> {
     if (!isValidLoginBody(body)) {
       throw new BadRequestException('tenantSlug, email, and password are required');
     }
-    return this.authService.login(body.tenantSlug, body.email, body.password);
+    try {
+      return await this.authService.login(
+        body.tenantSlug,
+        body.email,
+        body.password,
+        req?.ip ?? '0.0.0.0',
+      );
+    } catch (error) {
+      this.setRetryAfterHeader(error, response);
+      throw error;
+    }
   }
 
   @Post('2fa/setup')
@@ -63,6 +83,19 @@ export class AuthController {
       throw new BadRequestException('challenge and code (6 digits) are required');
     }
     return this.authService.verify2fa(body.challenge, body.code);
+  }
+
+  private setRetryAfterHeader(error: unknown, response?: Response): void {
+    if (!(error instanceof HttpException) || !response) return;
+    const exceptionResponse = error.getResponse();
+    if (
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'retryAfter' in exceptionResponse &&
+      typeof exceptionResponse.retryAfter === 'number'
+    ) {
+      response.setHeader('Retry-After', String(exceptionResponse.retryAfter));
+    }
   }
 }
 

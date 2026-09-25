@@ -46,16 +46,16 @@ describe('CacheService', () => {
       expect(redis.expire).not.toHaveBeenCalled();
     });
 
-    it('returns 0 and logs when Redis fails', async () => {
+    it('fails closed when Redis is unavailable', async () => {
       jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const redis = {
         incr: jest.fn().mockRejectedValue(new Error('Redis down')),
       };
       const service = new CacheService(redis as never);
 
-      const result = await service.increment('key', 60);
-
-      expect(result).toBe(0);
+      await expect(service.increment('key', 60)).rejects.toThrow(
+        'Rate limiting is temporarily unavailable',
+      );
     });
   });
 });

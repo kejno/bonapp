@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from './cache.constants';
 
@@ -47,7 +47,7 @@ export class CacheService {
       return count;
     } catch (error) {
       this.logCacheError('increment', key, error);
-      return 0;
+      throw new ServiceUnavailableException('Rate limiting is temporarily unavailable');
     }
   }
 

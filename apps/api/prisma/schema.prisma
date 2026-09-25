@@ -21,6 +21,7 @@ enum TableStatus {
   OCCUPIED
   RESERVED
   CLOSED
+  BILL_REQUESTED
 }
 
 model Tenant {
@@ -69,6 +70,7 @@ model User {
   totpSecret     String?   @map("totp_secret")
   totpEnabled    Boolean   @default(false) @map("totp_enabled")
   isActive       Boolean   @default(true) @map("is_active")
+  isBlocked      Boolean   @default(false) @map("is_blocked")
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   assignedOrders Order[]   @relation("AssignedWaiterOrders")
@@ -267,6 +269,7 @@ model ModifierGroup {
   isRequired   Boolean  @default(false) @map("is_required")
   minSelection Int      @default(0) @map("min_selection")
   maxSelection Int?     @map("max_selection")
+  isActive     Boolean  @default(true) @map("is_active")
 
   modifierOptions ModifierOption[]
   modifiers       Modifier[]
@@ -285,6 +288,7 @@ model ModifierOption {
   name          String
   extraPriceByn Decimal       @default(0) @map("extra_price_byn") @db.Decimal(10, 2)
   isDefault     Boolean       @default(false) @map("is_default")
+  isActive      Boolean       @default(true) @map("is_active")
 
   @@index([groupId])
   @@map("modifier_options")

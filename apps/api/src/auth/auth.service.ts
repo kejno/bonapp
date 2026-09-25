@@ -21,6 +21,8 @@ const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
 const BCRYPT_COST = 10;
 const PIN_ATTEMPTS_LIMIT = 5;
 const PIN_WINDOW_SECONDS = 900; // 15 minutes
+const LOGIN_ATTEMPTS_LIMIT = 5;
+const LOGIN_WINDOW_SECONDS = 900; // 15 minutes
 const PIN_JWT_TTL_SECONDS = 28800; // 8 hours
 const MANAGER_JWT_TTL_SECONDS = 86400; // 24 hours
 const LOGIN_CHALLENGE_TTL_SECONDS = 180; // 3 minutes
@@ -150,6 +152,10 @@ function pinRateLimitKey(tenantId: string, ip: string): string {
   return `pin:attempts:${tenantId}:${ip}`;
 }
 
+function loginRateLimitKey(tenantId: string, ip: string): string {
+  return `login:attempts:${tenantId}:${ip}`;
+}
+
 interface ChallengePayload {
   type: 'login' | 'setup';
   userId: string;
@@ -179,22 +185,10 @@ export class AuthService {
   async pinLogin(
     tenantSlug: string,
     pin: string,
-    ip: string,
+    ip = '0.0.0.0',
   ): Promise<{ accessToken: string }> {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
-
-    const rateLimitKey = pinRateLimitKey(tenant.id, ip);
-    const attempts = await this.cache.increment(
-      rateLimitKey,
-      PIN_WINDOW_SECONDS,
-    );
-    if (attempts > PIN_ATTEMPTS_LIMIT) {
-      throw new HttpException(
-        'Too many failed attempts. Please wait 15 minutes.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
 
     const staffUsers = await this.prisma
       .forTenant(tenant.id)
@@ -212,10 +206,16 @@ export class AuthService {
     }
 
     if (!matchedUser) {
+      await this.recordFailedAttempt(
+        pinRateLimitKey(tenant.id, ip),
+        PIN_ATTEMPTS_LIMIT,
+        PIN_WINDOW_SECONDS,
+        'Too many failed attempts. Please wait 15 minutes.',
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.cache.del(rateLimitKey);
+    await this.cache.del(pinRateLimitKey(tenant.id, ip));
 
     const accessToken = createJwt(
       { tenantId: tenant.id, userId: matchedUser.id, role: matchedUser.role },
@@ -229,6 +229,7 @@ export class AuthService {
     tenantSlug: string,
     email: string,
     password: string,
+    ip = '0.0.0.0',
   ): Promise<{ accessToken: string } | { challenge: string }> {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
@@ -250,8 +251,16 @@ export class AuthService {
       !MANAGER_ROLES.has(user.role) ||
       !(await compare(password, user.passwordHash))
     ) {
+      await this.recordFailedAttempt(
+        loginRateLimitKey(tenant.id, ip),
+        LOGIN_ATTEMPTS_LIMIT,
+        LOGIN_WINDOW_SECONDS,
+        'Too many login attempts. Please wait 15 minutes.',
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    await this.cache.del?.(loginRateLimitKey(tenant.id, ip));
 
     if (user.totpEnabled) {
       const challengeId = randomBytes(16).toString('hex');
@@ -373,5 +382,24 @@ export class AuthService {
 
   isStaffRole(role: string): boolean {
     return STAFF_ROLES.has(role);
+  }
+
+  private async recordFailedAttempt(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+    message: string,
+  ): Promise<void> {
+    const attempts = await this.cache.increment(key, windowSeconds);
+    if (attempts > limit) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message,
+          retryAfter: windowSeconds,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 }

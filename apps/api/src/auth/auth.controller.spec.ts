@@ -114,7 +114,7 @@ describe('AuthController — POST /auth/login', () => {
     });
 
     expect(result).toEqual({ accessToken: 'jwt' });
-    expect(mockAuthService.login).toHaveBeenCalledWith('cafe', 'owner@example.com', 'secret');
+    expect(mockAuthService.login).toHaveBeenCalledWith('cafe', 'owner@example.com', 'secret', '0.0.0.0');
   });
 
   it('returns challenge when TOTP is enabled', async () => {
@@ -128,6 +128,23 @@ describe('AuthController — POST /auth/login', () => {
     });
 
     expect(result).toEqual({ challenge: 'abc123' });
+  });
+
+  it('passes the client IP to password-login rate limiting', async () => {
+    mockAuthService.login.mockResolvedValue({ accessToken: 'jwt' });
+    const controller = makeController();
+
+    await controller.login(
+      { tenantSlug: 'cafe', email: 'owner@example.com', password: 'secret' },
+      makeRequest('10.0.0.2'),
+    );
+
+    expect(mockAuthService.login).toHaveBeenCalledWith(
+      'cafe',
+      'owner@example.com',
+      'secret',
+      '10.0.0.2',
+    );
   });
 
   it('throws 400 when email is missing', async () => {
