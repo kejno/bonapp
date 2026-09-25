@@ -25,18 +25,14 @@ describe('CI workflow', () => {
     );
   });
 
-  it('runs the logo-upload regression scenario with MinIO', () => {
+  it('runs the logo-upload regression scenario with a pinned S3-compatible service', () => {
     expect(workflow).toContain('docker run --detach --name minio');
     expect(workflow).toContain(
-      'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data',
+      'localstack/localstack:4.11.1',
     );
-    expect(workflow).not.toContain('minio/minio:latest');
-    expect(workflow).not.toContain('DOCKERHUB_USERNAME');
-    expect(workflow).toContain('docker/login-action@v3');
-    expect(workflow).toContain('registry: quay.io');
-    expect(workflow).toContain('QUAYIO_USERNAME');
-    expect(workflow).toContain('QUAYIO_TOKEN');
-    expect(workflow).toContain('--health-cmd "curl -f http://localhost:9000/minio/health/live"');
+    expect(workflow).toContain('--publish 9000:4566');
+    expect(workflow).toContain('SERVICES=s3');
+    expect(workflow).toContain('--health-cmd "curl -f http://localhost:4566/_localstack/health"');
     expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} minio');
     expect(workflow).toContain('BNP-319.e2e-spec.ts');
   });

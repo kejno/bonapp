@@ -105,6 +105,18 @@ describe('TablesController', () => {
       );
     });
 
+    it('forwards a null label so an existing label can be cleared', async () => {
+      service.updateTable.mockResolvedValue({ id: 't1', label: null });
+
+      await controller.update(req, 't1', { label: null });
+
+      expect(service.updateTable).toHaveBeenCalledWith(
+        'tenant-1',
+        't1',
+        expect.objectContaining({ label: null }),
+      );
+    });
+
     it.each([
       [{}],
       [{ tableNumber: 0 }],

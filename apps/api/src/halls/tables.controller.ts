@@ -33,7 +33,7 @@ interface CreateTableBody {
 
 interface UpdateTableBody {
   tableNumber?: number;
-  label?: string;
+  label?: string | null;
   seatsCount?: number;
   areaId?: string;
 }
@@ -77,7 +77,7 @@ function isValidUpdateTable(body: unknown): body is UpdateTableBody {
   if (hasTableNumber && !isPositiveInteger(b['tableNumber'])) return false;
   if (hasSeatsCount && !isPositiveInteger(b['seatsCount'])) return false;
   if (hasAreaId && (typeof b['areaId'] !== 'string' || b['areaId'].trim().length === 0)) return false;
-  if (hasLabel && (typeof b['label'] !== 'string' || b['label'].trim().length === 0)) return false;
+  if (hasLabel && b['label'] !== null && (typeof b['label'] !== 'string' || b['label'].trim().length === 0)) return false;
 
   return true;
 }
@@ -148,7 +148,9 @@ export class TablesController {
     }
     return this.hallsService.updateTable(req.user!.tenantId!, id, {
       ...(body.tableNumber !== undefined && { tableNumber: body.tableNumber }),
-      ...(body.label !== undefined && { label: body.label.trim() }),
+      ...(body.label !== undefined && {
+        label: body.label === null ? null : body.label.trim(),
+      }),
       ...(body.seatsCount !== undefined && { seatsCount: body.seatsCount }),
       ...(body.areaId !== undefined && { areaId: body.areaId.trim() }),
     });

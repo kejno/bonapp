@@ -21,7 +21,7 @@ export interface CreateTableDto {
 
 export interface UpdateTableDto {
   tableNumber?: number;
-  label?: string;
+  label?: string | null;
   seatsCount?: number;
   areaId?: string;
 }
