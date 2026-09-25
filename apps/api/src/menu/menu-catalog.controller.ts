@@ -176,6 +176,9 @@ export class MenuCatalogController {
     if ('description' in b && b.description !== undefined && typeof b.description !== 'string') {
       throw new BadRequestException('description must be a string');
     }
+    if ('description' in b && typeof b.description === 'string' && b.description.length > 1000) {
+      throw new BadRequestException('description must be 1000 characters or fewer');
+    }
     if ('imageUrl' in b && b.imageUrl !== undefined && typeof b.imageUrl !== 'string') {
       throw new BadRequestException('imageUrl must be a string');
     }
@@ -213,6 +216,9 @@ export class MenuCatalogController {
     if ('description' in b) {
       if (b.description !== null && typeof b.description !== 'string') {
         throw new BadRequestException('description must be a string or null');
+      }
+      if (typeof b.description === 'string' && b.description.length > 1000) {
+        throw new BadRequestException('description must be 1000 characters or fewer');
       }
       dto.description = b.description;
     }

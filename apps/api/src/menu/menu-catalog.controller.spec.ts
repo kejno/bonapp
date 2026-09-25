@@ -66,6 +66,25 @@ describe('MenuCatalogController', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('rejects a description longer than 1000 characters when creating an item', () => {
+    expect(() =>
+      (controller as unknown as { parseCreateItem(body: unknown): unknown }).parseCreateItem({
+        name: 'Latte',
+        categoryId: 'category-1',
+        price: 500,
+        description: 'a'.repeat(1001),
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects a description longer than 1000 characters when updating an item', () => {
+    expect(() =>
+      (controller as unknown as { parseUpdateItem(body: unknown): unknown }).parseUpdateItem({
+        description: 'a'.repeat(1001),
+      }),
+    ).toThrow(BadRequestException);
+  });
+
   it('rejects an unsupported upload MIME type before invoking the service', () => {
     expect(() =>
       mediaController.presign(

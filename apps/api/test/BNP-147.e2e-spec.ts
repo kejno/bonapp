@@ -132,6 +132,24 @@ describe('BNP-147: menu catalog CRUD', () => {
       .expect(403);
   });
 
+  it('allows kitchen and service staff to manage the stop list via the non-admin endpoint', async () => {
+    // PATCH /stop-list is intentionally accessible to WAITER/CHEF/CASHIER for KDS use.
+    // The admin endpoint /admin/menu/items/:id/stop-list (MenuAdminController) requires AdminRoleGuard.
+    const chefAuth = { Authorization: `Bearer ${fixture.token('CHEF')}` };
+
+    await request(fixture.app.getHttpServer())
+      .patch('/api/v1/stop-list')
+      .set(chefAuth)
+      .send({ itemId: fixture.itemId, isStopped: true })
+      .expect(200);
+
+    await request(fixture.app.getHttpServer())
+      .patch('/api/v1/stop-list')
+      .set(chefAuth)
+      .send({ itemId: fixture.itemId, isStopped: false })
+      .expect(200);
+  });
+
   it('rejects a waiter on MenuAdminController modifier-group and stop-list routes', async () => {
     const waiterAuthorization = {
       Authorization: `Bearer ${fixture.token('WAITER')}`,
