@@ -131,4 +131,33 @@ describe('BNP-147: menu catalog CRUD', () => {
       .send({ contentType: 'image/jpeg' })
       .expect(403);
   });
+
+  it('rejects a waiter on MenuAdminController modifier-group and stop-list routes', async () => {
+    const waiterAuthorization = {
+      Authorization: `Bearer ${fixture.token('WAITER')}`,
+    };
+
+    await request(fixture.app.getHttpServer())
+      .post(`/api/v1/admin/menu/items/${fixture.itemId}/modifier-groups`)
+      .set(waiterAuthorization)
+      .send({ name: 'Size' })
+      .expect(403);
+
+    await request(fixture.app.getHttpServer())
+      .put(`/api/v1/admin/menu/modifier-groups/${fixture.modifierGroupId}`)
+      .set(waiterAuthorization)
+      .send({ name: 'New name' })
+      .expect(403);
+
+    await request(fixture.app.getHttpServer())
+      .delete(`/api/v1/admin/menu/modifier-groups/${fixture.modifierGroupId}`)
+      .set(waiterAuthorization)
+      .expect(403);
+
+    await request(fixture.app.getHttpServer())
+      .patch(`/api/v1/admin/menu/items/${fixture.itemId}/stop-list`)
+      .set(waiterAuthorization)
+      .send({ isInStopList: true })
+      .expect(403);
+  });
 });
