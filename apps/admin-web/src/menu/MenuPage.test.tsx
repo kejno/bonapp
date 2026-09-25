@@ -161,4 +161,48 @@ describe('MenuPage save retry', () => {
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled();
     expect(requests.filter(({ url, method }) => url.endsWith('/menu/items/item-1') && method === 'PUT')).toHaveLength(0);
   });
+
+  it('preserves zero for optional numeric fields when saving', async () => {
+    failNextUpdate = false;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    await screen.findByText('Борщ');
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.change(await screen.findByLabelText('Себестоимость, BYN'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Питание & Аллергены' }));
+    fireEvent.change(screen.getByLabelText('Ккал'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(updatePayloads[0]?.costPriceByn).toBe(0);
+    expect(updatePayloads[0]?.calories).toBe(0);
+  });
+
+  it('keeps persisted modifier deletions pending until save and discards them on cancel', async () => {
+    failNextUpdate = false;
+    const deleted: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/menu/items/item-1/modifier-groups')) return Response.json([{ id: 'group-1', name: 'Размер', isRequired: false, minSelection: 0, maxSelection: null, modifierOptions: [{ id: 'option-1', name: 'Большой', extraPriceByn: 1 }] }]);
+      if (init?.method === 'DELETE') { deleted.push(url); return new Response(null, { status: 204 }); }
+      if (url.endsWith('/menu/categories')) return Response.json([{ id: 'category-1', name: 'Основное' }]);
+      if (url.endsWith('/menu/items') && init?.method !== 'POST') return Response.json([{ id: 'item-1', name: 'Борщ', categoryId: 'category-1', price: 1200, isActive: true }]);
+      return Response.json({ id: 'item-1' });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    await screen.findByText('Борщ');
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Модификаторы' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Удалить группу' }));
+    expect(deleted).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(deleted).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Модификаторы' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Удалить группу' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(deleted).toContain('/api/v1/admin/menu/modifier-groups/group-1');
+  });
 });
