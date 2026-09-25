@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const migrationsDirectory = join(__dirname, '../../prisma/migrations');
@@ -48,5 +48,12 @@ describe('Prisma migration history', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it('adds the login migration after every migration already on main', () => {
+    const migrations = readdirSync(migrationsDirectory);
+
+    expect(migrations).toContain('20260925000000_add_totp_and_blocked_to_users');
+    expect(migrations).not.toContain('20260924000000_add_totp_and_blocked_to_users');
   });
 });

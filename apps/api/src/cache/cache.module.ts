@@ -36,6 +36,6 @@ class RedisLifecycle implements OnModuleDestroy {
     CacheService,
     RedisLifecycle,
   ],
-  exports: [CacheService],
+  exports: [CacheService, REDIS_CLIENT],
 })
 export class CacheModule {}
