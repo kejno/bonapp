@@ -393,6 +393,21 @@ describe('MenuCatalogService', () => {
         service.updateItem('tenant-1', 'unknown', { name: 'X' }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('throws NotFoundException when moving an item to a category that does not exist', async () => {
+      prisma.menuItem.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+          code: 'P2003',
+          clientVersion: '5.0.0',
+          meta: { field_name: 'category_id' },
+        }),
+      );
+
+      await expect(
+        service.updateItem('tenant-1', 'item-1', { categoryId: 'missing-category' }),
+      ).rejects.toThrow(NotFoundException);
+      expect(cache.del).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteItem', () => {

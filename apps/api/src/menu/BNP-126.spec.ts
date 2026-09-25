@@ -91,7 +91,7 @@ describe('BNP-126: menu schema — Prisma models and migration', () => {
         '@relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Cascade)',
       );
       expect(schema).toContain(
-        '@relation(fields: [tenantId, itemId], references: [tenantId, id])',
+        '@relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)',
       );
     });
 

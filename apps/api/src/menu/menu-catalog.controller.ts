@@ -108,8 +108,14 @@ export class MenuCatalogController {
     if (typeof b.isVisible !== 'boolean') {
       throw new BadRequestException('isVisible is required and must be a boolean');
     }
-    const posCategoryId =
-      typeof b.posCategoryId === 'string' ? b.posCategoryId.trim() || undefined : undefined;
+    let posCategoryId: string | undefined;
+    if ('posCategoryId' in b) {
+      if (b.posCategoryId !== null && typeof b.posCategoryId !== 'string') {
+        throw new BadRequestException('posCategoryId must be a string or null');
+      }
+      posCategoryId =
+        b.posCategoryId === null ? undefined : b.posCategoryId.trim() || undefined;
+    }
     return {
       name: b.name,
       sortOrder: b.sortOrder,
@@ -139,10 +145,11 @@ export class MenuCatalogController {
       dto.isVisible = b.isVisible;
     }
     if ('posCategoryId' in b) {
+      if (b.posCategoryId !== null && typeof b.posCategoryId !== 'string') {
+        throw new BadRequestException('posCategoryId must be a string or null');
+      }
       dto.posCategoryId =
-        b.posCategoryId === null ? null
-        : typeof b.posCategoryId === 'string' ? b.posCategoryId.trim() || null
-        : null;
+        b.posCategoryId === null ? null : b.posCategoryId.trim() || null;
     }
     return dto;
   }

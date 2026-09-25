@@ -199,6 +199,9 @@ export class MenuCatalogService {
       if (this.isNotFoundError(e)) {
         throw new NotFoundException(`Item ${itemId} not found`);
       }
+      if (dto.categoryId !== undefined && this.isForeignKeyError(e)) {
+        throw new NotFoundException(`Category ${dto.categoryId} not found`);
+      }
       throw e;
     }
   }
@@ -220,7 +223,7 @@ export class MenuCatalogService {
   async presignMenuItemUpload(
     tenantId: string,
     contentType: string,
-  ): Promise<{ uploadUrl: string; imageUrl: string }> {
+  ): Promise<{ uploadUrl: string; uploadFields?: Record<string, string>; imageUrl: string }> {
     const ext = ALLOWED_IMAGE_TYPES[contentType];
     if (!ext) {
       throw new BadRequestException(
@@ -228,8 +231,16 @@ export class MenuCatalogService {
       );
     }
     const key = `tenants/${tenantId}/menu/${randomUUID()}.${ext}`;
-    const { uploadUrl, publicUrl } = await this.storage.getPresignedUploadUrl(key, contentType, 600);
-    return { uploadUrl, imageUrl: publicUrl };
+    const { uploadUrl, uploadFields, publicUrl } = await this.storage.getPresignedUploadUrl(
+      key,
+      contentType,
+      600,
+    );
+    return {
+      uploadUrl,
+      ...(uploadFields === undefined ? {} : { uploadFields }),
+      imageUrl: publicUrl,
+    };
   }
 
   private async invalidateMenu(tenantId: string): Promise<void> {
