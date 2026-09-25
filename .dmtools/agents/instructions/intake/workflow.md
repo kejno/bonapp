@@ -64,6 +64,7 @@ flowchart TD
     CR5["CRITICAL: Two-stage Epic intake. If the source Epic has label umbrella_epic, create ONLY product Epics with parent=null and no Stories in this run. If the source is a regular Epic, create ONLY direct child Stories with parent equal to the source Epic key and no new Epics. Product Epic Stories are created later by each product Epic's own intake run."]
     CR6["CRITICAL: Description files (epic-N.md, story-N.md, bug-N.md) must NEVER contain literal placeholder tags or raw Markdown (### heading, **bold**, - item). Always transform generic structure placeholders into the current tracker's markup using the tracker-specific transform table (e.g. agents/instructions/tracker/jira_markup_transform.md for Jira) — the same rule used by the story_questions agent — before writing the final file."]
     CR7["CRITICAL: existing_epics.json / existing_stories.json are freshly fetched from the live tracker THIS run and are the SOLE authoritative record of which tickets currently exist. NEVER treat a ticket key mentioned only in comments.md / a prior run's summary / your own memory as still existing if it is absent from existing_epics.json / existing_stories.json — it may have been deleted or never actually created. If these files appear inconsistent with what a prior comment claims, the freshly fetched files are correct and the prior comment is stale — do not rationalize the mismatch as an 'environment quirk' and fall back to trusting the stale text. Before using ANY key as a `parent`, `blockedBy`, or `integrates` reference, confirm that exact key is present in the freshly fetched existing_epics.json/existing_stories.json for this run."]
+    CR8["CRITICAL: A wide refactor (one mechanical change with monorepo-wide blast radius — rename a column, retype a shared-types symbol) is the exception to CR1's story sizing. Do not force it into vertical slices; decompose as expand (add new form) → migrate batches (blockedBy expand, one per package/directory) → contract (blockedBy every batch) — see 'Wide refactors' in intake_instructions.md"]
 
     INPUT --> STUDY
     INPUT --> ATTACH
@@ -79,4 +80,5 @@ flowchart TD
     CR5 -.-> OUTPUT
     CR6 -.-> OUTPUT
     CR7 -.-> OUTPUT
+    CR8 -.-> OUTPUT
 ```
