@@ -17,7 +17,52 @@ flowchart TD
         R2["✅ If the existing tests only cover a single-item/simple case, add a test for the multi-item/edge case the finding points at — a fix without a test for that exact case is not verified"]
         R3["✅ Returned findings: your fix must differ from the previous attempt and the new/updated test must prove it"]
         R4["✅ Run the FULL test suite before finishing — no regressions allowed"]
+        R5["❌ Reject your own new/updated test if it is tautological or implementation-coupled — see below — before moving past GREEN"]
     end
 
     TDD --> RULES
 ```
+
+## Test-quality gate — every new or updated test must pass this before GREEN counts
+
+A test that passes by construction, or that breaks on refactors with no
+behavior change, is not a regression test — it gives false confidence that
+the finding is fixed. Before treating a test as done, check it against both
+failure modes:
+
+**Tautological test** — the expected value is computed the same way the
+production code computes it, so the test can't fail even if the logic is wrong.
+
+```typescript
+// BAD — expected is recomputed the way the code computes it
+const expected = items.reduce((sum, i) => sum + i.price, 0);
+expect(calculateTotal(items)).toBe(expected);
+
+// GOOD — expected is an independent, known literal
+expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
+```
+
+**Implementation-coupled test** — the test reaches into internals (mocked
+collaborators, private methods, call-count assertions, direct DB queries)
+instead of going through the public interface/seam the caller actually uses.
+
+```typescript
+// BAD — mocks an internal collaborator, asserts on call shape not behavior
+const mockPayment = jest.mock(paymentService);
+await checkout(cart, payment);
+expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
+
+// BAD — bypasses the service interface to verify via a side channel
+await createUser({ name: "Alice" });
+const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
+expect(row).toBeDefined();
+
+// GOOD — verifies through the same interface a real caller uses
+const user = await createUser({ name: "Alice" });
+const retrieved = await getUser(user.id);
+expect(retrieved.name).toBe("Alice");
+```
+
+If a new/updated test has either red flag, rewrite it against the public
+seam before finishing this finding — do not proceed to REFACTOR with a test
+that only proves the code equals itself.
