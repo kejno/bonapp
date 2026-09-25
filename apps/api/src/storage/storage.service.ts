@@ -43,7 +43,10 @@ export class StorageService {
     contentType: string,
     expiresIn = 600,
   ): Promise<{ uploadUrl: string; uploadFields: Record<string, string>; publicUrl: string }> {
-    const { url: uploadUrl, fields: uploadFields } = await createPresignedPost(this.client, {
+    const presignedPost = await (createPresignedPost as (
+      client: S3Client,
+      params: Record<string, unknown>,
+    ) => Promise<{ url: string; fields: Record<string, string> }>)(this.client, {
       Bucket: this.bucket,
       Key: key,
       Conditions: [
@@ -53,6 +56,8 @@ export class StorageService {
       Fields: { 'Content-Type': contentType },
       Expires: expiresIn,
     });
+    const uploadUrl: string = presignedPost.url;
+    const uploadFields: Record<string, string> = presignedPost.fields;
     const publicUrl = `${this.publicEndpoint}/${this.bucket}/${key}`;
     return { uploadUrl, uploadFields, publicUrl };
   }
