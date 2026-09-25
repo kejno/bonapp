@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
+import { createGuestTableUrl } from './guest-table-url';
 
 export interface CreateAreaDto {
   name: string;
@@ -97,13 +98,12 @@ export class HallsService {
       const slot = index % 4;
       const x = slot % 2 === 0 ? 55 : 315;
       const y = Math.floor(slot / 2) === 0 ? 70 : 410;
-      const url = new URL(menuBaseUrl);
-      url.searchParams.set('table', table.id);
-      const qr = await QRCode.toBuffer(url.toString(), { type: 'png', width: 220, margin: 1 });
+      const guestTableUrl = createGuestTableUrl(menuBaseUrl, table.qrToken);
+      const qr = await QRCode.toBuffer(guestTableUrl, { type: 'png', width: 220, margin: 1 });
       document.fontSize(18).text(`Стол ${table.tableNumber}`, x, y, { width: 220, align: 'center' });
       document.fontSize(11).text(table.area.name, x, y + 26, { width: 220, align: 'center' });
       document.image(qr, x + 35, y + 48, { width: 150, height: 150 });
-      document.fontSize(8).text(url.toString(), x, y + 205, { width: 220, align: 'center' });
+      document.fontSize(8).text(guestTableUrl, x, y + 205, { width: 220, align: 'center' });
     }
     document.end();
     return finished;

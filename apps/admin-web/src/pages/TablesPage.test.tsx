@@ -71,4 +71,16 @@ describe('TablesPage', () => {
     expect(screen.getByRole('button', { name: 'Изменить стол' })).toBeInTheDocument();
     expect(screen.queryByText(/Изменить статус/)).not.toBeInTheDocument();
   });
+
+  it('does not offer an order action when no order screen is available', async () => {
+    vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
+    vi.mocked(tablesApi.getTables).mockResolvedValue([
+      { ...tables[0], orders: [{ id: 'order-1', status: 'IN_PROGRESS', totalAmountByn: 12 } ] },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
+    expect(screen.getByText(/Заказ order-1/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Открыть заказ/ })).not.toBeInTheDocument();
+  });
 });

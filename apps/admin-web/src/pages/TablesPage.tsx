@@ -18,7 +18,6 @@ export default function TablesPage() {
   const tablesQuery = useQuery({ queryKey: ['dining-tables'], queryFn: getTables, refetchInterval: 5000 });
   const [areaId, setAreaId] = useState('');
   const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null);
-  const [orderExpanded, setOrderExpanded] = useState(false);
   const [formMode, setFormMode] = useState<FormMode | null>(null);
   const [formTable, setFormTable] = useState<DiningTable | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -123,8 +122,7 @@ export default function TablesPage() {
         <section role="dialog" aria-modal="true" aria-labelledby="table-details-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-2xl bg-surface-card p-6 shadow-xl">
           <h2 id="table-details-title" className="text-xl font-semibold">Стол {selectedTable.tableNumber}</h2>
           <dl className="mt-4 space-y-3 text-sm"><div><dt className="text-on-background/60">Метка</dt><dd>{selectedTable.label || '—'}</dd></div><div><dt className="text-on-background/60">Мест</dt><dd>{selectedTable.seatsCount}</dd></div><div><dt className="text-on-background/60">Статус</dt><dd>{STATUS[selectedTable.status]?.label ?? selectedTable.status}</dd></div><div><dt className="text-on-background/60">Текущий заказ</dt><dd>{selectedTable.orders?.[0] ? `Заказ ${selectedTable.orders[0].id} · ${selectedTable.orders[0].status} · ${selectedTable.orders[0].totalAmountByn} BYN` : 'Нет активного заказа'}</dd></div></dl>
-          {orderExpanded && selectedTable.orders?.[0] && <p className="mt-4 rounded-lg bg-surface p-3 text-sm">Заказ {selectedTable.orders[0].id}<br />Статус: {selectedTable.orders[0].status}<br />Сумма: {selectedTable.orders[0].totalAmountByn} BYN</p>}
-          <div className="mt-6 flex flex-wrap justify-end gap-3">{selectedTable.orders?.[0] && <button onClick={() => setOrderExpanded((expanded) => !expanded)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">{orderExpanded ? 'Скрыть заказ' : 'Открыть заказ'}</button>}<button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button><button onClick={() => startEdit(selectedTable)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Изменить стол</button></div>
+          <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button><button onClick={() => startEdit(selectedTable)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Изменить стол</button></div>
         </section>
       </div>}
 
