@@ -75,6 +75,7 @@ describe('menu cache (e2e)', () => {
       .compile();
 
     app = module.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     await app.init();
   });
 

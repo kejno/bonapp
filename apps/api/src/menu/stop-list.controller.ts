@@ -16,7 +16,10 @@ interface UpdateStopListRequest {
   isStopped: boolean;
 }
 
-@Controller('api/v1/stop-list')
+// Intentionally accessible to all authenticated tenant users (WAITER, CHEF, CASHIER, OWNER, MANAGER).
+// Kitchen and service staff need to manage the stop list in real-time via the KDS.
+// The admin-only duplicate endpoint lives at /admin/menu/items/:itemId/stop-list (MenuAdminController).
+@Controller('stop-list')
 export class StopListController {
   constructor(private readonly menuAdminService: MenuAdminService) {}
 

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import { TenantController } from './tenant.controller';
 import { TenantService } from './tenant.service';
 
@@ -22,6 +23,16 @@ describe('TenantController', () => {
           provide: ConfigService,
           useValue: {
             getOrThrow: jest.fn().mockReturnValue('test-jwt-secret'),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            forTenant: () => ({
+              user: {
+                findFirst: jest.fn().mockResolvedValue({ mustChangePassword: false }),
+              },
+            }),
           },
         },
       ],

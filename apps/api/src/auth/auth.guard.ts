@@ -1,35 +1,60 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Request } from 'express';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface AuthenticatedRequest extends Request {
-  user?: { tenantId: string };
+  user?: {
+    tenantId: string;
+    userId?: string;
+    role?: UserRole;
+  };
 }
 
 interface JwtPayload {
   tenantId?: unknown;
+  sub?: unknown;
+  role?: unknown;
   exp?: unknown;
+  type?: unknown;
 }
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly secret: string;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.secret = config.getOrThrow<string>('JWT_SECRET');
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
     const payload = this.verifyToken(token);
-    request.user = { tenantId: payload.tenantId };
+    request.user = payload;
+
+    if (payload.userId) {
+      const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
+        where: { id: payload.userId, isActive: true },
+        select: { mustChangePassword: true },
+      });
+      if (!user) throw new UnauthorizedException();
+      if (user.mustChangePassword) {
+        throw new ForbiddenException('Password change required');
+      }
+    }
+
     return true;
   }
 
@@ -39,7 +64,11 @@ export class AuthGuard implements CanActivate {
     return match[1];
   }
 
-  private verifyToken(token: string): { tenantId: string } {
+  private verifyToken(token: string): {
+    tenantId: string;
+    userId?: string;
+    role?: UserRole;
+  } {
     const [encodedHeader, encodedPayload, signature, ...extraParts] =
       token.split('.');
     if (
@@ -69,12 +98,30 @@ export class AuthGuard implements CanActivate {
         !timingSafeEqual(providedSignature, expectedSignature) ||
         typeof payload.tenantId !== 'string' ||
         !payload.tenantId.trim() ||
+        payload.type === 'refresh' ||
         (typeof payload.exp === 'number' && payload.exp <= Date.now() / 1000)
       ) {
         throw new UnauthorizedException();
       }
 
-      return { tenantId: payload.tenantId };
+      if (payload.sub !== undefined && (typeof payload.sub !== 'string' || !payload.sub.trim())) {
+        throw new UnauthorizedException();
+      }
+      if (
+        payload.role !== undefined &&
+        (typeof payload.role !== 'string' ||
+          !Object.values(UserRole).includes(payload.role as UserRole))
+      ) {
+        throw new UnauthorizedException();
+      }
+
+      return {
+        tenantId: payload.tenantId,
+        ...(typeof payload.sub === 'string' ? { userId: payload.sub } : {}),
+        ...(typeof payload.role === 'string'
+          ? { role: payload.role as UserRole }
+          : {}),
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException();

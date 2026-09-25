@@ -1,12 +1,14 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { verifyToken } from './staff-jwt.util';
 
 export interface StaffRequest extends Request {
@@ -21,11 +23,14 @@ export interface StaffRequest extends Request {
 export class JwtAuthGuard implements CanActivate {
   private readonly secret: string;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.secret = config.getOrThrow<string>('JWT_SECRET');
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<StaffRequest>();
     const token = this.extractBearer(request.headers.authorization);
     const payload = verifyToken(token, this.secret);
@@ -39,6 +44,16 @@ export class JwtAuthGuard implements CanActivate {
       tenantId: payload.tenantId,
       role: payload.role,
     };
+
+    const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
+      where: { id: payload.userId, isActive: true },
+      select: { mustChangePassword: true },
+    });
+    if (!user) throw new UnauthorizedException();
+    if (user.mustChangePassword && context.getHandler().name !== 'changePassword') {
+      throw new ForbiddenException('Password change required');
+    }
+
     return true;
   }
 

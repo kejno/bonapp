@@ -192,9 +192,14 @@ describe('BNP-130: JWT staff authentication', () => {
         })
         .expect(200);
 
-      expect(res.body.accessToken).toBeTruthy();
-      expect(res.body.refreshToken).toBeTruthy();
-      expect(typeof res.body.mustChangePassword).toBe('boolean');
+      const loginBody = res.body as {
+        accessToken: string;
+        refreshToken: string;
+        mustChangePassword: boolean;
+      };
+      expect(loginBody.accessToken).toBeTruthy();
+      expect(loginBody.refreshToken).toBeTruthy();
+      expect(typeof loginBody.mustChangePassword).toBe('boolean');
     });
 
     it('returns 401 on wrong password', async () => {
@@ -255,9 +260,13 @@ describe('BNP-130: JWT staff authentication', () => {
         .send({ refreshToken })
         .expect(200);
 
-      expect(refreshRes.body.accessToken).toBeTruthy();
-      expect(refreshRes.body.refreshToken).toBeTruthy();
-      expect(refreshRes.body.refreshToken).not.toBe(refreshToken);
+      const refreshBody = refreshRes.body as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      expect(refreshBody.accessToken).toBeTruthy();
+      expect(refreshBody.refreshToken).toBeTruthy();
+      expect(refreshBody.refreshToken).not.toBe(refreshToken);
     });
 
     it('returns 401 when the same refresh token is reused after rotation', async () => {
