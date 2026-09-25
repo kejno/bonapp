@@ -9,7 +9,7 @@ export const ALLERGENS = {
 const optionalNumber = (label: string, max?: number) => z.string().optional().default('').refine((v) => !v || (Number.isFinite(Number(v)) && Number(v) >= 0 && (max === undefined || Number(v) <= max)), `${label}: укажите допустимое число`);
 export const dishSchema = z.object({
   name: z.string().trim().min(1, 'Укажите название'), description: z.string().max(1000).default(''),
-  categoryId: z.string().min(1, 'Выберите категорию'), price: z.string().refine((v) => Number.isFinite(Number(v)) && Number(v) >= 0, 'Цена должна быть неотрицательной'),
+  categoryId: z.string().min(1, 'Выберите категорию'), price: z.string().min(1, 'Укажите цену').refine((v) => Number.isFinite(Number(v)) && Number(v) >= 0, 'Цена должна быть неотрицательной'),
   costPrice: optionalNumber('Себестоимость'), imageUrl: z.string().default(''), weightGrams: optionalNumber('Граммовка'),
   kitchenDepartment: z.enum(['HOT', 'COLD', 'BAR']), cookingTimeMinutes: optionalNumber('Время приготовления'),
   isActive: z.boolean(), isHit: z.boolean(), calories: optionalNumber('Ккал'), proteins: optionalNumber('Белки'),

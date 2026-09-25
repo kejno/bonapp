@@ -15,4 +15,10 @@ describe('dishSchema', () => {
   it('rejects invalid price and unknown allergens', () => {
     expect(dishSchema.safeParse({ name: '', categoryId: '', price: '-1', allergens: ['made-up'] }).success).toBe(false);
   });
+
+  it('rejects an empty price instead of coercing it to zero', () => {
+    const result = dishSchema.safeParse({ name: 'Борщ', categoryId: 'cat-1', price: '', allergens: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.some((issue) => issue.path[0] === 'price')).toBe(true);
+  });
 });
