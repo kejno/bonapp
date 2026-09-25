@@ -1,56 +1,95 @@
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { UserRole } from '@prisma/client';
-import { ROLES_KEY } from './roles.decorator';
-import { RolesGuard } from './roles.guard';
-import { JwtAuthGuard, StaffRequest } from './jwt-auth.guard';
+import { Controller, Get, INestApplication, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
+import { UserRole } from '@prisma/client';
+import request from 'supertest';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { Roles } from './roles.decorator';
+import { RolesGuard } from './roles.guard';
+import { buildTokenPair } from './staff-jwt.util';
+
+const SECRET = 'test-secret';
+const protectedAction = jest.fn(() => ({ completed: true }));
+
+@Controller('protected')
+@UseGuards(JwtAuthGuard, RolesGuard)
+class ProtectedRouteController {
+  @Get()
+  @Roles(UserRole.OWNER)
+  execute() {
+    return protectedAction();
+  }
+}
 
 describe('BNP-383: protected route authentication and role checks', () => {
-  const handler = {};
-  const context = (staffUser?: StaffRequest['staffUser']) => ({
-    getHandler: () => handler,
-    getClass: () => class TestController {},
-    switchToHttp: () => ({ getRequest: () => ({ staffUser }) }),
-  }) as never;
+  let app: INestApplication;
 
-  it('rejects a protected request without a bearer token', async () => {
-    const guard = new JwtAuthGuard(
-      { getOrThrow: () => 'test-secret' } as unknown as ConfigService,
-      {} as PrismaService,
-    );
-    const request = { headers: {} } as StaffRequest;
-    const jwtContext = {
-      switchToHttp: () => ({ getRequest: () => request }),
-      getHandler: () => handler,
-    } as never;
+  beforeAll(async () => {
+    const prisma = {
+      forTenant: () => ({
+        user: {
+          findFirst: jest.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve({
+              isBlocked: false,
+              mustChangePassword: false,
+              sessionVersion: 0,
+              role: where.id === 'owner-1' ? UserRole.OWNER : UserRole.WAITER,
+            }),
+          ),
+        },
+      }),
+    };
+    const module = await Test.createTestingModule({
+      controllers: [ProtectedRouteController],
+      providers: [
+        {
+          provide: ConfigService,
+          useValue: { getOrThrow: () => SECRET },
+        },
+        { provide: PrismaService, useValue: prisma },
+        JwtAuthGuard,
+        RolesGuard,
+      ],
+    }).compile();
 
-    await expect(guard.canActivate(jwtContext)).rejects.toBeInstanceOf(UnauthorizedException);
+    app = module.createNestApplication();
+    await app.init();
   });
 
-  it('rejects an unauthenticated request to a role-protected route', () => {
-    const reflector = {
-      getAllAndOverride: jest.fn().mockReturnValue([UserRole.OWNER]),
-    } as unknown as Reflector;
-    const guard = new RolesGuard(reflector);
-    expect(() => guard.canActivate(context())).toThrow(UnauthorizedException);
-    expect(reflector.getAllAndOverride).toHaveBeenCalledWith(ROLES_KEY, [handler, expect.any(Function)]);
+  afterAll(async () => {
+    await app.close();
   });
 
-  it('rejects an authenticated user without the required role', () => {
-    const guard = new RolesGuard({
-      getAllAndOverride: () => [UserRole.OWNER],
-    } as unknown as Reflector);
-    expect(() => guard.canActivate(context({ userId: 'user-1', tenantId: 'tenant-1', role: UserRole.WAITER })))
-      .toThrow(ForbiddenException);
+  beforeEach(() => {
+    protectedAction.mockClear();
   });
 
-  it('allows an authenticated user with the required role', () => {
-    const guard = new RolesGuard({
-      getAllAndOverride: () => [UserRole.WAITER],
-    } as unknown as Reflector);
-    expect(guard.canActivate(context({ userId: 'user-1', tenantId: 'tenant-1', role: UserRole.WAITER })))
-      .toBe(true);
+  it('returns 401 without a bearer token', async () => {
+    await request(app.getHttpServer()).get('/protected').expect(401);
+
+    expect(protectedAction).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a valid JWT with a role that is not allowed and does not execute the action', async () => {
+    const { accessToken } = buildTokenPair('waiter-1', 'tenant-1', UserRole.WAITER, SECRET);
+
+    await request(app.getHttpServer())
+      .get('/protected')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(protectedAction).not.toHaveBeenCalled();
+  });
+
+  it('returns the protected route response for a valid JWT with the allowed role', async () => {
+    const { accessToken } = buildTokenPair('owner-1', 'tenant-1', UserRole.OWNER, SECRET);
+
+    await request(app.getHttpServer())
+      .get('/protected')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200, { completed: true });
+
+    expect(protectedAction).toHaveBeenCalledTimes(1);
   });
 });
