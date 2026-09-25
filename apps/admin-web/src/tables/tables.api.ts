@@ -20,7 +20,7 @@ export interface DiningTable {
 
 export interface TableInput {
   tableNumber: number;
-  label?: string;
+  label?: string | null;
   seatsCount: number;
   areaId: string;
 }

@@ -60,9 +60,10 @@ export default function TablesPage() {
   function submitTable(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const label = String(data.get('label') ?? '').trim();
     const input: TableInput = {
       tableNumber: Number(data.get('tableNumber')),
-      label: String(data.get('label') ?? '').trim() || undefined,
+      label: label || (formMode === 'edit' ? null : undefined),
       seatsCount: Number(data.get('seatsCount')),
       areaId: String(data.get('areaId')),
     };

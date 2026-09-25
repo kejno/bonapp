@@ -73,6 +73,22 @@ describe('TablesPage', () => {
     }));
   });
 
+  it('clears a table label when saving an edit with an empty label', async () => {
+    vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
+    vi.mocked(tablesApi.getTables).mockResolvedValue(tables);
+    vi.mocked(tablesApi.updateTable).mockResolvedValue({ ...tables[0], label: null });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить стол' }));
+    fireEvent.change(screen.getByLabelText('Метка'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(tablesApi.updateTable).toHaveBeenCalledWith('t1', {
+      tableNumber: 1, label: null, seatsCount: 4, areaId: 'main',
+    }));
+  });
+
   it('opens table details without offering manual status changes', async () => {
     vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
     vi.mocked(tablesApi.getTables).mockResolvedValue(tables);
