@@ -205,6 +205,10 @@ export class AuthService {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
 
+    const rateLimitKey = pinRateLimitKey(tenant.id, ip);
+    await this.ensureAttemptAllowed(rateLimitKey, PIN_ATTEMPTS_LIMIT, PIN_WINDOW_SECONDS,
+      'Too many failed attempts. Please wait 15 minutes.');
+
     const staffUsers = await this.prisma
       .forTenant(tenant.id)
       .user.findMany({
@@ -231,16 +235,10 @@ export class AuthService {
     }
 
     if (!matchedUser) {
-      await this.recordFailedAttempt(
-        pinRateLimitKey(tenant.id, ip),
-        PIN_ATTEMPTS_LIMIT,
-        PIN_WINDOW_SECONDS,
-        'Too many failed attempts. Please wait 15 minutes.',
-      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.cache.del(pinRateLimitKey(tenant.id, ip));
+    await this.cache.del(rateLimitKey);
 
     const accessToken = createJwt(
       { tenantId: tenant.id, userId: matchedUser.id, role: matchedUser.role },
@@ -258,6 +256,10 @@ export class AuthService {
   ): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { challenge: string }> {
     const tenant = await this.prisma.findTenantBySlug(tenantSlug);
     if (!tenant) throw new UnauthorizedException('Invalid credentials');
+
+    const rateLimitKey = loginRateLimitKey(tenant.id, ip);
+    await this.ensureAttemptAllowed(rateLimitKey, LOGIN_ATTEMPTS_LIMIT, LOGIN_WINDOW_SECONDS,
+      'Too many login attempts. Please wait 15 minutes.');
 
     const user = await this.prisma.forTenant(tenant.id).user.findFirst({
       where: { email },
@@ -282,16 +284,10 @@ export class AuthService {
       !(await compare(password, user.passwordHash))
     ) {
       if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
-      await this.recordFailedAttempt(
-        loginRateLimitKey(tenant.id, ip),
-        LOGIN_ATTEMPTS_LIMIT,
-        LOGIN_WINDOW_SECONDS,
-        'Too many login attempts. Please wait 15 minutes.',
-      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.cache.del(loginRateLimitKey(tenant.id, ip));
+    await this.cache.del(rateLimitKey);
 
     if (user.totpEnabled) {
       const totpFailCount = await this.cache.getJson<number>(`totp:fails:${user.id}`);
@@ -492,6 +488,21 @@ export class AuthService {
           message,
           retryAfter: windowSeconds,
         },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private async ensureAttemptAllowed(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+    message: string,
+  ): Promise<void> {
+    const attempts = await this.cache.increment(key, windowSeconds);
+    if (attempts > limit) {
+      throw new HttpException(
+        { statusCode: HttpStatus.TOO_MANY_REQUESTS, message, retryAfter: windowSeconds },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }

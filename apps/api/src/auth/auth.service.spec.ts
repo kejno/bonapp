@@ -180,7 +180,7 @@ describe('AuthService — pinLogin', () => {
         },
       }),
     };
-    const service = makeService(prisma, { del: jest.fn().mockResolvedValue(undefined) });
+    const service = makeService(prisma, { increment: jest.fn().mockResolvedValue(1), del: jest.fn().mockResolvedValue(undefined) });
 
     await expect(service.pinLogin(tenantSlug, pin)).resolves.toHaveProperty('accessToken');
 
@@ -239,7 +239,7 @@ describe('AuthService — pinLogin', () => {
     });
   });
 
-  it('allows a correct PIN even after failed attempts from the same IP', async () => {
+  it('rejects a correct PIN before checking it when the IP is rate limited', async () => {
     const prisma = await buildPrisma();
     const cache = {
       increment: jest.fn().mockResolvedValue(6),
@@ -247,10 +247,9 @@ describe('AuthService — pinLogin', () => {
     };
     const service = makeService(prisma, cache);
 
-    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).resolves.toHaveProperty(
-      'accessToken',
-    );
-    expect(cache.increment).not.toHaveBeenCalled();
+    await expect(service.pinLogin(tenantSlug, pin, '1.2.3.4')).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
   });
 
   it('checks multiple staff users and returns match on second user', async () => {
@@ -318,7 +317,7 @@ describe('AuthService — login', () => {
 
   it('returns a JWT for valid credentials when TOTP is not enabled', async () => {
     const prisma = await buildPrisma(false);
-    const cache = { del: jest.fn().mockResolvedValue(undefined) };
+    const cache = { increment: jest.fn().mockResolvedValue(1), del: jest.fn().mockResolvedValue(undefined) };
     const service = makeService(prisma, cache);
 
     const result = await service.login(tenantSlug, email, password);
@@ -329,7 +328,7 @@ describe('AuthService — login', () => {
   it('returns a challenge when TOTP is enabled', async () => {
     const prisma = await buildPrisma(true);
     const setJsonRequired = jest.fn().mockResolvedValue(undefined);
-    const cache = { setJsonRequired, getJson: jest.fn().mockResolvedValue(null), del: jest.fn().mockResolvedValue(undefined) };
+    const cache = { increment: jest.fn().mockResolvedValue(1), setJsonRequired, getJson: jest.fn().mockResolvedValue(null), del: jest.fn().mockResolvedValue(undefined) };
     const service = makeService(prisma, cache);
 
     const result = await service.login(tenantSlug, email, password);
@@ -349,7 +348,7 @@ describe('AuthService — login', () => {
 
   it('forbids password login for a blocked manager', async () => {
     const prisma = await buildPrisma(false, true);
-    const service = makeService(prisma, {});
+    const service = makeService(prisma, { increment: jest.fn().mockResolvedValue(1) });
     await expect(service.login(tenantSlug, email, password)).rejects.toThrow(ForbiddenException);
   });
 
@@ -399,9 +398,19 @@ describe('AuthService — login', () => {
     );
   });
 
+  it('rejects a correct password before comparing it when the IP is rate limited', async () => {
+    const prisma = await buildPrisma(false);
+    const cache = { increment: jest.fn().mockResolvedValue(6) };
+    const service = makeService(prisma, cache);
+
+    await expect(service.login(tenantSlug, email, password, '127.0.0.1')).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
+  });
+
   it('blocks challenge issuance when TOTP fail count exceeds limit', async () => {
     const prisma = await buildPrisma(true);
-    const cache = { getJson: jest.fn().mockResolvedValue(6), del: jest.fn().mockResolvedValue(undefined) };
+    const cache = { increment: jest.fn().mockResolvedValue(1), getJson: jest.fn().mockResolvedValue(6), del: jest.fn().mockResolvedValue(undefined) };
     const service = makeService(prisma, cache);
 
     await expect(service.login(tenantSlug, email, password)).rejects.toMatchObject({
