@@ -159,7 +159,7 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(ForbiddenException);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: 'staff-1', isActive: true, isBlocked: false },
-      select: { mustChangePassword: true },
+      select: { mustChangePassword: true, sessionVersion: true },
     });
   });
 
@@ -180,7 +180,35 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(UnauthorizedException);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: 'staff-1', isActive: true, isBlocked: false },
-      select: { mustChangePassword: true },
+      select: { mustChangePassword: true, sessionVersion: true },
+    });
+  });
+
+  it('rejects a staff access token after its session version is revoked', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 2,
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      {
+        tenantId: 'tenant-1',
+        sub: 'staff-1',
+        userId: 'staff-1',
+        type: 'access',
+        sessionVersion: 1,
+      },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true },
     });
   });
 

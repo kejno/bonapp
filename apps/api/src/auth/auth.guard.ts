@@ -26,6 +26,7 @@ interface JwtPayload {
   role?: unknown;
   exp?: unknown;
   type?: unknown;
+  sessionVersion?: unknown;
 }
 
 @Injectable()
@@ -56,11 +57,18 @@ export class AuthGuard implements CanActivate {
     if (userId) {
       const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
         where: { id: userId, isActive: true, isBlocked: false },
-        select: { mustChangePassword: true },
+        select: { mustChangePassword: true, sessionVersion: true },
       });
       const isLegacySubOnlyToken =
         !payload.staffUserId && payload.tokenType !== 'access';
       if (!user && !isLegacySubOnlyToken) throw new UnauthorizedException();
+      if (
+        payload.tokenType === 'access' &&
+        payload.staffUserId &&
+        payload.sessionVersion !== user?.sessionVersion
+      ) {
+        throw new UnauthorizedException();
+      }
       if (user?.mustChangePassword) {
         throw new ForbiddenException('Password change required');
       }
@@ -81,6 +89,7 @@ export class AuthGuard implements CanActivate {
     staffUserId?: string;
     role?: UserRole;
     tokenType?: string;
+    sessionVersion?: number;
   } {
     const [encodedHeader, encodedPayload, signature, ...extraParts] =
       token.split('.');
@@ -127,6 +136,14 @@ export class AuthGuard implements CanActivate {
         throw new UnauthorizedException();
       }
       if (
+        payload.sessionVersion !== undefined &&
+        (typeof payload.sessionVersion !== 'number' ||
+          !Number.isInteger(payload.sessionVersion) ||
+          payload.sessionVersion < 0)
+      ) {
+        throw new UnauthorizedException();
+      }
+      if (
         payload.role !== undefined &&
         (typeof payload.role !== 'string' ||
           !Object.values(UserRole).includes(payload.role as UserRole))
@@ -139,6 +156,9 @@ export class AuthGuard implements CanActivate {
         ...(typeof payload.sub === 'string' ? { userId: payload.sub } : {}),
         ...(typeof payload.userId === 'string' ? { staffUserId: payload.userId } : {}),
         ...(typeof payload.type === 'string' ? { tokenType: payload.type } : {}),
+        ...(typeof payload.sessionVersion === 'number'
+          ? { sessionVersion: payload.sessionVersion }
+          : {}),
         ...(typeof payload.role === 'string'
           ? { role: payload.role as UserRole }
           : {}),
