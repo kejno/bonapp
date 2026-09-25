@@ -2,7 +2,7 @@ import { HttpException, UnauthorizedException, BadRequestException } from '@nest
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { StaffAuthService } from './staff-auth.service';
-import { buildTokenPair } from './staff-jwt.util';
+import { buildTokenPair, verifyToken } from './staff-jwt.util';
 
 const TEST_SECRET = 'test-jwt-secret';
 const TENANT_ID = 'tenant-1';
@@ -34,6 +34,11 @@ function makeRedis(store: Record<string, string> = {}) {
       return Promise.resolve(current + 1);
     }),
     expire: jest.fn(() => Promise.resolve(1)),
+    eval: jest.fn((_script: string, _numKeys: number, key: string, ttl: string) => {
+      const current = parseInt(s[key]?.value ?? '0', 10) + 1;
+      s[key] = { value: String(current), ttl: Number(ttl) };
+      return Promise.resolve(current);
+    }),
   };
 }
 
@@ -49,6 +54,33 @@ async function makeUserHash(password: string): Promise<string> {
 
 describe('StaffAuthService', () => {
   describe('login', () => {
+    it('atomically reserves a rate-limit slot before checking credentials', async () => {
+      const prisma = {
+        forTenant: () => ({ user: { findFirst: jest.fn().mockResolvedValue(null) } }),
+      };
+      const redis = makeRedis();
+      const service = new StaffAuthService(prisma as never, redis as never, makeConfig());
+
+      await expect(service.login(TENANT_ID, 'missing@test.com', 'pass', '8.8.8.8'))
+        .rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, 'login_attempts:8.8.8.8', '60');
+    });
+    it('allows at most five concurrent attempts from one IP', async () => {
+      const findFirst = jest.fn().mockResolvedValue(null);
+      const prisma = { forTenant: () => ({ user: { findFirst } }) };
+      const service = new StaffAuthService(prisma as never, makeRedis() as never, makeConfig());
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, () =>
+          service.login(TENANT_ID, 'missing@test.com', 'pass', '8.8.4.4'),
+        ),
+      );
+
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(6);
+      expect(findFirst).toHaveBeenCalledTimes(5);
+      expect(results.some((result) => result.status === 'rejected' && result.reason instanceof HttpException && result.reason.getStatus() === 429)).toBe(true);
+    });
     it('returns tokens and mustChangePassword on valid credentials', async () => {
       const hash = await makeUserHash('correctpass');
       const prisma = {
@@ -181,11 +213,30 @@ describe('StaffAuthService', () => {
         service.login(TENANT_ID, 'staff@test.com', 'wrongpass', '5.6.7.8'),
       ).rejects.toBeInstanceOf(UnauthorizedException);
 
-      expect(redis.incr).toHaveBeenCalledWith('login_attempts:5.6.7.8');
+      expect(redis.eval).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        'login_attempts:5.6.7.8',
+        '60',
+      );
     });
   });
 
   describe('refresh', () => {
+    it('uses the current database role when issuing rotated tokens', async () => {
+      const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
+      const prisma = {
+        forTenant: jest.fn(() => ({
+          user: { findFirst: jest.fn().mockResolvedValue({ id: USER_ID, role: 'MANAGER' }) },
+        })),
+      };
+      const service = new StaffAuthService(prisma as never, makeRedis() as never, makeConfig());
+
+      const result = await service.refresh(refreshToken);
+
+      expect(verifyToken(result.accessToken, TEST_SECRET).role).toBe('MANAGER');
+      expect(verifyToken(result.refreshToken, TEST_SECRET).role).toBe('MANAGER');
+    });
     it('returns new token pair for a valid refresh token', async () => {
       const { refreshToken } = buildTokenPair(
         USER_ID,

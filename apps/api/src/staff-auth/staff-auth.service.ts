@@ -19,6 +19,13 @@ const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MIN_PASSWORD_LENGTH = 8;
+const RESERVE_LOGIN_ATTEMPT_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
 
 function rtBlacklistKey(jti: string): string {
   return `rt_blacklist:${jti}`;
@@ -46,7 +53,7 @@ export class StaffAuthService {
     password: string,
     ip: string,
   ): Promise<LoginResponse> {
-    await this.checkRateLimit(ip);
+    await this.reserveLoginAttempt(ip);
 
     const db = this.prisma.forTenant(tenantId);
     const user = await db.user.findFirst({
@@ -54,13 +61,11 @@ export class StaffAuthService {
     });
 
     if (!user) {
-      await this.incrementAttempts(ip);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      await this.incrementAttempts(ip);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -98,7 +103,7 @@ export class StaffAuthService {
     const db = this.prisma.forTenant(payload.tenantId);
     const user = await db.user.findFirst({
       where: { id: payload.userId, isActive: true },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (!user) throw new UnauthorizedException();
 
@@ -114,7 +119,7 @@ export class StaffAuthService {
     const { accessToken, refreshToken: newRefreshToken } = buildTokenPair(
       payload.userId,
       payload.tenantId,
-      payload.role,
+      user.role,
       this.secret,
     );
 
@@ -171,18 +176,15 @@ export class StaffAuthService {
     });
   }
 
-  private async checkRateLimit(ip: string): Promise<void> {
-    const count = await this.redis.get(loginAttemptsKey(ip));
-    if (count !== null && parseInt(count, 10) >= RATE_LIMIT_MAX) {
+  private async reserveLoginAttempt(ip: string): Promise<void> {
+    const count = Number(await this.redis.eval(
+      RESERVE_LOGIN_ATTEMPT_SCRIPT,
+      1,
+      loginAttemptsKey(ip),
+      String(RATE_LIMIT_WINDOW_SECONDS),
+    ));
+    if (count > RATE_LIMIT_MAX) {
       throw new HttpException('Too many login attempts', HttpStatus.TOO_MANY_REQUESTS);
-    }
-  }
-
-  private async incrementAttempts(ip: string): Promise<void> {
-    const key = loginAttemptsKey(ip);
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, RATE_LIMIT_WINDOW_SECONDS);
     }
   }
 
