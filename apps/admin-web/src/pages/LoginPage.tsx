@@ -49,6 +49,8 @@ export default function LoginPage() {
       if (result.accessToken && result.user) {
         setAuth(result.accessToken, result.user as AuthUser);
         navigate('/dashboard');
+      } else {
+        setServerError('Неожиданный ответ сервера. Попробуйте ещё раз.');
       }
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Ошибка входа');
@@ -76,6 +78,8 @@ export default function LoginPage() {
       if (result.accessToken && result.user) {
         setAuth(result.accessToken, result.user as AuthUser);
         navigate('/dashboard');
+      } else {
+        setServerError('Неожиданный ответ сервера. Попробуйте ещё раз.');
       }
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Ошибка входа');

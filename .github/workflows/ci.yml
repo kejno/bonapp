@@ -119,8 +119,8 @@ jobs:
       - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "GRANT USAGE ON SCHEMA public TO bonapp_app"
       - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO bonapp_app"
       - run: PGPASSWORD=postgres psql -h localhost -U postgres -d bonapp -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO bonapp_app"
-      - run: docker run --detach --name localstack --publish 9000:4566 --env SERVICES=s3 --health-cmd "curl -f http://localhost:4566/_localstack/health" --health-interval 2s --health-timeout 3s --health-retries 15 localstack/localstack:3.8.1
-      - run: for i in {1..30}; do if [ "$(docker inspect --format={{.State.Health.Status}} localstack)" = "healthy" ]; then exit 0; fi; sleep 2; done; docker logs localstack; exit 1
+      - run: docker run --detach --name minio --publish 9000:4566 --health-cmd "curl -f http://localhost:4566/_localstack/health" --health-interval 2s --health-timeout 3s --health-retries 15 localstack/localstack:4.11.1
+      - run: for i in {1..30}; do if [ "$(docker inspect --format={{.State.Health.Status}} minio)" = "healthy" ]; then exit 0; fi; sleep 2; done; docker logs minio; exit 1
       - run: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm --workspace @bonapp/api run test:e2e -- order-tenant-integrity.e2e-spec.ts
       - run: npm --workspace @bonapp/api run test:e2e -- tenant-isolation.e2e-spec.ts
       - run: npm --workspace @bonapp/api run test:e2e -- BNP-319.e2e-spec.ts

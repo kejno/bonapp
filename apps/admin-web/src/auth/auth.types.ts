@@ -1,10 +1,6 @@
-export interface AuthUser {
-  id: string;
-  email: string;
-  role: string;
-  tenantId: string;
-  fullName: string;
-}
+import type { AuthUser as SharedAuthUser } from '@bonapp/shared-types';
+
+export type AuthUser = SharedAuthUser;
 
 export interface LoginCredentials {
   login: string;

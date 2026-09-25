@@ -1,10 +1,6 @@
-export interface AuthUserDto {
-  id: string;
-  email: string;
-  role: string;
-  tenantId: string;
-  fullName: string;
-}
+import type { AuthUser } from '@bonapp/shared-types';
+
+export type AuthUserDto = AuthUser;
 
 export interface LoginResponseDto {
   requiresTOTP?: true;

@@ -30,4 +30,17 @@ describe('LoginDto', () => {
     await expect(validate(withoutTotp)).resolves.toHaveLength(0);
     await expect(validate(withTotp)).resolves.toHaveLength(0);
   });
+
+  it('rejects credentials that exceed the supported input length', async () => {
+    const dto = Object.assign(new LoginDto(), {
+      login: 'a'.repeat(255),
+      password: 'a'.repeat(129),
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors.map((error) => error.property)).toEqual(
+      expect.arrayContaining(['login', 'password']),
+    );
+  });
 });

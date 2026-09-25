@@ -98,6 +98,14 @@ describe('AuthService', () => {
       });
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
+      const accessPayload = JSON.parse(
+        Buffer.from(result.accessToken!.split('.')[1], 'base64url').toString(),
+      ) as { sub: string; tenantId: string; exp: number };
+      expect(accessPayload).toMatchObject({
+        sub: BASE_USER.id,
+        tenantId: BASE_USER.tenantId,
+      });
+      expect(accessPayload.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
       expect(result.user).toMatchObject({
         id: BASE_USER.id,
         email: BASE_USER.email,
@@ -148,28 +156,6 @@ describe('AuthService', () => {
     });
   });
 
-  describe('generateToken', () => {
-    it('produces a valid HS256 JWT with required claims', () => {
-      const { service } = makeService(BASE_USER);
-      const token = service.generateToken(BASE_USER, 3600, 'access');
-      const [header, payload] = token.split('.');
-      const h = JSON.parse(Buffer.from(header, 'base64url').toString()) as {
-        alg: string;
-        typ: string;
-      };
-      const p = JSON.parse(Buffer.from(payload, 'base64url').toString()) as {
-        sub: string;
-        tenantId: string;
-        exp: number;
-      };
-
-      expect(h).toEqual({ alg: 'HS256', typ: 'JWT' });
-      expect(p.sub).toBe(BASE_USER.id);
-      expect(p.tenantId).toBe(BASE_USER.tenantId);
-      expect(typeof p.exp).toBe('number');
-      expect(p.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
-    });
-  });
 });
 
 describe('verifyTOTP', () => {

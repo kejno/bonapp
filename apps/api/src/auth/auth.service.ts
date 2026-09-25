@@ -102,7 +102,7 @@ export class AuthService {
     return users.length === 1 ? users[0] : null;
   }
 
-  generateToken(
+  private generateToken(
     user: Pick<UserRow, 'id' | 'tenantId' | 'role' | 'email'>,
     expiresInSeconds: number,
     type: 'access' | 'refresh',
