@@ -120,7 +120,7 @@ describe('TablesPage', () => {
     renderPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
-    expect(screen.getByText('Сессия гостя')).toBeInTheDocument();
+    expect(screen.getByText('ID сессии гостя')).toBeInTheDocument();
     expect(screen.getByText('guest-session-1')).toBeInTheDocument();
   });
 });
