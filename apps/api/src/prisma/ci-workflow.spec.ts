@@ -20,8 +20,12 @@ describe('CI workflow', () => {
     );
     expect(workflow).toContain('bonapp_app:bonapp_app');
     expect(workflow).toContain('tenant-isolation.e2e-spec.ts');
+    // menu-tenant-integrity runs against the superuser postgres role (bypasses
+    // RLS) instead of the restricted bonapp_app role every other spec runs
+    // under — the e2e matrix carries this per-spec via matrix.databaseUrl.
+    expect(workflow).toContain('spec: menu-tenant-integrity.e2e-spec.ts');
     expect(workflow).toContain(
-      'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm --workspace @bonapp/api run test:e2e -- menu-tenant-integrity.e2e-spec.ts',
+      'databaseUrl: postgresql://postgres:postgres@localhost:5432/bonapp',
     );
   });
 
