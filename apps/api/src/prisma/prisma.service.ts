@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 
 export const TENANT_SCOPED_MODELS = new Set([
@@ -199,6 +199,42 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
               }
               return execute.call(delegate, scopedArgs);
             });
+          },
+        },
+      },
+    });
+  }
+
+  async transactionForTenant<T>(
+    tenantId: string,
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('app.current_tenant_id', ${tenantId}, true)
+      `;
+      return operation(tx);
+    });
+  }
+
+  /**
+   * Looks up a table by its globally-unique QR token without tenant scoping.
+   * Used only for guest session initialization where the tenant must first be
+   * resolved from the token before scoped queries can proceed.
+   */
+  findTableByQrToken(qrToken: string) {
+    return this.client.table.findUnique({
+      where: { qrToken },
+      include: {
+        area: { select: { name: true } },
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            brandColor: true,
+            currency: true,
           },
         },
       },

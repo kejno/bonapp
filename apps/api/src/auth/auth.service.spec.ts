@@ -8,15 +8,20 @@ const TEST_SECRET = 'test-jwt-secret-32-chars-minimum!';
 
 function makeService(
   userRow: Record<string, unknown> | null,
-): { service: AuthService; findFirstMock: jest.Mock } {
+): {
+  service: AuthService;
+  findFirstMock: jest.Mock;
+  findManyMock: jest.Mock;
+} {
   const findFirstMock = jest.fn().mockResolvedValue(userRow);
+  const findManyMock = jest.fn().mockResolvedValue(userRow ? [userRow] : []);
   const prisma = {
-    unscopedClient: { user: { findFirst: findFirstMock } },
+    unscopedClient: { user: { findFirst: findFirstMock, findMany: findManyMock } },
   } as unknown as PrismaService;
   const config = {
     getOrThrow: () => TEST_SECRET,
   } as unknown as ConfigService;
-  return { service: new AuthService(prisma, config), findFirstMock };
+  return { service: new AuthService(prisma, config), findFirstMock, findManyMock };
 }
 
 const PASSWORD = 'correct-password';
@@ -102,9 +107,9 @@ describe('AuthService', () => {
     });
 
     it('normalises email to lowercase before querying', async () => {
-      const { service, findFirstMock } = makeService(BASE_USER);
+      const { service, findManyMock } = makeService(BASE_USER);
       await service.login({ login: 'Admin@Example.COM', password: PASSWORD });
-      const calls = findFirstMock.mock.calls as [
+      const calls = findManyMock.mock.calls as [
         { where: { OR: { email?: string }[] } },
       ][];
       const callArg = calls[0][0];
@@ -125,6 +130,21 @@ describe('AuthService', () => {
       expect(r2.accessToken).toBeDefined();
       expect(r1.user?.tenantId).toBe('tenant-1');
       expect(r2.user?.tenantId).toBe('tenant-2');
+    });
+
+    it('rejects an identity that belongs to users in multiple tenants', async () => {
+      const firstUser = { ...BASE_USER, tenantId: 'tenant-1' };
+      const secondUser = { ...BASE_USER, tenantId: 'tenant-2' };
+      const { service, findManyMock } = makeService(firstUser);
+      findManyMock.mockResolvedValue([firstUser, secondUser]);
+
+      await expect(
+        service.login({ login: BASE_USER.email, password: PASSWORD }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(findManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 2 }),
+      );
     });
   });
 

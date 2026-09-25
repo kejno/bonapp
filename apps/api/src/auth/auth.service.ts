@@ -81,11 +81,12 @@ export class AuthService {
 
   private async findUser(login: string): Promise<UserRow | null> {
     const normalised = login.trim().toLowerCase();
-    return this.prisma.unscopedClient.user.findFirst({
+    const users = await this.prisma.unscopedClient.user.findMany({
       where: {
         OR: [{ email: normalised }, { phone: login.trim() }],
         isActive: true,
       },
+      take: 2,
       select: {
         id: true,
         tenantId: true,
@@ -98,6 +99,7 @@ export class AuthService {
         totpSecret: true,
       },
     });
+    return users.length === 1 ? users[0] : null;
   }
 
   generateToken(
