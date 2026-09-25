@@ -108,9 +108,23 @@ export default function TablesPage() {
           visibleTables.length === 0 ? <p className="mt-8 rounded-xl border border-dashed border-outline-variant p-10 text-center text-sm text-on-background/60">В этой зоне пока нет столов</p> :
             <section aria-label="Столы" className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
               {visibleTables.map((table) => {
-                const status = STATUS[table.status] ?? STATUS.AVAILABLE;
-                return <button key={table.id} type="button" data-status={status.color} aria-label={`Стол ${table.tableNumber}, ${status.label}`} onClick={() => setSelectedTable(table)} className={`min-h-36 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 ${status.color === 'FREE' ? 'border-emerald-200 bg-emerald-50' : status.color === 'OCCUPIED' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
-                  <span className="flex items-center justify-between"><strong className="text-2xl">Стол {table.tableNumber}</strong><i className={`size-3 rounded-full ${status.color === 'FREE' ? 'bg-emerald-500' : status.color === 'OCCUPIED' ? 'bg-amber-400' : 'bg-red-500'}`} /></span>
+                const status = STATUS[table.status] ?? { label: table.status, color: 'UNKNOWN' };
+                const statusStyles = status.color === 'FREE'
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : status.color === 'OCCUPIED'
+                    ? 'border-amber-200 bg-amber-50'
+                    : status.color === 'BILL_REQUESTED'
+                      ? 'border-red-200 bg-red-50'
+                      : 'border-slate-300 bg-slate-100';
+                const indicatorStyle = status.color === 'FREE'
+                  ? 'bg-emerald-500'
+                  : status.color === 'OCCUPIED'
+                    ? 'bg-amber-400'
+                    : status.color === 'BILL_REQUESTED'
+                      ? 'bg-red-500'
+                      : 'bg-slate-500';
+                return <button key={table.id} type="button" data-status={status.color} aria-label={`Стол ${table.tableNumber}, ${status.label}`} onClick={() => setSelectedTable(table)} className={`min-h-36 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 ${statusStyles}`}>
+                  <span className="flex items-center justify-between"><strong className="text-2xl">Стол {table.tableNumber}</strong><i className={`size-3 rounded-full ${indicatorStyle}`} /></span>
                   <span className="mt-2 block text-sm text-on-background/70">{table.label || `${table.seatsCount} места`}</span>
                   <span className="mt-4 block text-xs font-medium">{status.label}</span>
                 </button>;

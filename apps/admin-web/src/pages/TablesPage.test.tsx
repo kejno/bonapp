@@ -46,6 +46,17 @@ describe('TablesPage', () => {
     expect(screen.getByRole('button', { name: /Стол 3/ })).toHaveAttribute('data-status', 'BILL_REQUESTED');
   });
 
+  it('shows unknown statuses with a neutral color and their actual value', async () => {
+    vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
+    vi.mocked(tablesApi.getTables).mockResolvedValue([
+      { ...tables[0], status: 'RESERVED' },
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Стол 1, RESERVED' })).toHaveAttribute('data-status', 'UNKNOWN');
+    expect(screen.getByText('RESERVED')).toBeInTheDocument();
+  });
+
   it('creates a table in the selected zone', async () => {
     vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
     vi.mocked(tablesApi.getTables).mockResolvedValue(tables);

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -41,6 +42,30 @@ const ACTIVE_TABLE_STATUSES = new Set<TableStatus>([
   TableStatus.BILL_REQUESTED,
 ]);
 
+function getGuestMenuBaseUrl(): string {
+  const configuredUrl = process.env.GUEST_MENU_URL?.trim();
+  if (!configuredUrl && process.env.NODE_ENV === 'production') {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be configured in production');
+  }
+
+  const menuUrl = configuredUrl || 'http://localhost:5173/menu';
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(menuUrl);
+  } catch {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be a valid absolute URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new InternalServerErrorException('GUEST_MENU_URL must use HTTP or HTTPS');
+  }
+  if (process.env.NODE_ENV === 'production' &&
+      (parsedUrl.protocol !== 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(parsedUrl.hostname))) {
+    throw new InternalServerErrorException('GUEST_MENU_URL must be a public HTTPS URL in production');
+  }
+  return parsedUrl.toString();
+}
+
 @Injectable()
 export class HallsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -76,6 +101,7 @@ export class HallsService {
   }
 
   async generateQrPdf(tenantId: string, tableIds: string[]): Promise<Buffer> {
+    const menuBaseUrl = getGuestMenuBaseUrl();
     const tables = await this.prisma.forTenant(tenantId).table.findMany({
       where: { id: { in: tableIds } },
       orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
@@ -92,7 +118,6 @@ export class HallsService {
       document.on('end', () => resolve(Buffer.concat(chunks)));
       document.on('error', reject);
     });
-    const menuBaseUrl = process.env.GUEST_MENU_URL ?? 'http://localhost:5173/menu';
     for (const [index, table] of tables.entries()) {
       if (index > 0 && index % 4 === 0) document.addPage();
       const slot = index % 4;
