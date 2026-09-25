@@ -21,4 +21,10 @@ describe('dishSchema', () => {
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues.some((issue) => issue.path[0] === 'price')).toBe(true);
   });
+
+  it('rejects fractional calories because the API stores whole kilocalories', () => {
+    const result = dishSchema.safeParse({ name: 'Борщ', categoryId: 'cat-1', price: '12', calories: '180.5', allergens: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.some((issue) => issue.path[0] === 'calories')).toBe(true);
+  });
 });

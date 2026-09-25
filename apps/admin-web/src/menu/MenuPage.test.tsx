@@ -29,6 +29,25 @@ beforeEach(() => {
 });
 
 describe('MenuPage save retry', () => {
+  it('closes the dialog on Escape, traps keyboard focus, and restores focus to its opener', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
+    const opener = await screen.findByRole('button', { name: 'Добавить блюдо' });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole('dialog');
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    expect(document.activeElement).toBe(focusable[0]);
+    focusable[focusable.length - 1].focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(focusable[0]);
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('reuses the created dish id when the first update fails', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MenuPage /></QueryClientProvider>);
