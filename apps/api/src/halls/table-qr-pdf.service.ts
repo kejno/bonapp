@@ -44,7 +44,7 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
         const cachedPdf = await this.cache.getJson<string>(`${FILE_PREFIX}${cacheKey}`);
         const pdf = cachedPdf ? Buffer.from(cachedPdf, 'base64') : await this.render(name, logoUrl, tables);
         if (!cachedPdf) await this.cache.setJson(`${FILE_PREFIX}${cacheKey}`, pdf.toString('base64'), PDF_TTL_SECONDS);
-        await this.cache.setJson(`${FILE_PREFIX}${jobId}`, pdf.toString('base64'), PDF_TTL_SECONDS);
+        await this.storeJobFile(jobId, pdf);
         const statusUrl = `/api/v1/admin/tables/generate-qr-pdf/jobs/${jobId}`;
         await this.cache.setJson(`${JOB_PREFIX}${jobId}`, { tenantId, status: 'ready', downloadUrl: `${statusUrl}/file` } satisfies PdfJobRecord, JOB_TTL_SECONDS);
       } catch {
@@ -65,7 +65,7 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     });
     if (tableIds && tables.length !== new Set(tableIds).size) throw new NotFoundException('One or more tables not found');
     if (!tables.length) throw new NotFoundException('No tables found');
-    const key = this.cacheKey(tenantId, tables.map((t) => `${t.id}:${t.tableNumber}:${t.qrToken}`), tenant.logoUrl);
+    const key = this.cacheKey(tenantId, tenant.name, tables.map((t) => `${t.id}:${t.tableNumber}:${t.qrToken}`), tenant.logoUrl);
     const cached = await this.cache.getJson<string>(`${FILE_PREFIX}${key}`);
     if (tables.length <= QR_PDF_SYNC_LIMIT) {
       if (cached) return Buffer.from(cached, 'base64');
@@ -108,8 +108,12 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     await this.browser?.close();
   }
 
-  private cacheKey(tenantId: string, ids: string[], logoUrl: string | null): string {
-    return createHash('sha256').update(JSON.stringify([tenantId, [...ids].sort(), logoUrl])).digest('hex');
+  private async storeJobFile(jobId: string, pdf: Buffer): Promise<void> {
+    await this.cache.setJson(`${FILE_PREFIX}${jobId}`, pdf.toString('base64'), JOB_TTL_SECONDS);
+  }
+
+  private cacheKey(tenantId: string, name: string, ids: string[], logoUrl: string | null): string {
+    return createHash('sha256').update(JSON.stringify([tenantId, name, [...ids].sort(), logoUrl])).digest('hex');
   }
 
   private async render(name: string, logoUrl: string | null, tables: Array<{ tableNumber: number; qrToken: string }>): Promise<Buffer> {
