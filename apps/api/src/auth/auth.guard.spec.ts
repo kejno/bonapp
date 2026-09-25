@@ -144,6 +144,27 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
+  it('rejects blocked staff and includes the block state in the database query', async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = {
+      forTenant: () => ({ user: { findFirst } }),
+    };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', userId: 'staff-1', type: 'access', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true },
+    });
+  });
+
   it('preserves valid legacy tenant tokens without a matching staff account', async () => {
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
     const prisma = {
