@@ -16,7 +16,7 @@ interface UpdateStopListRequest {
   isStopped: boolean;
 }
 
-@Controller('api/v1/stop-list')
+@Controller('stop-list')
 export class StopListController {
   constructor(private readonly menuAdminService: MenuAdminService) {}
 

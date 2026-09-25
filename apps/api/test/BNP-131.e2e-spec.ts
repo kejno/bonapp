@@ -88,6 +88,7 @@ describe('BNP-131: Guest session resolves by QR token', () => {
       .useValue({})
       .compile();
     app = module.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     await app.init();
   }, 120_000);
 

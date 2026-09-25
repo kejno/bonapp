@@ -71,7 +71,7 @@ function isValidStopListBody(
   return typeof isInStopList === 'boolean';
 }
 
-@Controller('api/v1/admin/menu')
+@Controller('admin/menu')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class MenuAdminController {
   constructor(
