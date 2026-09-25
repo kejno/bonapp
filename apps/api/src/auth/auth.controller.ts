@@ -6,6 +6,7 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { AuthService } from './auth.service';
@@ -20,6 +21,7 @@ export class AuthController {
 
   @Post('login')
   @SkipTenantGuard()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: LoginDto,

@@ -1,5 +1,6 @@
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { THROTTLER_LIMIT, THROTTLER_TTL } from '@nestjs/throttler/dist/throttler.constants';
 
 describe('AuthController', () => {
   const login = jest.fn();
@@ -8,6 +9,19 @@ describe('AuthController', () => {
 
   beforeEach(() => {
     login.mockResolvedValue({ refreshToken: 'refresh-token' });
+  });
+
+  it('limits login attempts to five per minute per client', () => {
+    const handler: unknown = Object.getOwnPropertyDescriptor(
+      AuthController.prototype,
+      'login',
+    )!.value;
+    if (typeof handler !== 'function') {
+      throw new Error('Login handler is not defined');
+    }
+
+    expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler)).toBe(5);
+    expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler)).toBe(60_000);
   });
 
   it('marks the refresh cookie secure in production', async () => {

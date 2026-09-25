@@ -1,11 +1,14 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compare } from 'bcryptjs';
+import type Redis from 'ioredis';
 import { createHmac } from 'node:crypto';
+import { REDIS_CLIENT } from '../cache/cache.constants';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { AuthUserDto, LoginResponseDto } from './dto/login-response.dto';
@@ -36,6 +39,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     this.jwtSecret = config.getOrThrow<string>('JWT_SECRET');
   }
@@ -60,8 +64,14 @@ export class AuthService {
       if (!dto.totpCode) {
         return { requiresTOTP: true };
       }
-      if (!verifyTOTP(user.totpSecret, dto.totpCode)) {
+      const totpCounter = findTotpCounter(user.totpSecret, dto.totpCode);
+      if (totpCounter === null) {
         throw new UnauthorizedException('Неверный код 2FA');
+      }
+      const replayKey = `totp:used:${user.id}:${totpCounter}`;
+      const accepted = await this.redis.set(replayKey, '1', 'EX', 90, 'NX');
+      if (!accepted) {
+        throw new UnauthorizedException('Код 2FA уже был использован');
       }
     }
 
@@ -168,10 +178,19 @@ export function verifyTOTP(
   code: string,
   window = 1,
 ): boolean {
+  return findTotpCounter(secret, code, window) !== null;
+}
+
+function findTotpCounter(
+  secret: string,
+  code: string,
+  window = 1,
+): bigint | null {
   const key = base32Decode(secret);
   const counter = BigInt(Math.floor(Date.now() / 1000 / 30));
   for (let delta = -window; delta <= window; delta++) {
-    if (computeHOTP(key, counter + BigInt(delta)) === code) return true;
+    const candidate = counter + BigInt(delta);
+    if (computeHOTP(key, candidate) === code) return candidate;
   }
-  return false;
+  return null;
 }

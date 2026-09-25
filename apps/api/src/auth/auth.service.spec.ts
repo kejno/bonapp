@@ -1,6 +1,7 @@
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hashSync } from 'bcryptjs';
+import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService, verifyTOTP } from './auth.service';
 
@@ -8,10 +9,12 @@ const TEST_SECRET = 'test-jwt-secret-32-chars-minimum!';
 
 function makeService(
   userRow: Record<string, unknown> | null,
+  redisSet = jest.fn().mockResolvedValue('OK'),
 ): {
   service: AuthService;
   findFirstMock: jest.Mock;
   findManyMock: jest.Mock;
+  redisSet: jest.Mock;
 } {
   const findFirstMock = jest.fn().mockResolvedValue(userRow);
   const findManyMock = jest.fn().mockResolvedValue(userRow ? [userRow] : []);
@@ -21,7 +24,12 @@ function makeService(
   const config = {
     getOrThrow: () => TEST_SECRET,
   } as unknown as ConfigService;
-  return { service: new AuthService(prisma, config), findFirstMock, findManyMock };
+  return {
+    service: new AuthService(prisma, config, { set: redisSet } as never),
+    findFirstMock,
+    findManyMock,
+    redisSet,
+  };
 }
 
 const PASSWORD = 'correct-password';
@@ -40,6 +48,10 @@ const BASE_USER = {
 };
 
 describe('AuthService', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('login', () => {
     it('throws when user is not found', async () => {
       const { service } = makeService(null);
@@ -88,6 +100,40 @@ describe('AuthService', () => {
           totpCode: '000000',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects reuse of a successfully verified TOTP counter', async () => {
+      jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      const redisSet = jest
+        .fn()
+        .mockResolvedValueOnce('OK')
+        .mockResolvedValueOnce(null);
+      const { service } = makeService(
+        {
+          ...BASE_USER,
+          totpEnabled: true,
+          totpSecret: 'JBSWY3DPEHPK3PXP',
+        },
+        redisSet,
+      );
+
+      const code = totpCodeForCounter(
+        'JBSWY3DPEHPK3PXP',
+        BigInt(Math.floor(Date.now() / 1000 / 30)),
+      );
+      await expect(
+        service.login({ login: BASE_USER.email, password: PASSWORD, totpCode: code }),
+      ).resolves.toHaveProperty('accessToken');
+      await expect(
+        service.login({ login: BASE_USER.email, password: PASSWORD, totpCode: code }),
+      ).rejects.toThrow('Код 2FA уже был использован');
+      expect(redisSet).toHaveBeenCalledWith(
+        `totp:used:${BASE_USER.id}:${Math.floor(Date.now() / 1000 / 30)}`,
+        '1',
+        'EX',
+        90,
+        'NX',
+      );
     });
 
     it('returns accessToken and user on successful login without TOTP', async () => {
@@ -157,6 +203,31 @@ describe('AuthService', () => {
   });
 
 });
+
+function totpCodeForCounter(secret: string, counter: bigint): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const character of secret) {
+    bits += alphabet.indexOf(character).toString(2).padStart(5, '0');
+  }
+  const bytes: number[] = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  }
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigInt64BE(counter);
+  const hmac = createHmac('sha1', Buffer.from(bytes))
+    .update(buffer)
+    .digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code =
+    (((hmac[offset] & 0x7f) << 24) |
+      ((hmac[offset + 1] & 0xff) << 16) |
+      ((hmac[offset + 2] & 0xff) << 8) |
+      (hmac[offset + 3] & 0xff)) %
+    1_000_000;
+  return code.toString().padStart(6, '0');
+}
 
 describe('verifyTOTP', () => {
   it('returns false for an obviously wrong code', () => {
