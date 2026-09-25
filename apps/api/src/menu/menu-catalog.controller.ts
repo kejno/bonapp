@@ -23,7 +23,10 @@ import type {
   UpdateCategoryDto,
   UpdateItemDto,
 } from './menu-catalog.service';
-import { MenuCatalogService } from './menu-catalog.service';
+import {
+  ALLOWED_UPLOAD_CONTENT_TYPES,
+  MenuCatalogService,
+} from './menu-catalog.service';
 
 function parseBooleanQuery(value: string | undefined): boolean | undefined {
   if (value === 'true') return true;
@@ -246,6 +249,12 @@ export class MediaController {
     if (typeof contentType !== 'string' || !contentType.trim()) {
       throw new BadRequestException('contentType is required');
     }
-    return contentType.trim();
+    const normalizedContentType = contentType.trim();
+    if (!ALLOWED_UPLOAD_CONTENT_TYPES.includes(normalizedContentType as typeof ALLOWED_UPLOAD_CONTENT_TYPES[number])) {
+      throw new BadRequestException(
+        `Unsupported content type. Allowed: ${ALLOWED_UPLOAD_CONTENT_TYPES.join(', ')}`,
+      );
+    }
+    return normalizedContentType;
   }
 }

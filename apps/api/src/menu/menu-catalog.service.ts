@@ -11,7 +11,9 @@ import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
-const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+export const ALLOWED_UPLOAD_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+const IMAGE_EXTENSION_BY_CONTENT_TYPE: Record<(typeof ALLOWED_UPLOAD_CONTENT_TYPES)[number], string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
@@ -93,6 +95,10 @@ export class MenuCatalogService {
   }
 
   async updateCategory(tenantId: string, categoryId: string, dto: UpdateCategoryDto) {
+    if (!Object.values(dto).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one field must be provided');
+    }
+
     const data: Prisma.MenuCategoryUpdateInput = {};
     if (dto.name !== undefined) {
       this.validateName(dto.name);
@@ -140,7 +146,7 @@ export class MenuCatalogService {
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
     if (filters.isInStopList !== undefined) where.isInStopList = filters.isInStopList;
 
-    return this.prisma.forTenant(tenantId).menuItem.findMany({
+    const items = await this.prisma.forTenant(tenantId).menuItem.findMany({
       where,
       orderBy: [
         { category: { sortOrder: 'asc' } },
@@ -148,6 +154,7 @@ export class MenuCatalogService {
         { id: 'asc' },
       ],
     });
+    return items.map((item) => this.mapItem(item));
   }
 
   async createItem(tenantId: string, dto: CreateItemDto) {
@@ -175,6 +182,10 @@ export class MenuCatalogService {
   }
 
   async updateItem(tenantId: string, itemId: string, dto: UpdateItemDto) {
+    if (!Object.values(dto).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one field must be provided');
+    }
+
     const data: Prisma.MenuItemUncheckedUpdateInput = {};
     if (dto.name !== undefined) {
       this.validateName(dto.name);
@@ -225,17 +236,16 @@ export class MenuCatalogService {
     tenantId: string,
     contentType: string,
   ): Promise<{ uploadUrl: string; uploadFields: Record<string, string>; imageUrl: string }> {
-    const ext = ALLOWED_IMAGE_TYPES[contentType];
+    const ext = IMAGE_EXTENSION_BY_CONTENT_TYPE[contentType as keyof typeof IMAGE_EXTENSION_BY_CONTENT_TYPE];
     if (!ext) {
       throw new BadRequestException(
-        `Unsupported content type "${contentType}". Allowed: ${Object.keys(ALLOWED_IMAGE_TYPES).join(', ')}`,
+        `Unsupported content type "${contentType}". Allowed: ${ALLOWED_UPLOAD_CONTENT_TYPES.join(', ')}`,
       );
     }
     const key = `tenants/${tenantId}/menu/${randomUUID()}.${ext}`;
     const { uploadUrl, uploadFields, publicUrl } = await this.storage.getPresignedUploadUrl(
       key,
       contentType,
-      600,
     );
     return { uploadUrl, uploadFields, imageUrl: publicUrl };
   }
@@ -247,6 +257,13 @@ export class MenuCatalogService {
   private mapCategory<T extends { isActive: boolean }>(category: T): Omit<T, 'isActive'> & { isVisible: boolean } {
     const { isActive, ...rest } = category;
     return { ...rest, isVisible: isActive };
+  }
+
+  private mapItem<T extends { priceByn: Prisma.Decimal | number }>(
+    item: T,
+  ): Omit<T, 'priceByn'> & { price: number } {
+    const { priceByn, ...rest } = item;
+    return { ...rest, price: Math.round(Number(priceByn) * 100) };
   }
 
   private validateName(name: string): void {

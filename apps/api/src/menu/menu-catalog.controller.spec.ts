@@ -1,11 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
-import { MenuCatalogController } from './menu-catalog.controller';
+import { MediaController, MenuCatalogController } from './menu-catalog.controller';
 import { MenuCatalogService } from './menu-catalog.service';
 
 describe('MenuCatalogController', () => {
   const updateCategory = jest.fn();
-  const catalogService = { updateCategory } as unknown as MenuCatalogService;
+  const presignMenuItemUpload = jest.fn();
+  const catalogService = {
+    updateCategory,
+    presignMenuItemUpload,
+  } as unknown as MenuCatalogService;
   const controller = new MenuCatalogController(catalogService);
+  const mediaController = new MediaController(catalogService);
 
   it('rejects a non-string POS category identifier without producing an update DTO', () => {
     expect(() =>
@@ -57,5 +62,15 @@ describe('MenuCatalogController', () => {
         [field]: value,
       }),
     ).toThrow(BadRequestException);
+  });
+
+  it('rejects an unsupported upload MIME type before invoking the service', () => {
+    expect(() =>
+      mediaController.presign(
+        { user: { tenantId: 'tenant-1' } } as never,
+        { contentType: 'image/gif' },
+      ),
+    ).toThrow(BadRequestException);
+    expect(presignMenuItemUpload).not.toHaveBeenCalled();
   });
 });

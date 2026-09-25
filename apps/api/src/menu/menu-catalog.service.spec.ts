@@ -167,6 +167,15 @@ describe('MenuCatalogService', () => {
       });
     });
 
+    it('rejects an empty update without writing to the database or invalidating the cache', async () => {
+      await expect(service.updateCategory('tenant-1', 'cat-1', {})).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+      expect(cache.del).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException when the category does not belong to the tenant', async () => {
       prisma.menuCategory.update.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Record not found', {
@@ -176,7 +185,7 @@ describe('MenuCatalogService', () => {
       );
 
       await expect(
-        service.updateCategory('tenant-1', 'unknown', {}),
+        service.updateCategory('tenant-1', 'unknown', { name: 'Renamed' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -207,7 +216,10 @@ describe('MenuCatalogService', () => {
 
   describe('listItems', () => {
     it('returns all items with category-based ordering when no filters are given', async () => {
-      const items = [{ id: 'item-1' }, { id: 'item-2' }];
+      const items = [
+        { id: 'item-1', name: 'Latte', priceByn: 5.5 },
+        { id: 'item-2', name: 'Tea', priceByn: 0 },
+      ];
       prisma.menuItem.findMany.mockResolvedValue(items);
 
       const result = await service.listItems('tenant-1', {});
@@ -220,7 +232,11 @@ describe('MenuCatalogService', () => {
           { id: 'asc' },
         ],
       });
-      expect(result).toEqual(items);
+      expect(result).toEqual([
+        { id: 'item-1', name: 'Latte', price: 550 },
+        { id: 'item-2', name: 'Tea', price: 0 },
+      ]);
+      expect(result[0]).not.toHaveProperty('priceByn');
     });
 
     it('applies categoryId, isActive and isInStopList filters', async () => {
@@ -393,6 +409,15 @@ describe('MenuCatalogService', () => {
       });
     });
 
+    it('rejects an empty update without writing to the database or invalidating the cache', async () => {
+      await expect(service.updateItem('tenant-1', 'item-1', {})).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(prisma.menuItem.update).not.toHaveBeenCalled();
+      expect(cache.del).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException when the item does not belong to the tenant', async () => {
       prisma.menuItem.update.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Record not found', {
@@ -459,7 +484,6 @@ describe('MenuCatalogService', () => {
       expect(storage.getPresignedUploadUrl).toHaveBeenCalledWith(
         expect.stringMatching(/^tenants\/tenant-1\/menu\/.+\.jpg$/),
         'image/jpeg',
-        600,
       );
       expect(result).toEqual({
         uploadUrl: 'https://s3.example.com/presigned',
