@@ -9,4 +9,10 @@ describe('application bootstrap', () => {
       /app\.useGlobalPipes\(new ValidationPipe\(\{ whitelist: true, transform: true \}\)\)/,
     );
   });
+
+  it('trusts only explicitly configured proxy addresses when resolving client IP addresses', () => {
+    const source = readFileSync(join(__dirname, 'main.ts'), 'utf8');
+
+    expect(source).toContain("app.set('trust proxy', process.env.TRUSTED_PROXY_ADDRESSES || false)");
+  });
 });

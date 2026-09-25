@@ -1,196 +1,486 @@
 import {
   ForbiddenException,
-  Inject,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { compare } from 'bcryptjs';
-import type Redis from 'ioredis';
-import { createHmac } from 'node:crypto';
-import { REDIS_CLIENT } from '../cache/cache.constants';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from 'node:crypto';
+import { compare, hash } from 'bcryptjs';
+import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoginDto } from './dto/login.dto';
-import { AuthUserDto, LoginResponseDto } from './dto/login-response.dto';
 
-const ACCESS_TOKEN_TTL = 8 * 60 * 60; // 8 hours
-const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days
+const STAFF_ROLES = new Set(['CASHIER', 'WAITER', 'CHEF']);
+const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
+const BCRYPT_COST = 10;
+const PIN_ATTEMPTS_LIMIT = 5;
+const PIN_WINDOW_SECONDS = 900; // 15 minutes
+const LOGIN_ATTEMPTS_LIMIT = 5;
+const LOGIN_WINDOW_SECONDS = 900; // 15 minutes
+const PIN_JWT_TTL_SECONDS = 28800; // 8 hours
+const MANAGER_JWT_TTL_SECONDS = 86400; // 24 hours
+const REFRESH_JWT_TTL_SECONDS = 604800; // 7 days
+const LOGIN_CHALLENGE_TTL_SECONDS = 180; // 3 minutes
+const SETUP_CHALLENGE_TTL_SECONDS = 300; // 5 minutes
+const TOTP_STEP_SECONDS = 30;
+const TOTP_WINDOW = 1;
+const TOTP_FAIL_LIMIT = 5;
+const TOTP_FAIL_WINDOW_SECONDS = 300; // 5 minutes
 
-interface UserRow {
-  id: string;
-  tenantId: string;
-  email: string;
-  passwordHash: string;
-  fullName: string;
-  role: string;
-  isBlocked: boolean;
-  totpEnabled: boolean;
-  totpSecret: string | null;
+const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(buf: Buffer): string {
+  let result = '';
+  let bits = 0;
+  let value = 0;
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      result += BASE32_CHARS[(value >> bits) & 0x1f];
+    }
+  }
+  if (bits > 0) result += BASE32_CHARS[(value << (5 - bits)) & 0x1f];
+  return result;
 }
 
-export interface LoginInternalResult extends LoginResponseDto {
-  refreshToken?: string;
+function base32Decode(base32: string): Buffer {
+  const normalized = base32.toUpperCase().replace(/=+$/, '');
+  const bytes: number[] = [];
+  let bits = 0;
+  let value = 0;
+  for (const char of normalized) {
+    const idx = BASE32_CHARS.indexOf(char);
+    if (idx === -1) throw new Error(`Invalid base32 char: ${char}`);
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((value >> bits) & 0xff);
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function hotpCode(key: Buffer, counter: number): string {
+  const counterBuf = Buffer.allocUnsafe(8);
+  const hi = Math.floor(counter / 0x100000000);
+  const lo = counter >>> 0;
+  counterBuf.writeUInt32BE(hi, 0);
+  counterBuf.writeUInt32BE(lo, 4);
+  const hmac = createHmac('sha1', key).update(counterBuf).digest();
+  const offset = hmac[19] & 0xf;
+  const code =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+  return String(code % 1_000_000).padStart(6, '0');
+}
+
+function totpVerifyGetCounter(secretBase32: string, code: string): number | null {
+  const key = base32Decode(secretBase32);
+  const step = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
+  for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
+    if (hotpCode(key, step + i) === code) return step + i;
+  }
+  return null;
+}
+
+export function totpVerify(secretBase32: string, code: string): boolean {
+  return totpVerifyGetCounter(secretBase32, code) !== null;
+}
+
+export function totpGenerateSecret(): { secretBase32: string } {
+  const secretBase32 = base32Encode(randomBytes(20));
+  return { secretBase32 };
+}
+
+export function buildOtpAuthUri(
+  secretBase32: string,
+  email: string,
+  issuer: string,
+): string {
+  const account = encodeURIComponent(`${issuer}:${email}`);
+  return `otpauth://totp/${account}?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+function encryptTotpSecret(secret: string, keyBuf: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', keyBuf, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(secret, 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptTotpSecret(stored: string, keyBuf: Buffer): string {
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted TOTP format');
+  const [ivHex, tagHex, dataHex] = parts;
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    keyBuf,
+    Buffer.from(ivHex, 'hex'),
+  );
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(dataHex, 'hex')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function createJwt(
+  payload: Record<string, unknown>,
+  secret: string,
+  ttlSeconds: number,
+): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const encode = (obj: object) =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const header = encode({ alg: 'HS256', typ: 'JWT' });
+  const body = encode({ ...payload, exp });
+  const sig = createHmac('sha256', secret)
+    .update(`${header}.${body}`)
+    .digest('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+function pinRateLimitKey(tenantId: string, ip: string): string {
+  return `pin:attempts:${tenantId}:${ip}`;
+}
+
+function loginRateLimitKey(tenantId: string, ip: string): string {
+  return `login:attempts:${tenantId}:${ip}`;
+}
+
+interface ChallengePayload {
+  type: 'login' | 'setup';
+  userId: string;
+  tenantId: string;
+}
+
+interface AuthUserPayload {
+  id: string;
+  email: string;
+  role: string;
+  tenantId: string;
+  fullName: string;
 }
 
 @Injectable()
 export class AuthService {
   private readonly jwtSecret: string;
+  private readonly totpEncryptionKey: Buffer;
+  private readonly appName: string;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
     config: ConfigService,
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     this.jwtSecret = config.getOrThrow<string>('JWT_SECRET');
+    const rawKey = config.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
+    this.totpEncryptionKey = Buffer.from(rawKey, 'hex');
+    if (this.totpEncryptionKey.length !== 32) {
+      throw new Error('TOTP_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+    }
+    this.appName = config.get<string>('APP_NAME', 'Bonapp');
   }
 
-  async login(dto: LoginDto): Promise<LoginInternalResult> {
-    const user = await this.findUser(dto.login);
+  async pinLogin(
+    tenantSlug: string,
+    pin: string,
+    ip = '0.0.0.0',
+  ): Promise<{ accessToken: string }> {
+    const tenant = await this.prisma.findTenantBySlug(tenantSlug);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
 
-    if (!user) {
-      throw new UnauthorizedException('Неверный логин или пароль');
-    }
+    const rateLimitKey = pinRateLimitKey(tenant.id, ip);
+    await this.ensureAttemptAllowed(rateLimitKey, PIN_ATTEMPTS_LIMIT, PIN_WINDOW_SECONDS,
+      'Too many failed attempts. Please wait 15 minutes.');
 
-    if (user.isBlocked) {
-      throw new ForbiddenException('Аккаунт заблокирован');
-    }
+    const staffUsers = await this.prisma
+      .forTenant(tenant.id)
+      .user.findMany({
+        where: { role: { in: ['CASHIER', 'WAITER', 'CHEF'] }, isActive: true, isBlocked: false },
+        select: { id: true, role: true, pinHash: true, isBlocked: true },
+      });
 
-    const passwordValid = await compare(dto.password, user.passwordHash);
-    if (!passwordValid) {
-      throw new UnauthorizedException('Неверный логин или пароль');
-    }
-
-    if (user.totpEnabled && user.totpSecret) {
-      if (!dto.totpCode) {
-        return { requiresTOTP: true };
+    const matchedUsers: Array<{ id: string; role: string; isLegacyPin: boolean }> = [];
+    for (const user of staffUsers) {
+      const isLegacyPin = user.pinHash !== null && /^\d{4}$/.test(user.pinHash);
+      const pinMatches = user.pinHash && (isLegacyPin
+        ? pin === user.pinHash
+        : await compare(pin, user.pinHash));
+      if (!user.isBlocked && pinMatches) {
+        matchedUsers.push({ id: user.id, role: user.role, isLegacyPin });
       }
-      const totpCounter = findTotpCounter(user.totpSecret, dto.totpCode);
-      if (totpCounter === null) {
-        throw new UnauthorizedException('Неверный код 2FA');
-      }
-      const replayKey = `totp:used:${user.id}:${totpCounter}`;
-      const accepted = await this.redis.set(replayKey, '1', 'EX', 90, 'NX');
-      if (!accepted) {
-        throw new UnauthorizedException('Код 2FA уже был использован');
-      }
     }
 
-    const accessToken = this.generateToken(user, ACCESS_TOKEN_TTL, 'access');
-    const refreshToken = this.generateToken(user, REFRESH_TOKEN_TTL, 'refresh');
+    if (matchedUsers.length !== 1) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
-    const authUser: AuthUserDto = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-      fullName: user.fullName,
-    };
+    const [matchedUser] = matchedUsers;
+    if (matchedUser.isLegacyPin) {
+      await this.prisma.forTenant(tenant.id).user.update({
+        where: { id: matchedUser.id },
+        data: { pinHash: await hash(pin, BCRYPT_COST) },
+      });
+    }
 
-    return { accessToken, refreshToken, user: authUser };
+    await this.cache.del(rateLimitKey);
+
+    const accessToken = createJwt(
+      { tenantId: tenant.id, userId: matchedUser.id, role: matchedUser.role },
+      this.jwtSecret,
+      PIN_JWT_TTL_SECONDS,
+    );
+    return { accessToken };
   }
 
-  private async findUser(login: string): Promise<UserRow | null> {
-    const normalised = login.trim().toLowerCase();
-    const users = await this.prisma.unscopedClient.user.findMany({
-      where: {
-        OR: [{ email: normalised }, { phone: login.trim() }],
-        isActive: true,
-      },
-      take: 2,
+  async login(
+    tenantSlug: string,
+    email: string,
+    password: string,
+    ip = '0.0.0.0',
+  ): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { challenge: string }> {
+    const tenant = await this.prisma.findTenantBySlug(tenantSlug);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
+
+    const rateLimitKey = loginRateLimitKey(tenant.id, ip);
+    await this.ensureAttemptAllowed(rateLimitKey, LOGIN_ATTEMPTS_LIMIT, LOGIN_WINDOW_SECONDS,
+      'Too many login attempts. Please wait 15 minutes.');
+
+    const user = await this.prisma.forTenant(tenant.id).user.findFirst({
+      where: { email },
       select: {
         id: true,
         tenantId: true,
         email: true,
-        passwordHash: true,
         fullName: true,
         role: true,
-        isBlocked: true,
+        passwordHash: true,
         totpEnabled: true,
-        totpSecret: true,
+        isActive: true,
+        isBlocked: true,
       },
     });
-    return users.length === 1 ? users[0] : null;
-  }
 
-  private generateToken(
-    user: Pick<UserRow, 'id' | 'tenantId' | 'role' | 'email'>,
-    expiresInSeconds: number,
-    type: 'access' | 'refresh',
-  ): string {
-    const header = Buffer.from(
-      JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
-    ).toString('base64url');
-
-    const now = Math.floor(Date.now() / 1000);
-    const claims: Record<string, unknown> = {
-      sub: user.id,
-      tenantId: user.tenantId,
-      iat: now,
-      exp: now + expiresInSeconds,
-    };
-    if (type === 'access') {
-      claims['role'] = user.role;
-      claims['email'] = user.email;
-    } else {
-      claims['type'] = 'refresh';
+    if (
+      !user ||
+      !user.isActive ||
+      user.isBlocked ||
+      !MANAGER_ROLES.has(user.role) ||
+      !(await compare(password, user.passwordHash))
+    ) {
+      if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
-    const signature = createHmac('sha256', this.jwtSecret)
-      .update(`${header}.${payload}`)
-      .digest('base64url');
+    await this.cache.del(rateLimitKey);
 
-    return `${header}.${payload}.${signature}`;
+    if (user.totpEnabled) {
+      const totpFailCount = await this.cache.getJson<number>(`totp:fails:${user.id}`);
+      if (totpFailCount !== null && totpFailCount > TOTP_FAIL_LIMIT) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            message: 'Too many TOTP verification attempts. Please wait.',
+            retryAfter: TOTP_FAIL_WINDOW_SECONDS,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      const challengeId = randomBytes(16).toString('hex');
+      const payload: ChallengePayload = {
+        type: 'login',
+        userId: user.id,
+        tenantId: tenant.id,
+      };
+      await this.cache.setJsonRequired(
+        `totp:challenge:${challengeId}`,
+        payload,
+        LOGIN_CHALLENGE_TTL_SECONDS,
+      );
+      return { challenge: challengeId };
+    }
+
+    const accessToken = createJwt(
+      { tenantId: tenant.id, userId: user.id, role: user.role },
+      this.jwtSecret,
+      MANAGER_JWT_TTL_SECONDS,
+    );
+    return { accessToken, refreshToken: this.createRefreshToken(user), user: this.authUser(user) };
   }
-}
 
-function base32Decode(encoded: string): Buffer {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = '';
-  for (const ch of encoded.toUpperCase().replace(/=+$/, '')) {
-    const idx = alphabet.indexOf(ch);
-    if (idx === -1) continue;
-    bits += idx.toString(2).padStart(5, '0');
+  async loginLegacy(login: string, password: string, ip: string): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { challenge: string }> {
+    const normalized = login.trim().toLowerCase();
+    const users = await this.prisma.unscopedClient.user.findMany({
+      where: { OR: [{ email: normalized }, { phone: login.trim() }], isActive: true },
+      take: 2,
+      select: { id: true, tenantId: true, email: true },
+    });
+    if (users.length !== 1) throw new UnauthorizedException('Invalid credentials');
+    const tenant = await this.prisma.findTenantById(users[0].tenantId);
+    if (!tenant) throw new UnauthorizedException('Invalid credentials');
+    return this.login(tenant.slug, users[0].email, password, ip);
   }
-  const bytes: number[] = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    bytes.push(parseInt(bits.slice(i, i + 8), 2));
+
+  private authUser(user: AuthUserPayload): AuthUserPayload {
+    return { id: user.id, email: user.email, role: user.role, tenantId: user.tenantId, fullName: user.fullName };
   }
-  return Buffer.from(bytes);
-}
 
-function computeHOTP(key: Buffer, counter: bigint): string {
-  const buf = Buffer.alloc(8);
-  buf.writeBigInt64BE(counter);
-  const hmac = createHmac('sha1', key).update(buf).digest();
-  const offset = hmac[hmac.length - 1] & 0x0f;
-  const code =
-    (((hmac[offset] & 0x7f) << 24) |
-      ((hmac[offset + 1] & 0xff) << 16) |
-      ((hmac[offset + 2] & 0xff) << 8) |
-      (hmac[offset + 3] & 0xff)) %
-    1_000_000;
-  return code.toString().padStart(6, '0');
-}
-
-export function verifyTOTP(
-  secret: string,
-  code: string,
-  window = 1,
-): boolean {
-  return findTotpCounter(secret, code, window) !== null;
-}
-
-function findTotpCounter(
-  secret: string,
-  code: string,
-  window = 1,
-): bigint | null {
-  const key = base32Decode(secret);
-  const counter = BigInt(Math.floor(Date.now() / 1000 / 30));
-  for (let delta = -window; delta <= window; delta++) {
-    const candidate = counter + BigInt(delta);
-    if (computeHOTP(key, candidate) === code) return candidate;
+  private createRefreshToken(user: AuthUserPayload): string {
+    return createJwt(
+      { tenantId: user.tenantId, userId: user.id, role: user.role, type: 'refresh' },
+      this.jwtSecret,
+      REFRESH_JWT_TTL_SECONDS,
+    );
   }
-  return null;
+
+  async setup2fa(
+    userId: string,
+    tenantId: string,
+  ): Promise<{
+    secret: string;
+    otpAuthUri: string;
+    setupChallenge: string;
+  }> {
+    const user = await this.prisma.forTenant(tenantId).user.findFirst({
+      where: { id: userId },
+      select: { id: true, role: true, email: true, totpEnabled: true },
+    });
+
+    if (!user || !MANAGER_ROLES.has(user.role)) {
+      throw new ForbiddenException('Only OWNER or MANAGER can set up 2FA');
+    }
+    if (user.totpEnabled) {
+      throw new ForbiddenException('TOTP is already active. Disable it before re-configuring.');
+    }
+
+    const { secretBase32 } = totpGenerateSecret();
+    const encrypted = encryptTotpSecret(secretBase32, this.totpEncryptionKey);
+
+    await this.prisma.forTenant(tenantId).user.update({
+      where: { id: userId },
+      data: { totpSecret: encrypted, totpEnabled: false },
+    });
+
+    const challengeId = randomBytes(16).toString('hex');
+    const payload: ChallengePayload = {
+      type: 'setup',
+      userId: user.id,
+      tenantId,
+    };
+    await this.cache.setJsonRequired(
+      `totp:challenge:${challengeId}`,
+      payload,
+      SETUP_CHALLENGE_TTL_SECONDS,
+    );
+
+    return {
+      secret: secretBase32,
+      otpAuthUri: buildOtpAuthUri(secretBase32, user.email, this.appName),
+      setupChallenge: challengeId,
+    };
+  }
+
+  async verify2fa(
+    challenge: string,
+    code: string,
+  ): Promise<{ accessToken: string; refreshToken: string; user: AuthUserPayload } | { totpEnabled: boolean }> {
+    const stored = await this.cache.consumeJson<ChallengePayload>(
+      `totp:challenge:${challenge}`,
+    );
+    if (!stored) throw new UnauthorizedException('Invalid or expired challenge');
+
+    const user = await this.prisma
+      .forTenant(stored.tenantId)
+      .user.findFirst({
+        where: { id: stored.userId },
+        select: { id: true, tenantId: true, email: true, fullName: true, role: true, totpSecret: true, totpEnabled: true, isBlocked: true, isActive: true },
+      });
+
+    if (user?.isBlocked) throw new ForbiddenException('Аккаунт заблокирован');
+    if (!user || user.isActive === false || !user.totpSecret) {
+      throw new UnauthorizedException('TOTP not configured for this user');
+    }
+
+    const secretBase32 = decryptTotpSecret(
+      user.totpSecret,
+      this.totpEncryptionKey,
+    );
+
+    const totpFailKey = `totp:fails:${user.id}`;
+    await this.ensureAttemptAllowed(
+      totpFailKey,
+      TOTP_FAIL_LIMIT,
+      TOTP_FAIL_WINDOW_SECONDS,
+      'Too many TOTP verification attempts. Please wait.',
+    );
+
+    const counter = totpVerifyGetCounter(secretBase32, code);
+    if (counter === null) {
+      throw new UnauthorizedException('Invalid TOTP code');
+    }
+
+    const usedKey = `totp:used:${user.id}:${counter}`;
+    // TTL covers the full window in which this counter can still be valid
+    const totpUsedTtl = TOTP_STEP_SECONDS * (TOTP_WINDOW * 2 + 2);
+    const marked = await this.cache.setJsonIfAbsent(usedKey, 1, totpUsedTtl);
+    if (!marked) {
+      throw new UnauthorizedException('TOTP code already used');
+    }
+
+    await this.cache.del(totpFailKey);
+
+    if (stored.type === 'setup') {
+      await this.prisma.forTenant(stored.tenantId).user.update({
+        where: { id: stored.userId },
+        data: { totpEnabled: true },
+      });
+      return { totpEnabled: true };
+    }
+
+    const accessToken = createJwt(
+      { tenantId: stored.tenantId, userId: user.id, role: user.role },
+      this.jwtSecret,
+      MANAGER_JWT_TTL_SECONDS,
+    );
+    return { accessToken, refreshToken: this.createRefreshToken(user), user: this.authUser(user) };
+  }
+
+  async hashPin(pin: string): Promise<string> {
+    return hash(pin, BCRYPT_COST);
+  }
+
+  isStaffRole(role: string): boolean {
+    return STAFF_ROLES.has(role);
+  }
+
+  private async ensureAttemptAllowed(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+    message: string,
+  ): Promise<void> {
+    const attempts = await this.cache.increment(key, windowSeconds);
+    if (attempts > limit) {
+      throw new HttpException(
+        { statusCode: HttpStatus.TOO_MANY_REQUESTS, message, retryAfter: windowSeconds },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
 }

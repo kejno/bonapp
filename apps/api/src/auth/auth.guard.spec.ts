@@ -46,7 +46,7 @@ describe('AuthGuard', () => {
 
   it('validates a JWT and assigns its tenant context to the request', () => {
     const token = createToken(
-      { tenantId: 'tenant-1', sub: 'user-1', role: 'OWNER' },
+      { tenantId: 'tenant-1', userId: 'user-1', role: 'OWNER' },
       'test-jwt-secret',
     );
     const { context, request } = mockContext(`Bearer ${token}`);
@@ -55,6 +55,21 @@ describe('AuthGuard', () => {
     expect(request.user).toEqual({
       tenantId: 'tenant-1',
       userId: 'user-1',
+      role: 'OWNER',
+    });
+  });
+
+  it('supports legacy JWTs that identify the user with the sub claim', () => {
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'legacy-user-1', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+    const { context, request } = mockContext(`Bearer ${token}`);
+
+    expect(guard.canActivate(context)).toBe(true);
+    expect(request.user).toEqual({
+      tenantId: 'tenant-1',
+      userId: 'legacy-user-1',
       role: 'OWNER',
     });
   });
@@ -92,7 +107,7 @@ describe('AuthGuard', () => {
 
   it('rejects a token with an unknown role', () => {
     const token = createToken(
-      { tenantId: 'tenant-1', sub: 'user-1', role: 'UNKNOWN' },
+      { tenantId: 'tenant-1', userId: 'user-1', role: 'UNKNOWN' },
       'test-jwt-secret',
     );
 

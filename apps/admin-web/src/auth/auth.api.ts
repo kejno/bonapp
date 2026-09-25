@@ -26,3 +26,15 @@ export async function loginRequest(
 
   throw new Error(message);
 }
+
+export async function verifyTotpRequest(challenge: string, code: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/auth/2fa/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ challenge, code }),
+  });
+  if (res.ok) return res.json() as Promise<LoginResponse>;
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  throw new Error(typeof body['message'] === 'string' ? body['message'] : 'Неверный код подтверждения');
+}
