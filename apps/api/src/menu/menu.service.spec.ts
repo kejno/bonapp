@@ -42,7 +42,7 @@ describe('MenuService', () => {
               id: 'group-direct',
               name: 'Sauce options',
               isActive: true,
-              modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', isActive: true }],
+              modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', extraPriceByn: '1.25', isActive: true }],
             },
           ],
         },
@@ -73,7 +73,7 @@ describe('MenuService', () => {
                 id: 'group-direct',
                 name: 'Sauce options',
                 isActive: true,
-                modifierOptions: [{ id: 'mod-direct', name: 'Garlic sauce', isActive: true }],
+                modifiers: [{ id: 'mod-direct', name: 'Garlic sauce', price: '1.25' }],
               },
             },
           ],
@@ -132,8 +132,11 @@ describe('MenuService', () => {
     cache.getJson.mockResolvedValue(null);
     prisma.menuCategory.findMany.mockResolvedValue(rawCatalog);
 
-    const guestCatalog = await service.getGuestMenu(tenantId) as Array<{ items: Array<{ modifierGroups: Array<{ modifierGroup: { id: string } }> }> }>;
+    const guestCatalog = await service.getGuestMenu(tenantId) as Array<{ items: Array<{ modifierGroups: Array<{ modifierGroup: { id: string; modifiers?: Array<{ id: string; name: string; price: string }> } }> }> }>;
     expect(guestCatalog).toMatchObject(transformedCatalog);
+    expect(guestCatalog[0].items[0].modifierGroups[1].modifierGroup.modifiers).toEqual([
+      { id: 'mod-direct', name: 'Garlic sauce', price: '1.25' },
+    ]);
     expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },

@@ -74,7 +74,13 @@ export class MenuService {
             .map(({ sortOrder, modifierGroup }) => ({ sortOrder, modifierGroup })),
           ...modifierGroups
             .filter(({ isActive }) => isActive)
-            .map((modifierGroup, index) => ({ sortOrder: menuItemModifierGroups.length + index, modifierGroup })),
+            .map(({ modifierOptions, ...modifierGroup }, index) => ({
+              sortOrder: menuItemModifierGroups.length + index,
+              modifierGroup: {
+                ...modifierGroup,
+                modifiers: modifierOptions.map(({ id, name, extraPriceByn }) => ({ id, name, price: extraPriceByn })),
+              },
+            })),
         ]
           .filter((entry, index, entries) => entries.findIndex(({ modifierGroup }) => modifierGroup.id === entry.modifierGroup.id) === index)
           .sort((left, right) => left.sortOrder - right.sortOrder)
