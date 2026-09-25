@@ -3,12 +3,11 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { hash } from 'bcryptjs';
-import { createCipheriv, createDecipheriv, createHmac } from 'node:crypto';
+import { createDecipheriv, createHmac } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CacheService } from '../src/cache/cache.service';
 import {
-  totpGenerateSecret,
   totpVerify,
 } from '../src/auth/auth.service';
 
@@ -27,7 +26,7 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.${sig}`;
 }
 
-function genTotpCode(secretBase32: string): string {
+function genTotpCode(secretBase32: string, stepOffset = 0): string {
   const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const bytes: number[] = [];
   let bits = 0, v = 0;
@@ -38,7 +37,7 @@ function genTotpCode(secretBase32: string): string {
     if (bits >= 8) { bits -= 8; bytes.push((v >> bits) & 0xff); }
   }
   const key = Buffer.from(bytes);
-  const step = Math.floor(Date.now() / 1000 / 30);
+  const step = Math.floor(Date.now() / 1000 / 30) + stepOffset;
   const buf = Buffer.allocUnsafe(8);
   buf.writeUInt32BE(Math.floor(step / 0x100000000), 0);
   buf.writeUInt32BE(step >>> 0, 4);
@@ -230,7 +229,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       expect(responseBody.otpAuthUri).toContain('otpauth://totp/');
     });
 
-    it('runs setup → verify through HTTP and stores an AES-256-GCM ciphertext', async () => {
+    it('runs setup → verify → password login challenge → TOTP login end to end', async () => {
       const setup = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/setup')
         .set(
@@ -260,23 +259,13 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
 
       const setupChallenge = setup.body.setupChallenge;
       const setupSecret = setup.body.secret;
-      const response = await request(app.getHttpServer())
+      const setupVerification = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
         .send({ challenge: setupChallenge, code: genTotpCode(setupSecret) })
         .expect(200);
 
-      expect(response.body).toEqual({ totpEnabled: true });
+      expect(setupVerification.body).toEqual({ totpEnabled: true });
       expect(owner.totpEnabled).toBe(true);
-    });
-
-    it('requires TOTP after password login, rejects a wrong code, then issues a scoped short-lived JWT', async () => {
-      const secret = totpGenerateSecret().secretBase32;
-      const key = Buffer.from(process.env.TOTP_ENCRYPTION_KEY!, 'hex');
-      const iv = Buffer.alloc(12, 7);
-      const cipher = createCipheriv('aes-256-gcm', key, iv);
-      const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
-      owner.totpSecret = `${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${ciphertext.toString('hex')}`;
-      owner.totpEnabled = true;
 
       const firstFactor = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
@@ -290,7 +279,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
         .post('/api/v1/auth/2fa/verify')
         .send({
           challenge: firstFactorBody.challenge,
-          code: String((Number(genTotpCode(secret)) + 1) % 1_000_000).padStart(6, '0'),
+          code: String((Number(genTotpCode(setupSecret, 1)) + 1) % 1_000_000).padStart(6, '0'),
         })
         .expect(401);
 
@@ -303,7 +292,7 @@ describe('BNP-132: PIN-login and 2FA TOTP flows', () => {
       if (!isChallengeResponse(secondLoginBody)) return;
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/2fa/verify')
-        .send({ challenge: secondLoginBody.challenge, code: genTotpCode(secret) })
+        .send({ challenge: secondLoginBody.challenge, code: genTotpCode(setupSecret, 1) })
         .expect(200);
 
       const responseBody: unknown = response.body;
