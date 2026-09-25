@@ -21,6 +21,7 @@ enum TableStatus {
   OCCUPIED
   RESERVED
   CLOSED
+  BILL_REQUESTED
 }
 
 model Tenant {

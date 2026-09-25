@@ -10,6 +10,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CacheModule } from './cache/cache.module';
 import { GuestSessionModule } from './guest-session/guest-session.module';
+import { HallsModule } from './halls/halls.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -22,6 +23,7 @@ import { TenantModule } from './tenant/tenant.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     CacheModule,
+    HallsModule,
     MenuModule,
     OrdersModule,
     TenantModule,

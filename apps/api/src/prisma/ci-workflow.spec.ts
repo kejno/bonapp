@@ -25,11 +25,15 @@ describe('CI workflow', () => {
     );
   });
 
-  it('runs the logo-upload regression scenario with an S3-compatible service', () => {
-    expect(workflow).toContain('docker run --detach --name localstack');
-    expect(workflow).toContain('localstack/localstack:3.8.1');
+  it('runs the logo-upload regression scenario with a pinned S3-compatible service', () => {
+    expect(workflow).toContain('docker run --detach --name minio');
+    expect(workflow).toContain(
+      'localstack/localstack:4.11.1',
+    );
+    expect(workflow).toContain('--publish 9000:4566');
+    expect(workflow).not.toContain('SERVICES=s3');
     expect(workflow).toContain('--health-cmd "curl -f http://localhost:4566/_localstack/health"');
-    expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} localstack');
+    expect(workflow).toContain('docker inspect --format={{.State.Health.Status}} minio');
     expect(workflow).toContain('BNP-319.e2e-spec.ts');
   });
 });
