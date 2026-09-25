@@ -19,7 +19,8 @@ function makeRedis(store: Record<string, string> = {}) {
   }
   return {
     get: jest.fn((key: string) => Promise.resolve(s[key]?.value ?? null)),
-    set: jest.fn((key: string, value: string, _ex: string, ttl: number) => {
+    set: jest.fn((key: string, value: string, _ex: string, ttl: number, mode?: string) => {
+      if (mode === 'NX' && s[key]) return Promise.resolve(null);
       s[key] = { value, ttl };
       return Promise.resolve('OK');
     }),
@@ -33,7 +34,12 @@ function makeRedis(store: Record<string, string> = {}) {
       return Promise.resolve(current + 1);
     }),
     expire: jest.fn(() => Promise.resolve(1)),
-    exists: jest.fn((key: string) => Promise.resolve(s[key] ? 1 : 0)),
+  };
+}
+
+function makeActivePrisma(user: unknown = { id: USER_ID, isActive: true }) {
+  return {
+    forTenant: jest.fn(() => ({ user: { findFirst: jest.fn().mockResolvedValue(user) } })),
   };
 }
 
@@ -188,8 +194,9 @@ describe('StaffAuthService', () => {
         TEST_SECRET,
       );
       const redis = makeRedis();
+      const prisma = makeActivePrisma();
       const service = new StaffAuthService(
-        {} as never,
+        prisma as never,
         redis as never,
         makeConfig(),
       );
@@ -209,8 +216,9 @@ describe('StaffAuthService', () => {
         TEST_SECRET,
       );
       const redis = makeRedis();
+      const prisma = makeActivePrisma();
       const service = new StaffAuthService(
-        {} as never,
+        prisma as never,
         redis as never,
         makeConfig(),
       );
@@ -222,6 +230,7 @@ describe('StaffAuthService', () => {
         '1',
         'EX',
         expect.any(Number),
+        'NX',
       );
     });
 
@@ -234,7 +243,7 @@ describe('StaffAuthService', () => {
       );
       const redis = makeRedis({ [`rt_blacklist:${refreshJti}`]: '1' });
       const service = new StaffAuthService(
-        {} as never,
+        makeActivePrisma() as never,
         redis as never,
         makeConfig(),
       );
@@ -253,7 +262,7 @@ describe('StaffAuthService', () => {
       );
       const redis = makeRedis();
       const service = new StaffAuthService(
-        {} as never,
+        makeActivePrisma() as never,
         redis as never,
         makeConfig(),
       );
@@ -261,6 +270,29 @@ describe('StaffAuthService', () => {
       await expect(service.refresh(accessToken)).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+
+    it('rejects refresh when the staff account is missing or inactive', async () => {
+      const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
+      const redis = makeRedis();
+      const service = new StaffAuthService(makeActivePrisma(null) as never, redis as never, makeConfig());
+
+      await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it('allows only one of two concurrent refreshes to rotate the same token', async () => {
+      const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
+      const redis = makeRedis();
+      const service = new StaffAuthService(makeActivePrisma() as never, redis as never, makeConfig());
+
+      const results = await Promise.allSettled([
+        service.refresh(refreshToken),
+        service.refresh(refreshToken),
+      ]);
+
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
     });
   });
 

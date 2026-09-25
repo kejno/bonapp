@@ -92,20 +92,24 @@ export class StaffAuthService {
       throw new UnauthorizedException();
     }
 
-    const blacklisted = await this.redis.exists(rtBlacklistKey(payload.jti));
-    if (blacklisted) {
-      throw new UnauthorizedException('Token has been revoked');
-    }
-
     const ttlRemaining = payload.exp - Math.floor(Date.now() / 1000);
-    if (ttlRemaining > 0) {
-      await this.redis.set(
-        rtBlacklistKey(payload.jti),
-        '1',
-        'EX',
-        Math.min(ttlRemaining, REFRESH_TOKEN_TTL_SECONDS),
-      );
-    }
+    if (ttlRemaining <= 0) throw new UnauthorizedException();
+
+    const db = this.prisma.forTenant(payload.tenantId);
+    const user = await db.user.findFirst({
+      where: { id: payload.userId, isActive: true },
+      select: { id: true },
+    });
+    if (!user) throw new UnauthorizedException();
+
+    const claimed = await this.redis.set(
+      rtBlacklistKey(payload.jti),
+      '1',
+      'EX',
+      Math.min(ttlRemaining, REFRESH_TOKEN_TTL_SECONDS),
+      'NX',
+    );
+    if (!claimed) throw new UnauthorizedException('Token has been revoked');
 
     const { accessToken, refreshToken: newRefreshToken } = buildTokenPair(
       payload.userId,

@@ -13,6 +13,13 @@ import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
 
 const repositoryRoot = resolve(__dirname, '../../..');
+let loginIpSequence = 0;
+
+function loginRequest(server: App, ip = `198.51.100.${++loginIpSequence}`) {
+  return request(server)
+    .post('/api/v1/auth/login')
+    .set('X-Forwarded-For', ip);
+}
 
 class AuthTestFixture {
   readonly tenantId = `auth-e2e-${randomUUID()}`;
@@ -77,6 +84,10 @@ class AuthTestFixture {
       imports: [AppModule],
     }).compile();
     this.app = module.createNestApplication();
+    const expressApp = this.app.getHttpAdapter().getInstance() as {
+      set: (setting: string, value: number) => void;
+    };
+    expressApp.set('trust proxy', 1);
     this.app.setGlobalPrefix('api/v1');
     await this.app.init();
 
@@ -181,10 +192,24 @@ describe('BNP-130: JWT staff authentication', () => {
     await fixture.stop();
   });
 
+  it('requires a password change by default for a newly created staff account', async () => {
+    const user = await fixture.prisma.user.create({
+      data: {
+        tenantId: fixture.tenantId,
+        email: `temporary-${randomUUID()}@auth-test.local`,
+        passwordHash: await bcrypt.hash('TemporaryPass123', 4),
+        fullName: 'Temporary Staff',
+        role: 'WAITER',
+      },
+      select: { mustChangePassword: true },
+    });
+
+    expect(user.mustChangePassword).toBe(true);
+  });
+
   describe('POST /api/v1/auth/login', () => {
     it('returns 200 with accessToken and refreshToken on valid credentials', async () => {
-      const res = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const res = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -203,8 +228,7 @@ describe('BNP-130: JWT staff authentication', () => {
     });
 
     it('returns 401 on wrong password', async () => {
-      await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -221,8 +245,7 @@ describe('BNP-130: JWT staff authentication', () => {
       const rateEmail = `rate-limit-${randomUUID()}@auth-test.local`;
 
       for (let i = 0; i < 5; i++) {
-        await request(fixture.app.getHttpServer())
-          .post('/api/v1/auth/login')
+        await loginRequest(fixture.app.getHttpServer(), '198.51.100.130')
           .send({
             tenantId: fixture.tenantId,
             email: rateEmail,
@@ -231,8 +254,7 @@ describe('BNP-130: JWT staff authentication', () => {
           .expect(401);
       }
 
-      await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      await loginRequest(fixture.app.getHttpServer(), '198.51.100.130')
         .send({
           tenantId: fixture.tenantId,
           email: rateEmail,
@@ -244,8 +266,7 @@ describe('BNP-130: JWT staff authentication', () => {
 
   describe('POST /api/v1/auth/refresh', () => {
     it('returns a new token pair when given a valid refresh token', async () => {
-      const loginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const loginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -270,8 +291,7 @@ describe('BNP-130: JWT staff authentication', () => {
     });
 
     it('returns 401 when the same refresh token is reused after rotation', async () => {
-      const loginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const loginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -295,8 +315,7 @@ describe('BNP-130: JWT staff authentication', () => {
 
   describe('POST /api/v1/auth/logout', () => {
     it('returns 204 and invalidates the refresh token', async () => {
-      const loginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const loginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -320,8 +339,7 @@ describe('BNP-130: JWT staff authentication', () => {
 
   describe('POST /api/v1/auth/change-password', () => {
     it('returns 204 and allows login with the new password', async () => {
-      const loginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const loginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -340,8 +358,7 @@ describe('BNP-130: JWT staff authentication', () => {
         })
         .expect(204);
 
-      await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -350,8 +367,7 @@ describe('BNP-130: JWT staff authentication', () => {
         .expect(200);
 
       // Restore password for subsequent tests
-      const restoreLoginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const restoreLoginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,
@@ -371,8 +387,7 @@ describe('BNP-130: JWT staff authentication', () => {
     });
 
     it('returns 401 when wrong current password is provided', async () => {
-      const loginRes = await request(fixture.app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const loginRes = await loginRequest(fixture.app.getHttpServer())
         .send({
           tenantId: fixture.tenantId,
           email: fixture.userEmail,

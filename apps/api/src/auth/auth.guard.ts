@@ -22,6 +22,7 @@ interface AuthenticatedRequest extends Request {
 interface JwtPayload {
   tenantId?: unknown;
   sub?: unknown;
+  userId?: unknown;
   role?: unknown;
   exp?: unknown;
   type?: unknown;
@@ -42,11 +43,18 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
     const payload = this.verifyToken(token);
-    request.user = payload;
+    request.user = {
+      tenantId: payload.tenantId,
+      ...(payload.userId ? { userId: payload.userId } : {}),
+      ...(payload.role ? { role: payload.role } : {}),
+    };
 
-    if (payload.userId) {
+    const userId =
+      payload.staffUserId ??
+      (payload.tokenType === 'access' ? payload.userId : undefined);
+    if (userId) {
       const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
-        where: { id: payload.userId, isActive: true },
+        where: { id: userId, isActive: true },
         select: { mustChangePassword: true },
       });
       if (!user) throw new UnauthorizedException();
@@ -67,7 +75,9 @@ export class AuthGuard implements CanActivate {
   private verifyToken(token: string): {
     tenantId: string;
     userId?: string;
+    staffUserId?: string;
     role?: UserRole;
+    tokenType?: string;
   } {
     const [encodedHeader, encodedPayload, signature, ...extraParts] =
       token.split('.');
@@ -107,6 +117,12 @@ export class AuthGuard implements CanActivate {
       if (payload.sub !== undefined && (typeof payload.sub !== 'string' || !payload.sub.trim())) {
         throw new UnauthorizedException();
       }
+      if (payload.userId !== undefined && (typeof payload.userId !== 'string' || !payload.userId.trim())) {
+        throw new UnauthorizedException();
+      }
+      if (payload.type !== undefined && typeof payload.type !== 'string') {
+        throw new UnauthorizedException();
+      }
       if (
         payload.role !== undefined &&
         (typeof payload.role !== 'string' ||
@@ -118,6 +134,8 @@ export class AuthGuard implements CanActivate {
       return {
         tenantId: payload.tenantId,
         ...(typeof payload.sub === 'string' ? { userId: payload.sub } : {}),
+        ...(typeof payload.userId === 'string' ? { staffUserId: payload.userId } : {}),
+        ...(typeof payload.type === 'string' ? { tokenType: payload.type } : {}),
         ...(typeof payload.role === 'string'
           ? { role: payload.role as UserRole }
           : {}),

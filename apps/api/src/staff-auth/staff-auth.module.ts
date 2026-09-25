@@ -7,6 +7,6 @@ import { RolesGuard } from './roles.guard';
 @Module({
   controllers: [StaffAuthController],
   providers: [StaffAuthService, JwtAuthGuard, RolesGuard],
-  exports: [JwtAuthGuard, RolesGuard],
+  exports: [JwtAuthGuard, RolesGuard, StaffAuthService],
 })
 export class StaffAuthModule {}

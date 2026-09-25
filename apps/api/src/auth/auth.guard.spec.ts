@@ -56,7 +56,7 @@ describe('AuthGuard', () => {
 
   it('validates a JWT and assigns its tenant context to the request', async () => {
     const token = createToken(
-      { tenantId: 'tenant-1', sub: 'user-1', role: 'OWNER' },
+      { tenantId: 'tenant-1', sub: 'user-1', type: 'access', role: 'OWNER' },
       'test-jwt-secret',
     );
     const { context, request } = mockContext(`Bearer ${token}`);
@@ -135,13 +135,29 @@ describe('AuthGuard', () => {
     };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
-      { tenantId: 'tenant-1', sub: 'user-1', role: 'OWNER' },
+      { tenantId: 'tenant-1', sub: 'user-1', type: 'access', role: 'OWNER' },
       'test-jwt-secret',
     );
 
     await expect(
       guarded.canActivate(mockContext(`Bearer ${token}`).context),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('preserves valid legacy tenant tokens without a matching staff account', async () => {
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = {
+      forTenant: () => ({ user: { findFirst: jest.fn().mockResolvedValue(null) } }),
+    };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', sub: 'legacy-user', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+
+    await expect(
+      guarded.canActivate(mockContext(`Bearer ${token}`).context),
+    ).resolves.toBe(true);
   });
 
   it('throws at construction when JWT_SECRET is not configured', () => {

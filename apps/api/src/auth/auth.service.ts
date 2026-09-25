@@ -45,6 +45,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<LoginInternalResult> {
+    if (!dto.login) {
+      throw new UnauthorizedException('Неверный логин или пароль');
+    }
     const user = await this.findUser(dto.login);
 
     if (!user) {
