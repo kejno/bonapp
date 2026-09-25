@@ -11,6 +11,7 @@ export default function DashboardPage() {
         Добро пожаловать{user ? `, ${user.fullName}` : ''}
       </h1>
       <p className="text-sm text-on-background/60">Панель управления</p>
+      <Link to="/menu" className="text-sm text-primary hover:underline">Каталог меню</Link>
       <Link to="/tables" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">
         Схема зала
       </Link>

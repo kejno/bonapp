@@ -4,3 +4,14 @@
 body {
   margin: 0;
 }
+
+.dish-dialog input:not([type="checkbox"]):not([type="file"]),
+.dish-dialog select,
+.dish-dialog textarea {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 0.625rem;
+  background: white;
+  padding: 0.625rem 0.75rem;
+}
+.dish-dialog input[type="checkbox"] { margin-right: 0.375rem; accent-color: var(--color-primary); }
