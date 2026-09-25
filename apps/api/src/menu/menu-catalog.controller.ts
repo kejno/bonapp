@@ -199,10 +199,16 @@ export class MenuCatalogController {
       dto.price = b.price;
     }
     if ('description' in b) {
-      dto.description = b.description === null ? null : typeof b.description === 'string' ? b.description : undefined;
+      if (b.description !== null && typeof b.description !== 'string') {
+        throw new BadRequestException('description must be a string or null');
+      }
+      dto.description = b.description;
     }
     if ('imageUrl' in b) {
-      dto.imageUrl = b.imageUrl === null ? null : typeof b.imageUrl === 'string' ? b.imageUrl : undefined;
+      if (b.imageUrl !== null && typeof b.imageUrl !== 'string') {
+        throw new BadRequestException('imageUrl must be a string or null');
+      }
+      dto.imageUrl = b.imageUrl;
     }
     if ('isActive' in b) {
       if (typeof b.isActive !== 'boolean') throw new BadRequestException('isActive must be a boolean');

@@ -70,7 +70,7 @@ export class MenuCatalogService {
   }
 
   async createCategory(tenantId: string, dto: CreateCategoryDto) {
-    this.validateCategoryName(dto.name);
+    this.validateName(dto.name);
     try {
       const category = await this.prisma.forTenant(tenantId).menuCategory.create({
         data: {
@@ -94,7 +94,7 @@ export class MenuCatalogService {
   async updateCategory(tenantId: string, categoryId: string, dto: UpdateCategoryDto) {
     const data: Prisma.MenuCategoryUpdateInput = {};
     if (dto.name !== undefined) {
-      this.validateCategoryName(dto.name);
+      this.validateName(dto.name);
       data.name = dto.name.trim();
     }
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
@@ -150,7 +150,7 @@ export class MenuCatalogService {
   }
 
   async createItem(tenantId: string, dto: CreateItemDto) {
-    this.validateItemName(dto.name);
+    this.validateName(dto.name);
     this.validatePrice(dto.price);
     try {
       const item = await this.prisma.forTenant(tenantId).menuItem.create({
@@ -176,7 +176,7 @@ export class MenuCatalogService {
   async updateItem(tenantId: string, itemId: string, dto: UpdateItemDto) {
     const data: Prisma.MenuItemUncheckedUpdateInput = {};
     if (dto.name !== undefined) {
-      this.validateItemName(dto.name);
+      this.validateName(dto.name);
       data.name = dto.name.trim();
     }
     if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
@@ -247,14 +247,7 @@ export class MenuCatalogService {
     await this.cache.del(menuCacheKey(tenantId));
   }
 
-  private validateCategoryName(name: string): void {
-    const trimmed = name.trim();
-    if (trimmed.length === 0 || trimmed.length > 255) {
-      throw new BadRequestException('name must be between 1 and 255 characters');
-    }
-  }
-
-  private validateItemName(name: string): void {
+  private validateName(name: string): void {
     const trimmed = name.trim();
     if (trimmed.length === 0 || trimmed.length > 255) {
       throw new BadRequestException('name must be between 1 and 255 characters');

@@ -33,4 +33,15 @@ describe('MenuCatalogController', () => {
     ).toThrow(BadRequestException);
     expect(updateCategory).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['imageUrl', 42],
+    ['description', true],
+  ])('rejects a non-string %s in an item update', (field, value) => {
+    expect(() =>
+      (controller as unknown as { parseUpdateItem(body: unknown): unknown }).parseUpdateItem({
+        [field]: value,
+      }),
+    ).toThrow(BadRequestException);
+  });
 });
