@@ -34,6 +34,7 @@ export interface StaffJwtPayload {
   role: UserRole;
   type: 'access' | 'refresh';
   jti: string;
+  sessionVersion?: number;
   exp: number;
   iat: number;
 }

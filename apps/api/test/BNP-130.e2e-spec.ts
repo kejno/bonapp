@@ -227,6 +227,56 @@ describe('BNP-130: JWT staff authentication', () => {
       expect(typeof loginBody.mustChangePassword).toBe('boolean');
     });
 
+    it('blocks legacy login tokens until the staff password is changed', async () => {
+      await fixture.prisma.user.update({
+        where: { id: fixture.userId },
+        data: { mustChangePassword: true },
+      });
+
+      try {
+        const legacyLogin = await request(fixture.app.getHttpServer())
+          .post('/api/v1/auth/login')
+          .send({ login: fixture.userEmail, password: fixture.userPassword })
+          .expect(200);
+        const legacyBody = legacyLogin.body as { accessToken: string };
+
+        await request(fixture.app.getHttpServer())
+          .post('/api/v1/admin/tenant/logo')
+          .set('Authorization', `Bearer ${legacyBody.accessToken}`)
+          .field('tenantId', fixture.tenantId)
+          .expect(403);
+
+        const staffLogin = await loginRequest(fixture.app.getHttpServer())
+          .send({
+            tenantId: fixture.tenantId,
+            email: fixture.userEmail,
+            password: fixture.userPassword,
+          })
+          .expect(200);
+        const staffBody = staffLogin.body as { accessToken: string };
+
+        await request(fixture.app.getHttpServer())
+          .post('/api/v1/auth/change-password')
+          .set('Authorization', `Bearer ${staffBody.accessToken}`)
+          .send({ currentPassword: fixture.userPassword, newPassword: 'ChangedPass456' })
+          .expect(204);
+
+        await request(fixture.app.getHttpServer())
+          .post('/api/v1/admin/tenant/logo')
+          .set('Authorization', `Bearer ${legacyBody.accessToken}`)
+          .field('tenantId', fixture.tenantId)
+          .expect(400);
+      } finally {
+        await fixture.prisma.user.update({
+          where: { id: fixture.userId },
+          data: {
+            passwordHash: await bcrypt.hash(fixture.userPassword, 4),
+            mustChangePassword: false,
+          },
+        });
+      }
+    });
+
     it('returns 401 on wrong password', async () => {
       await loginRequest(fixture.app.getHttpServer())
         .send({

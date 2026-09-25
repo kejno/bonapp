@@ -42,7 +42,7 @@ function makeRedis(store: Record<string, string> = {}) {
   };
 }
 
-function makeActivePrisma(user: unknown = { id: USER_ID, isActive: true }) {
+function makeActivePrisma(user: unknown = { id: USER_ID, isActive: true, sessionVersion: 0 }) {
   return {
     forTenant: jest.fn(() => ({ user: { findFirst: jest.fn().mockResolvedValue(user) } })),
   };
@@ -271,7 +271,7 @@ describe('StaffAuthService', () => {
       const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
       const prisma = {
         forTenant: jest.fn(() => ({
-          user: { findFirst: jest.fn().mockResolvedValue({ id: USER_ID, role: 'MANAGER' }) },
+          user: { findFirst: jest.fn().mockResolvedValue({ id: USER_ID, role: 'MANAGER', sessionVersion: 0 }) },
         })),
       };
       const service = new StaffAuthService(prisma as never, makeRedis() as never, makeConfig());
@@ -396,6 +396,20 @@ describe('StaffAuthService', () => {
       expect(redis.set).not.toHaveBeenCalled();
     });
 
+    it('rejects refresh tokens issued before a password change', async () => {
+      const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
+      const redis = makeRedis();
+      const prisma = {
+        forTenant: () => ({
+          user: { findFirst: jest.fn().mockResolvedValue({ id: USER_ID, role: 'WAITER', sessionVersion: 1 }) },
+        }),
+      };
+      const service = new StaffAuthService(prisma as never, redis as never, makeConfig());
+
+      await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
     it('allows only one of two concurrent refreshes to rotate the same token', async () => {
       const { refreshToken } = buildTokenPair(USER_ID, TENANT_ID, 'WAITER', TEST_SECRET);
       const redis = makeRedis();
@@ -474,7 +488,7 @@ describe('StaffAuthService', () => {
 
       expect(updateMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ mustChangePassword: false }) as unknown,
+          data: expect.objectContaining({ mustChangePassword: false, sessionVersion: { increment: 1 } }) as unknown,
         }),
       );
     });

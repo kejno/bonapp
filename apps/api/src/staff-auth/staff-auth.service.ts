@@ -74,6 +74,7 @@ export class StaffAuthService {
       tenantId,
       user.role,
       this.secret,
+      user.sessionVersion ?? 0,
     );
 
     await db.user.update({
@@ -101,9 +102,13 @@ export class StaffAuthService {
     const db = this.prisma.forTenant(payload.tenantId);
     const user = await db.user.findFirst({
       where: { id: payload.userId, isActive: true, isBlocked: false },
-      select: { id: true, role: true, isBlocked: true },
+      select: { id: true, role: true, isBlocked: true, sessionVersion: true },
     });
-    if (!user || user.isBlocked) throw new UnauthorizedException();
+    if (
+      !user ||
+      user.isBlocked ||
+      payload.sessionVersion !== (user.sessionVersion ?? 0)
+    ) throw new UnauthorizedException();
 
     const claimed = await this.redis.set(
       rtBlacklistKey(payload.jti),
@@ -119,6 +124,7 @@ export class StaffAuthService {
       payload.tenantId,
       user.role,
       this.secret,
+      user.sessionVersion ?? 0,
     );
 
     return { accessToken, refreshToken: newRefreshToken };
@@ -170,7 +176,11 @@ export class StaffAuthService {
     const hash = await bcrypt.hash(newPassword, BCRYPT_COST);
     await db.user.update({
       where: { id: userId },
-      data: { passwordHash: hash, mustChangePassword: false },
+      data: {
+        passwordHash: hash,
+        mustChangePassword: false,
+        sessionVersion: { increment: 1 },
+      },
     });
   }
 

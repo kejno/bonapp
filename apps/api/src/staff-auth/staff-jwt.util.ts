@@ -86,6 +86,7 @@ export function buildTokenPair(
   tenantId: string,
   role: UserRole,
   secret: string,
+  sessionVersion = 0,
 ): { accessToken: string; refreshToken: string; refreshJti: string } {
   const now = Math.floor(Date.now() / 1000);
   const accessJti = randomUUID();
@@ -99,6 +100,7 @@ export function buildTokenPair(
       role,
       type: 'access',
       jti: accessJti,
+      sessionVersion,
       exp: now + 15 * 60,
     },
     secret,
@@ -112,6 +114,7 @@ export function buildTokenPair(
       role,
       type: 'refresh',
       jti: refreshJti,
+      sessionVersion,
       exp: now + 7 * 24 * 60 * 60,
     },
     secret,
