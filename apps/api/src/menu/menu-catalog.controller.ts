@@ -188,6 +188,9 @@ export class MenuCatalogController {
     if (typeof b.price !== 'number' || !Number.isInteger(b.price) || b.price < 0) {
       throw new BadRequestException('price is required and must be a non-negative integer in minor currency units');
     }
+    if ('id' in b && (typeof b.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(b.id))) {
+      throw new BadRequestException('id must be a UUID');
+    }
     if ('description' in b && b.description !== undefined && typeof b.description !== 'string') {
       throw new BadRequestException('description must be a string');
     }
@@ -198,6 +201,7 @@ export class MenuCatalogController {
       throw new BadRequestException('imageUrl must be a string');
     }
     return {
+      id: typeof b.id === 'string' ? b.id : undefined,
       name: b.name,
       categoryId: b.categoryId.trim(),
       price: b.price,
@@ -247,6 +251,16 @@ export class MenuCatalogController {
       if (typeof b.isActive !== 'boolean') throw new BadRequestException('isActive must be a boolean');
       dto.isActive = b.isActive;
     }
+    if ('isHit' in b) { if (typeof b.isHit !== 'boolean') throw new BadRequestException('isHit must be a boolean'); dto.isHit = b.isHit; }
+    for (const field of ['costPriceByn', 'proteins', 'fats', 'carbs'] as const) {
+      if (field in b) { if (b[field] !== null && (typeof b[field] !== 'number' || b[field] < 0)) throw new BadRequestException(`${field} must be a non-negative number or null`); dto[field] = b[field]; }
+    }
+    for (const field of ['weightGrams', 'cookingTimeMinutes', 'calories'] as const) {
+      if (field in b) { if (b[field] !== null && (typeof b[field] !== 'number' || !Number.isInteger(b[field]) || b[field] < 0)) throw new BadRequestException(`${field} must be a non-negative integer or null`); dto[field] = b[field]; }
+    }
+    if ('kitchenDepartment' in b) { if (b.kitchenDepartment !== null && (typeof b.kitchenDepartment !== 'string' || !['HOT', 'COLD', 'BAR'].includes(b.kitchenDepartment))) throw new BadRequestException('kitchenDepartment is invalid'); dto.kitchenDepartment = b.kitchenDepartment; }
+    if ('allergens' in b) { const allowed = ['GLUTEN','CRUSTACEANS','EGGS','FISH','PEANUTS','SOY','MILK','NUTS','CELERY','MUSTARD','SESAME','SULPHITES','LUPIN','MOLLUSCS']; if (!Array.isArray(b.allergens) || b.allergens.some((value) => typeof value !== 'string' || !allowed.includes(value))) throw new BadRequestException('allergens contains an invalid value'); dto.allergens = b.allergens as string[]; }
+    if ('posItemId' in b) { if (b.posItemId !== null && typeof b.posItemId !== 'string') throw new BadRequestException('posItemId must be a string or null'); dto.posItemId = b.posItemId; }
     return dto;
   }
 }

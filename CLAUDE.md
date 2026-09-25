@@ -108,6 +108,9 @@ Teammate-агент. Подробности, известные баги, ста
 
 Jira-проект: `BNP` (kejno.atlassian.net). Repo: `kejno/bonapp`.
 
+При любых изменениях в CI/CD или `.dmtools/` — на созданный PR вешать label
+`enhancement`.
+
 ## Прочее
 
 - Атрибуцию Claude (`Co-Authored-By`) в git-коммиты bonapp не добавлять.

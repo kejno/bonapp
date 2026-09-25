@@ -319,6 +319,18 @@ describe('MenuCatalogService', () => {
       } });
     });
 
+    it('returns the existing item when a retried create uses the same client id', async () => {
+      const existing = { id: 'item-1', name: 'Latte', priceByn: 5.5 };
+      prisma.menuItem.findUnique.mockResolvedValue(existing);
+
+      const result = await service.createItem('tenant-1', {
+        id: 'item-1', name: 'Latte', categoryId: 'cat-1', price: 550,
+      });
+
+      expect(prisma.menuItem.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ id: 'item-1', name: 'Latte', price: 550 });
+    });
+
     it('creates an item and invalidates the menu cache', async () => {
       const created = { id: 'item-1', name: 'Latte', priceByn: 5.5 };
       const create = jest.fn().mockResolvedValue(created);
