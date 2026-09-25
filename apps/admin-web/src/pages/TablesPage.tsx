@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createTable, generateQrPdf, getAreas, getTables, updateTable } from '../tables/tables.api';
 import type { DiningTable, TableInput } from '../tables/tables.api';
@@ -136,7 +137,7 @@ export default function TablesPage() {
         <section role="dialog" aria-modal="true" aria-labelledby="table-details-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-2xl bg-surface-card p-6 shadow-xl">
           <h2 id="table-details-title" className="text-xl font-semibold">Стол {selectedTable.tableNumber}</h2>
           <dl className="mt-4 space-y-3 text-sm"><div><dt className="text-on-background/60">Метка</dt><dd>{selectedTable.label || '—'}</dd></div><div><dt className="text-on-background/60">Мест</dt><dd>{selectedTable.seatsCount}</dd></div><div><dt className="text-on-background/60">Статус</dt><dd>{STATUS[selectedTable.status]?.label ?? selectedTable.status}</dd></div><div><dt className="text-on-background/60">Текущий заказ</dt><dd>{selectedTable.orders?.[0] ? `Заказ ${selectedTable.orders[0].id} · ${selectedTable.orders[0].status} · ${selectedTable.orders[0].totalAmountByn} BYN` : 'Нет активного заказа'}</dd></div></dl>
-          <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button><button onClick={() => startEdit(selectedTable)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Изменить стол</button></div>
+          <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button>{selectedTable.orders?.[0] && <Link to={`/orders/${encodeURIComponent(selectedTable.orders[0].id)}`} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Открыть заказ</Link>}<button onClick={() => startEdit(selectedTable)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Изменить стол</button></div>
         </section>
       </div>}
 

@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TablesPage from './TablesPage';
 import * as tablesApi from '../tables/tables.api';
@@ -24,7 +25,7 @@ const tables = [
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><TablesPage /></QueryClientProvider>);
+  return render(<MemoryRouter><QueryClientProvider client={client}><TablesPage /></QueryClientProvider></MemoryRouter>);
 }
 
 afterEach(() => {
@@ -83,7 +84,7 @@ describe('TablesPage', () => {
     expect(screen.queryByText(/Изменить статус/)).not.toBeInTheDocument();
   });
 
-  it('does not offer an order action when no order screen is available', async () => {
+  it('links the current order to its details screen', async () => {
     vi.mocked(tablesApi.getAreas).mockResolvedValue(areas);
     vi.mocked(tablesApi.getTables).mockResolvedValue([
       { ...tables[0], orders: [{ id: 'order-1', status: 'IN_PROGRESS', totalAmountByn: 12 } ] },
@@ -92,6 +93,6 @@ describe('TablesPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Стол 1/ }));
     expect(screen.getByText(/Заказ order-1/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Открыть заказ/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть заказ' })).toHaveAttribute('href', '/orders/order-1');
   });
 });
