@@ -75,6 +75,17 @@ describe('TableQrPdfService logo size validation', () => {
   const logoData = (service as unknown as { logoData(url: string | null): Promise<string> }).logoData.bind(service);
   const fallbackPrefix = 'data:image/svg+xml;base64,';
 
+  beforeEach(() => {
+    process.env.S3_PUBLIC_ENDPOINT = 'https://example.com';
+    process.env.S3_BUCKET = 'bonapp';
+  });
+
+  afterEach(() => {
+    delete process.env.S3_PUBLIC_ENDPOINT;
+    delete process.env.S3_BUCKET;
+    jest.restoreAllMocks();
+  });
+
   it('cancels the response stream as soon as the 2 MB limit is exceeded', async () => {
     const cancel = jest.fn().mockResolvedValue(undefined);
     const read = jest.fn()
@@ -86,7 +97,7 @@ describe('TableQrPdfService logo size validation', () => {
       body: { getReader: () => ({ read, cancel }) },
     } as unknown as Response);
 
-    await expect(logoData('https://example.com/logo.png')).resolves.toMatch(fallbackPrefix);
+    await expect(logoData('https://example.com/bonapp/logo.png')).resolves.toMatch(fallbackPrefix);
     expect(read).toHaveBeenCalledTimes(2);
     expect(cancel).toHaveBeenCalledTimes(1);
   });
@@ -97,6 +108,41 @@ describe('TableQrPdfService logo size validation', () => {
       headers: { 'content-type': 'image/png' },
     }));
 
-    await expect(logoData('https://example.com/logo.png')).resolves.toMatch(fallbackPrefix);
+    await expect(logoData('https://example.com/bonapp/logo.png')).resolves.toMatch(fallbackPrefix);
+  });
+});
+
+describe('TableQrPdfService logo URL security', () => {
+  const service = Object.create(TableQrPdfService.prototype) as TableQrPdfService;
+  const logoData = (service as unknown as { logoData(url: string | null): Promise<string> }).logoData.bind(service);
+
+  afterEach(() => {
+    delete process.env.S3_PUBLIC_ENDPOINT;
+    delete process.env.S3_BUCKET;
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    'https://169.254.169.254/latest/meta-data/',
+    'https://storage.example.com.attacker.test/bonapp/logo.png',
+    'https://storage.example.com/other-bucket/logo.png',
+  ])('does not fetch an untrusted URL: %s', async (url) => {
+    process.env.S3_PUBLIC_ENDPOINT = 'https://storage.example.com';
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(logoData(url)).resolves.toMatch('data:image/svg+xml;base64,');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not follow redirects from the configured storage host', async () => {
+    process.env.S3_PUBLIC_ENDPOINT = 'https://storage.example.com';
+    process.env.S3_BUCKET = 'bonapp';
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 302 }));
+
+    await expect(logoData('https://storage.example.com/bonapp/tenant/logo.png')).resolves.toMatch('data:image/svg+xml;base64,');
+    expect(global.fetch).toHaveBeenCalledWith(
+      new URL('https://storage.example.com/bonapp/tenant/logo.png'),
+      expect.objectContaining({ redirect: 'error' }),
+    );
   });
 });

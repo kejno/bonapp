@@ -114,6 +114,7 @@ export class TablesController {
   ) {}
 
   @Post('generate-qr-pdf')
+  @HttpCode(200)
   async generateQrPdf(@Req() req: TenantRequest, @Body() body: unknown, @Res() res: Response) {
     if (body !== undefined && (typeof body !== 'object' || body === null ||
       ('tableIds' in body && (!Array.isArray((body as { tableIds?: unknown }).tableIds) ||

@@ -143,9 +143,32 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async logoData(url: string | null): Promise<string> {
-    if (!url || !/^https:\/\//i.test(url)) return 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="100%" height="100%" fill="#e0533c"/><text x="50%" y="58%" text-anchor="middle" font-family="Arial" font-size="36" fill="white">bonapp</text></svg>').toString('base64');
+    const fallback = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="100%" height="100%" fill="#e0533c"/><text x="50%" y="58%" text-anchor="middle" font-family="Arial" font-size="36" fill="white">bonapp</text></svg>').toString('base64');
+    if (!url) return fallback;
+
+    const publicEndpoint = process.env.S3_PUBLIC_ENDPOINT ?? process.env.S3_ENDPOINT;
+    const bucket = process.env.S3_BUCKET;
+    if (!publicEndpoint || !bucket) return fallback;
+
+    let logoUrl: URL;
+    let storageUrl: URL;
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      logoUrl = new URL(url);
+      storageUrl = new URL(publicEndpoint);
+    } catch {
+      return fallback;
+    }
+    const storagePath = `${storageUrl.pathname.replace(/\/$/, '')}/${encodeURIComponent(bucket)}/`;
+    if (
+      !['https:', 'http:'].includes(logoUrl.protocol) ||
+      logoUrl.protocol !== storageUrl.protocol ||
+      logoUrl.origin !== storageUrl.origin ||
+      !logoUrl.pathname.startsWith(storagePath) ||
+      logoUrl.username ||
+      logoUrl.password
+    ) return fallback;
+    try {
+      const response = await fetch(logoUrl, { signal: AbortSignal.timeout(3000), redirect: 'error' });
       const type = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
       const signatureMatches = LOGO_SIGNATURES[type];
       const contentLength = Number(response.headers.get('content-length'));
