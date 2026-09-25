@@ -57,11 +57,12 @@ export class AuthGuard implements CanActivate {
     if (userId) {
       const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
         where: { id: userId, isActive: true, isBlocked: false },
-        select: { mustChangePassword: true, sessionVersion: true },
+        select: { mustChangePassword: true, sessionVersion: true, role: true },
       });
       const isLegacySubOnlyToken =
         !payload.staffUserId && payload.tokenType !== 'access';
       if (!user && !isLegacySubOnlyToken) throw new UnauthorizedException();
+      if (user) request.user.role = user.role;
       if (
         user &&
         (payload.sessionVersion ?? 0) !== (user.sessionVersion ?? 0)

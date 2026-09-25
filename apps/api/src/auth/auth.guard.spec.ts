@@ -6,15 +6,19 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminRoleGuard } from './admin-role.guard';
 import { AuthGuard } from './auth.guard';
 
 function mockContext(authHeader?: string): {
   context: ExecutionContext;
-  request: { headers: Record<string, string>; user?: { tenantId: string } };
+  request: {
+    headers: Record<string, string>;
+    user?: { tenantId: string; role?: string };
+  };
 } {
   const request: {
     headers: Record<string, string>;
-    user?: { tenantId: string };
+    user?: { tenantId: string; role?: string };
   } = {
     headers: authHeader ? { authorization: authHeader } : {},
   };
@@ -41,7 +45,12 @@ function makeGuard(secret = 'test-jwt-secret'): AuthGuard {
   const config = { getOrThrow: () => secret } as unknown as ConfigService;
   const prisma = {
     forTenant: () => ({
-      user: { findFirst: jest.fn().mockResolvedValue({ mustChangePassword: false }) },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          mustChangePassword: false,
+          role: 'OWNER',
+        }),
+      },
     }),
   };
   return new AuthGuard(config, prisma as unknown as PrismaService);
@@ -66,6 +75,30 @@ describe('AuthGuard', () => {
       tenantId: 'tenant-1',
       userId: 'user-1',
       role: 'OWNER',
+    });
+  });
+
+  it('uses the current staff role so a revoked admin role cannot pass AdminRoleGuard', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mustChangePassword: false,
+      sessionVersion: 0,
+      role: 'WAITER',
+    });
+    const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
+    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
+    const token = createToken(
+      { tenantId: 'tenant-1', userId: 'staff-1', type: 'access', role: 'OWNER' },
+      'test-jwt-secret',
+    );
+    const { context, request } = mockContext(`Bearer ${token}`);
+
+    await expect(guarded.canActivate(context)).resolves.toBe(true);
+    expect(request.user?.role).toBe('WAITER');
+    expect(() => new AdminRoleGuard().canActivate(context)).toThrow(ForbiddenException);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-1', isActive: true, isBlocked: false },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
     });
   });
 
@@ -159,7 +192,7 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(ForbiddenException);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: 'staff-1', isActive: true, isBlocked: false },
-      select: { mustChangePassword: true, sessionVersion: true },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
     });
   });
 
@@ -180,7 +213,7 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(UnauthorizedException);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: 'staff-1', isActive: true, isBlocked: false },
-      select: { mustChangePassword: true, sessionVersion: true },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
     });
   });
 
@@ -208,7 +241,7 @@ describe('AuthGuard', () => {
     ).rejects.toThrow(UnauthorizedException);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: 'staff-1', isActive: true, isBlocked: false },
-      select: { mustChangePassword: true, sessionVersion: true },
+      select: { mustChangePassword: true, sessionVersion: true, role: true },
     });
   });
 
