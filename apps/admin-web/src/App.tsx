@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import MenuPage from './pages/MenuPage';
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>

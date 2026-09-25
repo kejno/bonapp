@@ -10,6 +10,7 @@ const CACHE_KEY = 'menu:tenant:tenant-1';
 describe('MenuCatalogService', () => {
   let prisma: {
     forTenant: jest.Mock;
+    transactionForTenant: jest.Mock;
     menuCategory: {
       findMany: jest.Mock;
       create: jest.Mock;
@@ -32,6 +33,7 @@ describe('MenuCatalogService', () => {
   beforeEach(() => {
     prisma = {
       forTenant: jest.fn(),
+      transactionForTenant: jest.fn(),
       menuCategory: {
         findMany: jest.fn(),
         create: jest.fn(),
@@ -228,7 +230,7 @@ describe('MenuCatalogService', () => {
         where: { tenantId: 'tenant-1' },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
@@ -257,7 +259,7 @@ describe('MenuCatalogService', () => {
         },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
@@ -272,10 +274,29 @@ describe('MenuCatalogService', () => {
         where: { tenantId: 'tenant-1', isActive: false, isInStopList: true },
         orderBy: [
           { category: { sortOrder: 'asc' } },
-          { name: 'asc' },
+          { sortOrder: 'asc' },
           { id: 'asc' },
         ],
       });
+    });
+
+    it('reorders every item in a category and invalidates menu cache', async () => {
+      const update = jest.fn().mockResolvedValue({});
+      prisma.menuItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+      prisma.transactionForTenant.mockImplementation((_tenantId: string, callback: (tx: { menuItem: { update: jest.Mock } }) => Promise<unknown>) => callback({ menuItem: { update } }));
+
+      await service.reorderItems('tenant-1', { categoryId: 'cat-1', itemIds: ['b', 'a'] });
+
+      expect(update).toHaveBeenCalledWith({ where: { tenantId_id: { tenantId: 'tenant-1', id: 'b' } }, data: { sortOrder: 0 } });
+      expect(update).toHaveBeenCalledWith({ where: { tenantId_id: { tenantId: 'tenant-1', id: 'a' } }, data: { sortOrder: 1 } });
+      expect(cache.del).toHaveBeenCalledWith(CACHE_KEY);
+    });
+
+    it('rejects incomplete or duplicate order without updating items', async () => {
+      prisma.menuItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+
+      await expect(service.reorderItems('tenant-1', { categoryId: 'cat-1', itemIds: ['a', 'a'] })).rejects.toThrow(BadRequestException);
+      expect(prisma.transactionForTenant).not.toHaveBeenCalled();
     });
   });
 

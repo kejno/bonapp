@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Patch,
   Put,
   Query,
   Req,
@@ -22,6 +23,7 @@ import type {
   ItemFilters,
   UpdateCategoryDto,
   UpdateItemDto,
+  ReorderItemsDto,
 } from './menu-catalog.service';
 import {
   ALLOWED_UPLOAD_CONTENT_TYPES,
@@ -79,6 +81,19 @@ export class MenuCatalogController {
       isInStopList: parseBooleanQuery(isInStopListQ),
     };
     return this.catalogService.listItems(req.user!.tenantId!, filters);
+  }
+
+  @Patch('items/reorder')
+  reorderItems(@Req() req: TenantRequest, @Body() body: unknown) {
+    if (typeof body !== 'object' || body === null) throw new BadRequestException('Request body must be an object');
+    const { categoryId, itemIds: rawItemIds } = body as Record<string, unknown>;
+    if (typeof categoryId !== 'string' || !categoryId.trim() || !Array.isArray(rawItemIds)) {
+      throw new BadRequestException('categoryId and itemIds are required');
+    }
+    const itemIds = rawItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+    if (itemIds.length !== rawItemIds.length) throw new BadRequestException('itemIds must contain non-empty strings');
+    const dto: ReorderItemsDto = { categoryId: categoryId.trim(), itemIds };
+    return this.catalogService.reorderItems(req.user!.tenantId!, dto);
   }
 
   @Post('items')

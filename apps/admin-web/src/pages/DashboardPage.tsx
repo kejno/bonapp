@@ -1,4 +1,5 @@
 import { useAuthStore } from '../auth/auth.store';
+import { Link } from 'react-router-dom';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -10,6 +11,7 @@ export default function DashboardPage() {
         Добро пожаловать{user ? `, ${user.fullName}` : ''}
       </h1>
       <p className="text-sm text-on-background/60">Панель управления</p>
+      <Link to="/menu" className="text-sm text-primary hover:underline">Каталог меню</Link>
       <button
         onClick={clearAuth}
         className="text-sm text-primary hover:underline"

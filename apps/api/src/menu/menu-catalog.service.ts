@@ -39,6 +39,11 @@ export interface ItemFilters {
   isInStopList?: boolean;
 }
 
+export interface ReorderItemsDto {
+  categoryId: string;
+  itemIds: string[];
+}
+
 export interface CreateItemDto {
   name: string;
   categoryId: string;
@@ -150,11 +155,29 @@ export class MenuCatalogService {
       where,
       orderBy: [
         { category: { sortOrder: 'asc' } },
-        { name: 'asc' },
+        { sortOrder: 'asc' },
         { id: 'asc' },
       ],
     });
     return items.map((item) => this.mapItem(item));
+  }
+
+  async reorderItems(tenantId: string, dto: ReorderItemsDto): Promise<void> {
+    const db = this.prisma.forTenant(tenantId);
+    const existing = await db.menuItem.findMany({
+      where: { tenantId, categoryId: dto.categoryId },
+      select: { id: true },
+    });
+    const expected = new Set(existing.map((item) => item.id));
+    if (dto.itemIds.length !== expected.size || new Set(dto.itemIds).size !== dto.itemIds.length || dto.itemIds.some((id) => !expected.has(id))) {
+      throw new BadRequestException('itemIds must contain every item in the category exactly once');
+    }
+    await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await Promise.all(dto.itemIds.map((id, sortOrder) => tx.menuItem.update({
+        where: { tenantId_id: { tenantId, id } }, data: { sortOrder },
+      })));
+    });
+    await this.invalidateMenu(tenantId);
   }
 
   async createItem(tenantId: string, dto: CreateItemDto) {
