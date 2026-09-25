@@ -8,32 +8,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { StaffAuthService } from './staff-auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import type { StaffRequest } from './jwt-auth.guard';
-import type { LoginDto, LoginResponse, TokenPair } from './staff-auth.dto';
-
-interface LoginBody extends LoginDto {
-  tenantId: string;
-}
+import type { TokenPair } from './staff-auth.dto';
 
 @Controller('auth')
 export class StaffAuthController {
   constructor(private readonly staffAuthService: StaffAuthService) {}
-
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  @SkipTenantGuard()
-  async login(@Body() body: LoginBody, @Req() req: Request): Promise<LoginResponse> {
-    const { tenantId, email, password } = body;
-    if (!tenantId || !email || !password) {
-      throw new BadRequestException('tenantId, email and password are required');
-    }
-    const ip = req.ip ?? '0.0.0.0';
-    return this.staffAuthService.login(tenantId, email, password, ip);
-  }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
