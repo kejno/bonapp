@@ -9,7 +9,7 @@ import { TablesController } from '../src/halls/tables.controller';
 
 describe('BNP-387: PDF for selected tables', () => {
   let app: INestApplication;
-  const selectedTables = [1, 3];
+  const selectedTables = [1, 2];
   const tables = [1, 2, 3].map((tableNumber) => ({
     id: `75fe5e2c-3b7b-4d76-9c19-bd0c32850a0${tableNumber}`,
     tableNumber,
