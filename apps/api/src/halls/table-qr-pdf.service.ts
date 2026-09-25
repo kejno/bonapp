@@ -15,6 +15,13 @@ const PDF_TTL_SECONDS = 3600;
 const JOB_TTL_SECONDS = 86400;
 const JOB_PREFIX = 'tables:qr-pdf:job:';
 const FILE_PREFIX = 'tables:qr-pdf:file:';
+const MAX_LOGO_BYTES = 2_000_000;
+const LOGO_SIGNATURES: Record<string, (bytes: Uint8Array) => boolean> = {
+  'image/png': (bytes) => bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a,
+  'image/jpeg': (bytes) => bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+  'image/gif': (bytes) => bytes.length >= 6 && Buffer.from(bytes.subarray(0, 6)).toString('ascii').match(/^GIF8[79]a$/) !== null,
+  'image/webp': (bytes) => bytes.length >= 12 && Buffer.from(bytes.subarray(0, 4)).toString('ascii') === 'RIFF' && Buffer.from(bytes.subarray(8, 12)).toString('ascii') === 'WEBP',
+};
 
 export interface PdfJob {
   status: 'pending' | 'ready' | 'failed';
@@ -139,10 +146,33 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     if (!url || !/^https:\/\//i.test(url)) return 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="100%" height="100%" fill="#e0533c"/><text x="50%" y="58%" text-anchor="middle" font-family="Arial" font-size="36" fill="white">bonapp</text></svg>').toString('base64');
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      const type = response.headers.get('content-type') ?? '';
-      if (!response.ok || !type.startsWith('image/') || Number(response.headers.get('content-length')) > 2_000_000) throw new Error('Invalid logo');
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > 2_000_000) throw new Error('Logo too large');
+      const type = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+      const signatureMatches = LOGO_SIGNATURES[type];
+      const contentLength = Number(response.headers.get('content-length'));
+      if (!response.ok || !signatureMatches || (Number.isFinite(contentLength) && contentLength > MAX_LOGO_BYTES) || !response.body) {
+        await response.body?.cancel();
+        throw new Error('Invalid logo');
+      }
+
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > MAX_LOGO_BYTES) {
+            await reader.cancel();
+            throw new Error('Logo too large');
+          }
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), size);
+      if (!signatureMatches(bytes)) throw new Error('Logo content does not match its MIME type');
       return `data:${type};base64,${bytes.toString('base64')}`;
     } catch { return this.logoData(null); }
   }

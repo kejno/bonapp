@@ -69,3 +69,34 @@ describe('TableQrPdfService cache identity', () => {
     expect(cache.setJson).toHaveBeenCalledWith('tables:qr-pdf:file:job-1', 'JVBERi0=', 86400);
   });
 });
+
+describe('TableQrPdfService logo size validation', () => {
+  const service = Object.create(TableQrPdfService.prototype) as TableQrPdfService;
+  const logoData = (service as unknown as { logoData(url: string | null): Promise<string> }).logoData.bind(service);
+  const fallbackPrefix = 'data:image/svg+xml;base64,';
+
+  it('cancels the response stream as soon as the 2 MB limit is exceeded', async () => {
+    const cancel = jest.fn().mockResolvedValue(undefined);
+    const read = jest.fn()
+      .mockResolvedValueOnce({ done: false, value: new Uint8Array(1_500_000) })
+      .mockResolvedValueOnce({ done: false, value: new Uint8Array(600_000) });
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'image/png' }),
+      body: { getReader: () => ({ read, cancel }) },
+    } as unknown as Response);
+
+    await expect(logoData('https://example.com/logo.png')).resolves.toMatch(fallbackPrefix);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a declared image MIME type when the bytes do not match it', async () => {
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(bytes, {
+      headers: { 'content-type': 'image/png' },
+    }));
+
+    await expect(logoData('https://example.com/logo.png')).resolves.toMatch(fallbackPrefix);
+  });
+});
