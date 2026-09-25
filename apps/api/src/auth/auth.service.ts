@@ -30,6 +30,8 @@ const LOGIN_CHALLENGE_TTL_SECONDS = 180; // 3 minutes
 const SETUP_CHALLENGE_TTL_SECONDS = 300; // 5 minutes
 const TOTP_STEP_SECONDS = 30;
 const TOTP_WINDOW = 1;
+const TOTP_FAIL_LIMIT = 5;
+const TOTP_FAIL_WINDOW_SECONDS = 300; // 5 minutes
 
 const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -83,13 +85,17 @@ function hotpCode(key: Buffer, counter: number): string {
   return String(code % 1_000_000).padStart(6, '0');
 }
 
-export function totpVerify(secretBase32: string, code: string): boolean {
+function totpVerifyGetCounter(secretBase32: string, code: string): number | null {
   const key = base32Decode(secretBase32);
   const step = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
   for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
-    if (hotpCode(key, step + i) === code) return true;
+    if (hotpCode(key, step + i) === code) return step + i;
   }
-  return false;
+  return null;
+}
+
+export function totpVerify(secretBase32: string, code: string): boolean {
+  return totpVerifyGetCounter(secretBase32, code) !== null;
 }
 
 export function totpGenerateSecret(): { secretBase32: string } {
@@ -288,6 +294,17 @@ export class AuthService {
     await this.cache.del?.(loginRateLimitKey(tenant.id, ip));
 
     if (user.totpEnabled) {
+      const totpFailCount = await this.cache.getJson<number>(`totp:fails:${user.id}`);
+      if (totpFailCount !== null && totpFailCount > TOTP_FAIL_LIMIT) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            message: 'Too many TOTP verification attempts. Please wait.',
+            retryAfter: TOTP_FAIL_WINDOW_SECONDS,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
       const challengeId = randomBytes(16).toString('hex');
       const payload: ChallengePayload = {
         type: 'login',
@@ -405,9 +422,35 @@ export class AuthService {
       this.totpEncryptionKey,
     );
 
-    if (!totpVerify(secretBase32, code)) {
+    const totpFailKey = `totp:fails:${user.id}`;
+
+    const counter = totpVerifyGetCounter(secretBase32, code);
+    if (counter === null) {
+      await this.recordFailedAttempt(
+        totpFailKey,
+        TOTP_FAIL_LIMIT,
+        TOTP_FAIL_WINDOW_SECONDS,
+        'Too many TOTP verification attempts. Please wait.',
+      );
       throw new UnauthorizedException('Invalid TOTP code');
     }
+
+    const usedKey = `totp:used:${user.id}:${counter}`;
+    const alreadyUsed = await this.cache.getJson<number>(usedKey);
+    if (alreadyUsed !== null) {
+      await this.recordFailedAttempt(
+        totpFailKey,
+        TOTP_FAIL_LIMIT,
+        TOTP_FAIL_WINDOW_SECONDS,
+        'Too many TOTP verification attempts. Please wait.',
+      );
+      throw new UnauthorizedException('TOTP code already used');
+    }
+
+    // TTL covers the full window in which this counter can still be valid
+    const totpUsedTtl = TOTP_STEP_SECONDS * (TOTP_WINDOW * 2 + 2);
+    await this.cache.setJson(usedKey, 1, totpUsedTtl);
+    await this.cache.del(totpFailKey);
 
     if (stored.type === 'setup') {
       await this.prisma.forTenant(stored.tenantId).user.update({

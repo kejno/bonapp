@@ -50,6 +50,14 @@ describe('Prisma migration history', () => {
     ).toBe(true);
   });
 
+  it('uses a unique timestamp prefix for every migration', () => {
+    const timestamps = readdirSync(migrationsDirectory)
+      .filter((name) => /^\d{14}/.test(name))
+      .map((name) => name.slice(0, 14));
+
+    expect(new Set(timestamps).size).toBe(timestamps.length);
+  });
+
   it('adds the login migration after every migration already on main', () => {
     const migrations = readdirSync(migrationsDirectory);
 

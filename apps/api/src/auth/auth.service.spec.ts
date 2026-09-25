@@ -329,7 +329,7 @@ describe('AuthService — login', () => {
   it('returns a challenge when TOTP is enabled', async () => {
     const prisma = await buildPrisma(true);
     const setJson = jest.fn().mockResolvedValue(undefined);
-    const cache = { setJson };
+    const cache = { setJson, getJson: jest.fn().mockResolvedValue(null) };
     const service = makeService(prisma, cache);
 
     const result = await service.login(tenantSlug, email, password);
@@ -397,6 +397,16 @@ describe('AuthService — login', () => {
       `login:attempts:${tenantId}:127.0.0.1`,
       900,
     );
+  });
+
+  it('blocks challenge issuance when TOTP fail count exceeds limit', async () => {
+    const prisma = await buildPrisma(true);
+    const cache = { getJson: jest.fn().mockResolvedValue(6) };
+    const service = makeService(prisma, cache);
+
+    await expect(service.login(tenantSlug, email, password)).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
   });
 });
 
@@ -505,7 +515,9 @@ describe('AuthService — verify2fa', () => {
     };
     const cache = {
       consumeJson: jest.fn().mockResolvedValue({ type: 'setup', userId, tenantId }),
+      getJson: jest.fn().mockResolvedValue(null),
       setJson: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
     };
     const service = makeService(prisma, cache);
 
@@ -529,6 +541,9 @@ describe('AuthService — verify2fa', () => {
     };
     const cache = {
       consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }),
+      getJson: jest.fn().mockResolvedValue(null),
+      setJson: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
     };
     const service = makeService(prisma, cache);
 
@@ -556,6 +571,7 @@ describe('AuthService — verify2fa', () => {
     };
     const cache = {
       consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }),
+      increment: jest.fn().mockResolvedValue(1),
     };
     const service = makeService(prisma, cache);
 
@@ -583,6 +599,9 @@ describe('AuthService — verify2fa', () => {
     };
     const cache = {
       consumeJson,
+      getJson: jest.fn().mockResolvedValue(null),
+      setJson: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
     };
     const service = makeService(prisma, cache);
 
@@ -603,5 +622,80 @@ describe('AuthService — verify2fa', () => {
     const cache = { consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }) };
     const service = makeService(prisma, cache);
     await expect(service.verify2fa(challenge, genCurrentCode(secretBase32))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects a replayed TOTP code and increments fail counter', async () => {
+    const challenge = 'replay-challenge';
+    const totpSecret = encryptForTest(secretBase32);
+    const code = genCurrentCode(secretBase32);
+
+    const prisma = {
+      forTenant: jest.fn().mockReturnValue({
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: userId, role: 'OWNER', totpSecret, totpEnabled: true }),
+        },
+      }),
+    };
+    const increment = jest.fn().mockResolvedValue(1);
+    const cache = {
+      consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }),
+      getJson: jest.fn().mockResolvedValue(1), // counter already marked as used
+      increment,
+    };
+    const service = makeService(prisma, cache);
+
+    await expect(service.verify2fa(challenge, code)).rejects.toThrow(UnauthorizedException);
+    expect(increment).toHaveBeenCalledWith(
+      `totp:fails:${userId}`,
+      expect.any(Number),
+    );
+  });
+
+  it('returns 429 when TOTP fail attempts exceed the limit', async () => {
+    const challenge = 'rl-challenge';
+    const totpSecret = encryptForTest(secretBase32);
+
+    const prisma = {
+      forTenant: jest.fn().mockReturnValue({
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: userId, role: 'OWNER', totpSecret, totpEnabled: true }),
+        },
+      }),
+    };
+    const cache = {
+      consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }),
+      increment: jest.fn().mockResolvedValue(6), // 6 > TOTP_FAIL_LIMIT (5) → throws 429
+    };
+    const service = makeService(prisma, cache);
+
+    await expect(service.verify2fa(challenge, '000000')).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
+  });
+
+  it('clears TOTP fail counter after successful verification', async () => {
+    const challenge = 'success-clears-fails';
+    const totpSecret = encryptForTest(secretBase32);
+    const code = genCurrentCode(secretBase32);
+
+    const prisma = {
+      forTenant: jest.fn().mockReturnValue({
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: userId, role: 'OWNER', totpSecret, totpEnabled: true }),
+        },
+      }),
+    };
+    const del = jest.fn().mockResolvedValue(undefined);
+    const cache = {
+      consumeJson: jest.fn().mockResolvedValue({ type: 'login', userId, tenantId }),
+      getJson: jest.fn().mockResolvedValue(null),
+      setJson: jest.fn().mockResolvedValue(undefined),
+      del,
+    };
+    const service = makeService(prisma, cache);
+
+    await service.verify2fa(challenge, code);
+
+    expect(del).toHaveBeenCalledWith(`totp:fails:${userId}`);
   });
 });

@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { AuthGuard } from '../auth/auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
@@ -71,8 +72,8 @@ function isValidStopListBody(
   return typeof isInStopList === 'boolean';
 }
 
-@Controller('api/v1/admin/menu')
-@UseGuards(AuthGuard, TenantContextGuard)
+@Controller('admin/menu')
+@UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class MenuAdminController {
   constructor(
     private readonly menuAdminService: MenuAdminService,

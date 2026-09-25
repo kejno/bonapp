@@ -98,18 +98,23 @@ export class AuthController {
     if (!isValidVerify2faBody(body)) {
       throw new BadRequestException('challenge and code (6 digits) are required');
     }
-    const result = await this.authService.verify2fa(body.challenge, body.code);
-    if ('refreshToken' in result) {
-      response?.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: REFRESH_COOKIE_MAX_AGE,
-        path: '/api/v1/auth',
-      });
-      return { accessToken: result.accessToken, user: result.user };
+    try {
+      const result = await this.authService.verify2fa(body.challenge, body.code);
+      if ('refreshToken' in result) {
+        response?.cookie('refreshToken', result.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: REFRESH_COOKIE_MAX_AGE,
+          path: '/api/v1/auth',
+        });
+        return { accessToken: result.accessToken, user: result.user };
+      }
+      return result;
+    } catch (error) {
+      this.setRetryAfterHeader(error, response);
+      throw error;
     }
-    return result;
   }
 
   private setRetryAfterHeader(error: unknown, response?: Response): void {

@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+
+const MAX_MENU_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class StorageService {
@@ -33,5 +36,29 @@ export class StorageService {
       }),
     );
     return `${this.publicEndpoint}/${this.bucket}/${key}`;
+  }
+
+  async getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresIn = 600,
+  ): Promise<{ uploadUrl: string; uploadFields: Record<string, string>; publicUrl: string }> {
+    const presignedPost = await (createPresignedPost as unknown as (
+      client: S3Client,
+      params: Record<string, unknown>,
+    ) => Promise<{ url: string; fields: Record<string, string> }>)(this.client, {
+      Bucket: this.bucket,
+      Key: key,
+      Conditions: [
+        ['content-length-range', 1, MAX_MENU_IMAGE_SIZE_BYTES],
+        { 'Content-Type': contentType },
+      ],
+      Fields: { 'Content-Type': contentType },
+      Expires: expiresIn,
+    });
+    const uploadUrl: string = presignedPost.url;
+    const uploadFields: Record<string, string> = presignedPost.fields;
+    const publicUrl = `${this.publicEndpoint}/${this.bucket}/${key}`;
+    return { uploadUrl, uploadFields, publicUrl };
   }
 }

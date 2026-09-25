@@ -1,7 +1,7 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { MenuService } from './menu.service';
 
-@Controller('api/v1/guest/menu')
+@Controller('guest/menu')
 export class GuestMenuController {
   constructor(private readonly menuService: MenuService) {}
 

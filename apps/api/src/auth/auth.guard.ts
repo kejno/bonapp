@@ -5,11 +5,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Request } from 'express';
 
 interface AuthenticatedRequest extends Request {
-  user?: { tenantId: string; userId?: string; role?: string };
+  user?: {
+    tenantId: string;
+    userId?: string;
+    role?: UserRole;
+  };
 }
 
 interface JwtPayload {
@@ -32,7 +37,7 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
     const payload = this.verifyToken(token);
-    request.user = { tenantId: payload.tenantId, userId: payload.userId, role: payload.role };
+    request.user = payload;
     return true;
   }
 
@@ -42,7 +47,11 @@ export class AuthGuard implements CanActivate {
     return match[1];
   }
 
-  private verifyToken(token: string): { tenantId: string; userId?: string; role?: string } {
+  private verifyToken(token: string): {
+    tenantId: string;
+    userId?: string;
+    role?: UserRole;
+  } {
     const [encodedHeader, encodedPayload, signature, ...extraParts] =
       token.split('.');
     if (
@@ -78,11 +87,26 @@ export class AuthGuard implements CanActivate {
         throw new UnauthorizedException();
       }
 
+      if (
+        payload.userId !== undefined &&
+        (typeof payload.userId !== 'string' || !payload.userId.trim())
+      ) {
+        throw new UnauthorizedException();
+      }
+      if (
+        payload.role !== undefined &&
+        (typeof payload.role !== 'string' ||
+          !Object.values(UserRole).includes(payload.role as UserRole))
+      ) {
+        throw new UnauthorizedException();
+      }
+
       return {
         tenantId: payload.tenantId,
-        userId:
-          typeof payload.userId === 'string' ? payload.userId : undefined,
-        role: typeof payload.role === 'string' ? payload.role : undefined,
+        ...(typeof payload.userId === 'string' ? { userId: payload.userId } : {}),
+        ...(typeof payload.role === 'string'
+          ? { role: payload.role as UserRole }
+          : {}),
       };
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;

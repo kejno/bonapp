@@ -208,18 +208,20 @@ model Payment {
 }
 
 model MenuCategory {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  sortOrder Int      @map("sort_order")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  name          String
+  sortOrder     Int      @map("sort_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  posCategoryId String?  @map("pos_category_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   menuItems MenuItem[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, posCategoryId])
   @@index([tenantId])
   @@map("menu_categories")
 }
@@ -229,7 +231,7 @@ model MenuItem {
   tenantId           String       @map("tenant_id")
   tenant             Tenant       @relation(fields: [tenantId], references: [id])
   categoryId         String       @map("category_id")
-  category           MenuCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  category           MenuCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Cascade)
   name               String
   description        String?
   priceByn           Decimal      @map("price_byn") @db.Decimal(10, 2)
@@ -264,7 +266,7 @@ model ModifierGroup {
   tenantId     String   @map("tenant_id")
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   itemId       String   @map("item_id")
-  menuItem     MenuItem @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  menuItem     MenuItem @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
   name         String
   isRequired   Boolean  @default(false) @map("is_required")
   minSelection Int      @default(0) @map("min_selection")
@@ -284,7 +286,7 @@ model ModifierGroup {
 model ModifierOption {
   id            String        @id @default(uuid())
   groupId       String        @map("group_id")
-  group         ModifierGroup @relation(fields: [groupId], references: [id])
+  group         ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   name          String
   extraPriceByn Decimal       @default(0) @map("extra_price_byn") @db.Decimal(10, 2)
   isDefault     Boolean       @default(false) @map("is_default")
@@ -299,7 +301,7 @@ model Modifier {
   tenantId        String        @map("tenant_id")
   tenant          Tenant        @relation(fields: [tenantId], references: [id])
   modifierGroupId String        @map("modifier_group_id")
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId], onDelete: Cascade)
   name            String
   price           Decimal       @db.Decimal(10, 2)
   sortOrder       Int           @default(0) @map("sort_order")
@@ -314,8 +316,8 @@ model MenuItemModifierGroup {
   modifierGroupId String        @map("modifier_group_id")
   tenantId        String        @map("tenant_id")
   sortOrder       Int           @default(0) @map("sort_order")
-  menuItem        MenuItem      @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
-  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId])
+  menuItem        MenuItem      @relation(fields: [tenantId, menuItemId], references: [tenantId, id], onDelete: Cascade)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@id([menuItemId, modifierGroupId])
   @@index([tenantId])
@@ -327,7 +329,7 @@ model StopListItem {
   tenantId   String   @map("tenant_id")
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
   menuItemId String   @map("menu_item_id")
-  menuItem   MenuItem @relation(fields: [tenantId, menuItemId], references: [tenantId, id])
+  menuItem   MenuItem @relation(fields: [tenantId, menuItemId], references: [tenantId, id], onDelete: Cascade)
   isStopped  Boolean  @default(true) @map("is_stopped")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
