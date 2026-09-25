@@ -4,17 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MenuPage from './MenuPage';
 
 describe('BNP-368: menu item photo upload', () => {
-  const updatePayloads: Record<string, unknown>[] = [];
+  const createPayloads: Record<string, unknown>[] = [];
   beforeEach(() => {
-    updatePayloads.length = 0;
+    createPayloads.length = 0;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/media/presign')) return Response.json({ uploadUrl: '/storage-upload', uploadFields: { key: 'dish.png' }, imageUrl: 'https://cdn.example.com/dish.png' });
       if (url === '/storage-upload') return new Response(null, { status: 204 });
       if (url.endsWith('/menu/categories')) return Response.json([{ id: 'cat-1', name: 'Основное' }]);
-      if (url.endsWith('/menu/items') && init?.method === 'POST') return Response.json({ id: 'item-1' });
+      if (url.endsWith('/menu/items') && init?.method === 'POST') { createPayloads.push(JSON.parse(String(init.body)) as Record<string, unknown>); return Response.json({ id: 'item-1' }); }
       if (url.endsWith('/menu/items') && init?.method !== 'PUT') return Response.json([]);
-      if (url.endsWith('/menu/items/item-1') && init?.method === 'PUT') { updatePayloads.push(JSON.parse(String(init.body)) as Record<string, unknown>); return Response.json({ id: 'item-1' }); }
       return Response.json({ id: 'item-1' });
     }));
   });
@@ -29,6 +28,6 @@ describe('BNP-368: menu item photo upload', () => {
     fireEvent.change(screen.getByLabelText('Фото'), { target: { files: [new File(['image'], 'dish.png', { type: 'image/png' })] } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-    await waitFor(() => expect(updatePayloads[0]?.imageUrl).toBe('https://cdn.example.com/dish.png'));
+    await waitFor(() => expect(createPayloads[0]?.imageUrl).toBe('https://cdn.example.com/dish.png'));
   });
 });
