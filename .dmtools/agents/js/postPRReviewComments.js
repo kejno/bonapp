@@ -299,7 +299,19 @@ function getGitHubRepoInfo() {
     }
 }
 
-function postGeneralComment(scm, pullRequestId, commentPath, ticketKey, workingDir) {
+/**
+ * Hidden marker embedded in every posted general review comment, recording
+ * the head SHA this review round actually looked at. preparePRForReview.js
+ * scans past PR comments for this marker on the next round to compute an
+ * incremental diff (only what changed since this review), instead of the
+ * agent re-flagging suggestions on code that was never touched by rework.
+ */
+function buildReviewedShaMarker(headSha) {
+    if (!headSha) return '';
+    return '\n\n<!-- pr_review:reviewed_sha=' + headSha + ' -->';
+}
+
+function postGeneralComment(scm, pullRequestId, commentPath, ticketKey, workingDir, headSha) {
     try {
         const comment = readMarkdownFile(commentPath, ticketKey, workingDir);
         if (!comment) {
@@ -307,7 +319,7 @@ function postGeneralComment(scm, pullRequestId, commentPath, ticketKey, workingD
             return false;
         }
         console.log('Posting general review comment to PR #' + pullRequestId);
-        scm.addComment(pullRequestId, comment);
+        scm.addComment(pullRequestId, comment + buildReviewedShaMarker(headSha));
         console.log('✅ Posted general review comment');
         return true;
     } catch (error) {
@@ -761,6 +773,7 @@ function action(params) {
         let prNumber = null;
         let prUrl = null;
         let prBranch = null;
+        let prHeadSha = null;
 
         // Try to get repo info — prefer targetRepository from config over git remote
         var repoInfo = null;
@@ -786,6 +799,7 @@ function action(params) {
                 const numberMatch = prInfo.match(/\*\*PR #\*\*:\s*(\d+)/);
                 const urlMatch = prInfo.match(/\*\*URL\*\*:\s*(https:\/\/[^\s]+)/);
                 const branchMatch = prInfo.match(/\*\*Branch\*\*:\s*([^\s\n]+)/);
+                const headShaMatch = prInfo.match(/\*\*Head SHA\*\*:\s*([0-9a-f]{7,40})/);
 
                 if (numberMatch) {
                     prNumber = parseInt(numberMatch[1], 10);
@@ -795,6 +809,9 @@ function action(params) {
                 }
                 if (branchMatch) {
                     prBranch = branchMatch[1];
+                }
+                if (headShaMatch) {
+                    prHeadSha = headShaMatch[1];
                 }
                 console.log('Found PR info in input folder: #' + prNumber);
             }
@@ -871,9 +888,17 @@ function action(params) {
         if (prNumber && repoInfo) {
             console.log('Posting review to GitHub PR #' + prNumber + ' (recommendation: ' + recommendation + ')');
 
-            // Post general comment
+            // Post general comment — always stamped with the reviewed-SHA marker so the
+            // next round (post-rework) can diff only what actually changed since this
+            // review, instead of re-flagging suggestions across the whole PR again.
             if (reviewData.generalComment) {
-                postGeneralComment(scm, prNumber, reviewData.generalComment, ticketKey, workingDir);
+                postGeneralComment(scm, prNumber, reviewData.generalComment, ticketKey, workingDir, prHeadSha);
+            } else if (prHeadSha) {
+                try {
+                    scm.addComment(prNumber, 'AI review completed for commit `' + prHeadSha + '`.' + buildReviewedShaMarker(prHeadSha));
+                } catch (markerErr) {
+                    console.warn('Failed to post reviewed-SHA marker comment:', markerErr.message || markerErr);
+                }
             }
 
             // Post inline comments
@@ -1160,6 +1185,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         action,
         resolveCustomParams,
+        buildReviewedShaMarker,
         isLinePresentInDiff,
         countReviewThreads,
         postInlineComment,
