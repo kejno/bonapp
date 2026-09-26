@@ -111,6 +111,11 @@ describe('BNP-387: PDF for selected tables', () => {
     const pdf = response.body as Buffer;
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(1000);
+    const pdfStructure = pdf.toString('latin1');
+    const pageCount = pdfStructure.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+    const imageCount = pdfStructure.match(/\/Subtype\s*\/Image\b/g)?.length ?? 0;
+    expect(pageCount).toBe(2);
+    expect(imageCount).toBeGreaterThanOrEqual(2);
     const findMany = (
       pdfService as unknown as {
         prisma: { forTenant: () => { table: { findMany: jest.Mock } } };
