@@ -4,6 +4,7 @@ import { TenantContextService } from '../tenant/tenant-context.service';
 
 export const TENANT_SCOPED_MODELS = new Set([
   'User',
+  'StaffShift',
   'Tenant',
   'DiningArea',
   'Table',

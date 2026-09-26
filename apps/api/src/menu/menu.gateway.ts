@@ -4,6 +4,7 @@ import { HttpAdapterHost } from '@nestjs/core';
 import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { ServiceMode } from '@prisma/client';
 
 @Injectable()
 export class MenuGateway implements OnModuleInit {
@@ -66,5 +67,9 @@ export class MenuGateway implements OnModuleInit {
       itemId,
       isInStopList,
     });
+  }
+
+  emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
+    this.io.to(`tenant:${tenantId}`).emit('tenant:service_mode_changed', { serviceMode });
   }
 }

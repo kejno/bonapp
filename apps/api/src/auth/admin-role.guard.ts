@@ -11,6 +11,7 @@ const ADMIN_MENU_ROLES = new Set<UserRole>([
   UserRole.OWNER,
   UserRole.MANAGER,
   UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
 ]);
 
 @Injectable()

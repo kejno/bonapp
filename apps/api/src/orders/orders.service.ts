@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, TableStatus } from '@prisma/client';
+import { OrderStatus, ServiceMode, TableStatus } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -34,6 +34,11 @@ export class OrdersService {
     if (!tenantId) throw new ForbiddenException();
 
     return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+      if (tenant?.serviceMode === ServiceMode.VIEW_ONLY) {
+        throw new ConflictException('Ordering is disabled for this tenant');
+      }
       const table = await tx.table.findFirst({ where: { id: tableId } });
       if (!table) throw new NotFoundException(`Table ${tableId} not found`);
       const reservation = await tx.table.updateMany({
@@ -43,12 +48,12 @@ export class OrdersService {
       if (reservation.count !== 1) {
         throw new ConflictException('Table is not available');
       }
-      const tenant = await tx.tenant.update({
+      const updatedTenant = await tx.tenant.update({
         where: { id: tenantId },
         data: { dailyOrderNumber: { increment: 1 } },
         select: { dailyOrderNumber: true },
       });
-      const dailyOrderNumber = tenant.dailyOrderNumber;
+      const dailyOrderNumber = updatedTenant.dailyOrderNumber;
       const order = await tx.order.create({
         data: { tenantId, tableId, dailyOrderNumber },
       });

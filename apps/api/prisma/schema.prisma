@@ -14,6 +14,7 @@ enum UserRole {
   WAITER
   CHEF
   CASHIER
+  ADMIN
 }
 
 enum TableStatus {
@@ -22,6 +23,12 @@ enum TableStatus {
   RESERVED
   CLOSED
   BILL_REQUESTED
+}
+
+enum ServiceMode {
+  ORDER_AND_PAY
+  VIEW_ONLY
+  TAKEAWAY
 }
 
 model Tenant {
@@ -35,6 +42,7 @@ model Tenant {
   currency         String       @default("BYN")
   logoUrl          String?      @map("logo_url")
   brandColor       String?      @map("brand_color")
+  serviceMode      ServiceMode  @default(ORDER_AND_PAY) @map("service_mode")
   dineIn           Boolean      @default(true) @map("dine_in")
   takeaway         Boolean      @default(false)
   delivery         Boolean      @default(false)
@@ -55,6 +63,7 @@ model Tenant {
   stopListItems    StopListItem[]
   shifts           Shift[]
   shiftReports     ShiftReport[]
+  staffShifts      StaffShift[]
   dailyOrderNumber Int          @default(0) @map("daily_order_number")
 
   @@map("tenants")
@@ -80,11 +89,25 @@ model User {
   createdAt      DateTime  @default(now()) @map("created_at")
   assignedOrders Order[]   @relation("AssignedWaiterOrders")
   cashierShifts  Shift[]   @relation("ShiftCashier")
+  openedShifts   StaffShift[]
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("users")
+}
+
+model StaffShift {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  cashierId String    @map("cashier_id")
+  cashier   User      @relation(fields: [cashierId], references: [id])
+  openedAt  DateTime  @default(now()) @map("opened_at")
+  closedAt  DateTime? @map("closed_at")
+
+  @@index([tenantId, closedAt])
+  @@map("staff_shifts")
 }
 
 model DiningArea {

@@ -115,6 +115,7 @@ describe('OrdersService', () => {
   describe('create()', () => {
     it('atomically increments the tenant order counter before creating an order', async () => {
       mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.tenant.findUnique.mockResolvedValue({ serviceMode: 'ORDER_AND_PAY' });
       transaction.table.findFirst.mockResolvedValue({
         id: 'table-1',
         status: 'AVAILABLE',
@@ -137,6 +138,16 @@ describe('OrdersService', () => {
       expect(transaction.order.create).toHaveBeenCalledWith({
         data: { tenantId: 'tenant-a', tableId: 'table-1', dailyOrderNumber: 1 },
       });
+      expect(transaction.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects creating an order in VIEW_ONLY mode', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.tenant.findUnique.mockResolvedValue({ serviceMode: 'VIEW_ONLY' });
+
+      await expect(service.create('table-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.order.create).not.toHaveBeenCalled();
+      expect(transaction.table.updateMany).not.toHaveBeenCalled();
     });
 
     it('rejects when another request has already reserved the table', async () => {

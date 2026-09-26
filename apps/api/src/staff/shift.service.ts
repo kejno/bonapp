@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ShiftStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -27,7 +28,8 @@ export class ShiftService {
   }
 
   async open(tenantId: string, cashierId: string) {
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    try {
+      return await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const active = await tx.shift.findFirst({
         where: { tenantId, status: ShiftStatus.OPEN },
       });
@@ -49,11 +51,21 @@ export class ShiftService {
       });
       this.logger.log(`[СКНО STUB] shift open – tenantId: ${tenantId}`);
       return shift;
-    });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('A shift is already open for this tenant');
+      }
+      throw error;
+    }
   }
 
   async close(tenantId: string) {
     return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
       const shift = await tx.shift.findFirst({
         where: { tenantId, status: ShiftStatus.OPEN },
       });

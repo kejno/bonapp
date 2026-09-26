@@ -23,6 +23,7 @@ describe('PrismaService tenant query scope', () => {
         'Order',
         'OrderItem',
         'Payment',
+        'StaffShift',
         'MenuCategory',
         'MenuItem',
         'ModifierGroup',
