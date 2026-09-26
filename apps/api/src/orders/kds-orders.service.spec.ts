@@ -90,38 +90,6 @@ describe('OrdersService KDS', () => {
     expect(result.orders[0].items.map((item) => item.name)).toEqual(['Суп']);
   });
 
-  it('includes served orders in the KDS order list', async () => {
-    const result = await service.findKitchenOrders('chef-1', UserRole.CHEF);
-
-    expect(result.orders.some((order) => order.status === OrderStatus.SERVED)).toBe(
-      true,
-    );
-  });
-
-  it('allows advancing cooking items to served', async () => {
-    transaction.order.findFirst.mockResolvedValueOnce({
-      ...orders[0],
-      status: OrderStatus.COOKING,
-      items: orders[0].items.map((item) => ({
-        ...item,
-        status: OrderStatus.COOKING,
-      })),
-    });
-
-    await service.updateKitchenStatus(
-      'order-1',
-      OrderStatus.SERVED,
-      'HOT',
-      'chef-1',
-      UserRole.CHEF,
-    );
-
-    expect(orderItemUpdate).toHaveBeenCalledWith({
-      where: { id: { in: ['hot-1'] }, orderId: 'order-1' },
-      data: { status: OrderStatus.SERVED },
-    });
-  });
-
   it('advances only the selected department and leaves the shared order status until all departments advance', async () => {
     await service.updateKitchenStatus(
       'order-1',

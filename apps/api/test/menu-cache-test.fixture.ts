@@ -9,6 +9,7 @@ import Redis from 'ioredis';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
+import { ShiftService } from '../src/staff/shift.service';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 
@@ -90,7 +91,10 @@ export class MenuCacheTestFixture {
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(ShiftService)
+      .useValue({})
+      .compile();
     this.app = module.createNestApplication();
     this.app.setGlobalPrefix('api/v1');
     await this.app.init();
