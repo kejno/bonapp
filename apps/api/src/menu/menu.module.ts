@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { GuestSessionModule } from '../guest-session/guest-session.module';
 import { StorageModule } from '../storage/storage.module';
 import { GuestMenuController } from './guest-menu.controller';
 import { MediaController, MenuCatalogController } from './menu-catalog.controller';
@@ -11,7 +12,7 @@ import { MenuService } from './menu.service';
 import { StopListController } from './stop-list.controller';
 
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [AuthModule, GuestSessionModule, StorageModule],
   controllers: [
     GuestMenuController,
     StopListController,

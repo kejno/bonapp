@@ -4,6 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { CacheService } from '../src/cache/cache.service';
 import { GuestMenuController } from '../src/menu/guest-menu.controller';
+import { GuestSessionGuard } from '../src/guest-session/guest-session.guard';
+import { UnauthorizedException } from '@nestjs/common';
 import { MenuAdminService } from '../src/menu/menu-admin.service';
 import { MenuService } from '../src/menu/menu.service';
 import { StopListController } from '../src/menu/stop-list.controller';
@@ -53,6 +55,7 @@ describe('menu cache (e2e)', () => {
     const module = await Test.createTestingModule({
       controllers: [GuestMenuController, StopListController],
       providers: [
+        GuestSessionGuard,
         MenuService,
         MenuAdminService,
         { provide: PrismaService, useValue: prisma },
@@ -72,6 +75,15 @@ describe('menu cache (e2e)', () => {
           return true;
         },
       })
+      .overrideGuard(GuestSessionGuard)
+      .useValue({
+        canActivate: (context: { switchToHttp: () => { getRequest: () => { headers: Record<string, string>; tenantId?: string } } }) => {
+          const req = context.switchToHttp().getRequest();
+          if (!req.headers['x-qr-token']) throw new UnauthorizedException();
+          req.tenantId = 'tenant-1';
+          return true;
+        },
+      })
       .compile();
 
     app = module.createNestApplication();
@@ -83,24 +95,26 @@ describe('menu cache (e2e)', () => {
     await app.close();
   });
 
-  it.each(['/api/v1/guest/menu', '/api/v1/guest/menu?tenantId=%20%20'])(
-    'rejects a guest menu request without a tenant (%s)',
+  it.each(['/api/v1/guest/menu', '/api/v1/guest/menu?tenantId=tenant-1'])(
+    'rejects a guest menu request without a QR session token (%s)',
     async (url) => {
-      await request(app.getHttpServer()).get(url).expect(400);
+      await request(app.getHttpServer()).get(url).expect(401);
       expect(prisma.menuCategory.findMany).not.toHaveBeenCalled();
     },
   );
 
   it('serves a cached menu and reloads it from the database after a stop-list update', async () => {
-    const freshExpected = [{ id: 'category-1', items: [{ id: 'item-1', modifierGroups: [] }] }];
+    const freshExpected = [{ id: 'category-1', items: [{ id: 'item-1', modifierGroups: [], isInStopList: false }] }];
 
     await request(app.getHttpServer())
-      .get('/api/v1/guest/menu?tenantId=tenant-1')
+      .get('/api/v1/guest/menu')
+      .set('X-QR-Token', 'valid-session')
       .expect(200)
       .expect(freshExpected);
 
     await request(app.getHttpServer())
-      .get('/api/v1/guest/menu?tenantId=tenant-1')
+      .get('/api/v1/guest/menu')
+      .set('X-QR-Token', 'valid-session')
       .expect(200)
       .expect(freshExpected);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(1);
@@ -113,9 +127,10 @@ describe('menu cache (e2e)', () => {
       .expect(200);
 
     await request(app.getHttpServer())
-      .get('/api/v1/guest/menu?tenantId=tenant-1')
+      .get('/api/v1/guest/menu')
+      .set('X-QR-Token', 'valid-session')
       .expect(200)
-      .expect([{ id: 'category-1', items: [{ id: 'item-1', modifierGroups: [], stopListItem: { isStopped: true } }] }]);
+      .expect([{ id: 'category-1', items: [{ id: 'item-1', modifierGroups: [], isInStopList: true, stopListItem: { isStopped: true } }] }]);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledTimes(2);
     expect(cache.del).toHaveBeenCalledWith('menu:tenant:tenant-1');
   });
