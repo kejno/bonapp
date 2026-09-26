@@ -1,7 +1,9 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
+import { MenuGateway } from '../menu/menu.gateway';
 import { OrdersService } from './orders.service';
 
 const mockPrismaService = {
@@ -15,15 +17,17 @@ const mockPrismaService = {
 };
 
 const transaction = {
-  table: { findFirst: jest.fn(), updateMany: jest.fn() },
+  table: { findFirst: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
   tenant: { findUnique: jest.fn() },
-  order: { count: jest.fn(), create: jest.fn() },
+  order: { count: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+  payment: { findFirst: jest.fn() },
   $executeRaw: jest.fn(),
 };
 
 const mockTenantContextService = {
   getTenantId: jest.fn(),
 };
+const mockGateway = { emitOrderStatusChanged: jest.fn() };
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -40,6 +44,7 @@ describe('OrdersService', () => {
         OrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: TenantContextService, useValue: mockTenantContextService },
+        { provide: MenuGateway, useValue: mockGateway },
       ],
     }).compile();
 
@@ -87,6 +92,7 @@ describe('OrdersService', () => {
       expect(result).toEqual(order);
       expect(mockPrismaService.db.order.findFirst).toHaveBeenCalledWith({
         where: { id: 'order-1' },
+        include: { items: true, payments: true },
       });
     });
 
@@ -120,6 +126,31 @@ describe('OrdersService', () => {
 
       await expect(service.create('table-1')).rejects.toBeInstanceOf(ConflictException);
       expect(transaction.order.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changeStatus()', () => {
+    it('allows NEW to COOKING and emits the change', async () => {
+      const order = { id: 'order-1', tenantId: 'tenant-a', tableId: 'table-1', status: OrderStatus.NEW };
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.order.findFirst.mockResolvedValue(order);
+      transaction.order.update.mockResolvedValue({ ...order, status: OrderStatus.COOKING });
+
+      await expect(service.changeStatus('order-1', OrderStatus.COOKING)).resolves.toMatchObject({ status: OrderStatus.COOKING });
+      expect(transaction.order.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: OrderStatus.COOKING } }));
+      expect(mockGateway.emitOrderStatusChanged).toHaveBeenCalledWith('tenant-a', 'order-1', OrderStatus.COOKING);
+    });
+
+    it('rejects backwards transitions', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.order.findFirst.mockResolvedValue({ id: 'order-1', tenantId: 'tenant-a', status: OrderStatus.COOKING });
+      await expect(service.changeStatus('order-1', OrderStatus.NEW)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects direct PAID transition without payment processing', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.order.findFirst.mockResolvedValue({ id: 'order-1', tenantId: 'tenant-a', status: OrderStatus.SERVED });
+      await expect(service.changeStatus('order-1', OrderStatus.PAID)).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });
