@@ -25,9 +25,9 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npm install --workspace @bonapp/admin-web --ignore-scripts` — зависимости установлены по манифесту и lock-файлу.
+- `npm install --workspace @bonapp/admin-web --ignore-scripts` — отсутствующие зависимости admin-web установлены по манифесту и lock-файлу; файлы lock не изменены.
 - `npx eslint apps/admin-web/src/kds/KdsPage.tsx apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/test/kds-order-status.e2e-spec.ts apps/api/test/menu-cache-test.fixture.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API — 56 наборов / 521 тест, admin-web — 28 файлов / 76 тестов, guest-web — 1 файл / 3 теста; сборка и проверка design tokens прошли.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — оба e2e-теста прошли. Jest сообщил об оставшейся асинхронной операции и не завершился автоматически; после ожидания процесс остановлен.
+- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — оба e2e-теста прошли. Jest сообщил об оставшейся асинхронной операции и не завершился автоматически; зависший процесс остановлен после сообщения Jest.
 - `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — только добавление новой миграции, правок существующих миграций нет.
