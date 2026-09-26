@@ -19,11 +19,11 @@ export class MenuService {
 
     const categories = await this.prisma.forTenant(tenantId).menuCategory.findMany({
       where: { tenantId, isActive: true },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         menuItems: {
           where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
           include: {
             menuItemModifierGroups: {
               orderBy: { sortOrder: 'asc' },
@@ -64,7 +64,7 @@ export class MenuService {
         allergens: item.allergens,
         kitchenDepartment: item.kitchenDepartment,
         cookingTimeMinutes: item.cookingTimeMinutes,
-        isInStopList: item.isInStopList,
+        isInStopList: item.isInStopList || Boolean(item.stopListItem?.isStopped),
         isHit: item.isHit,
         isActive: item.isActive,
         stopListItem: item.stopListItem,

@@ -17,7 +17,7 @@ describe('BNP-358: first GET after cache miss populates Redis with TTL ≤ 60s',
     expect(await fixture.redis.get(fixture.cacheKey)).toBeNull();
 
     const response = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
 

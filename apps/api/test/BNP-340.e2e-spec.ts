@@ -32,7 +32,7 @@ describe('BNP-340: guest menu cache', () => {
     await fixture.redis.del(fixture.cacheKey);
 
     const firstResponse = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
     const firstMenu = firstResponse.body as unknown as GuestMenu;
@@ -69,7 +69,7 @@ describe('BNP-340: guest menu cache', () => {
       data: { name: 'Double espresso' },
     });
     const cachedResponse = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
     const cachedMenu = cachedResponse.body as unknown as GuestMenu;
@@ -78,7 +78,7 @@ describe('BNP-340: guest menu cache', () => {
     await fixture.redis.expire(fixture.cacheKey, 1);
     await new Promise((resolve) => setTimeout(resolve, 1_100));
     const refreshedResponse = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
     const refreshedMenu = refreshedResponse.body as unknown as GuestMenu;
