@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { Server as HttpServer } from 'node:http';
@@ -8,6 +8,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyToken } from '../staff-auth/staff-jwt.util';
+import { ServiceMode, UserRole } from '@prisma/client';
+import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
 export class MenuGateway implements OnModuleInit, OnModuleDestroy {
@@ -20,12 +22,19 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     private readonly httpAdapterHost: HttpAdapterHost,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => OrdersService))
+    private readonly ordersService: OrdersService,
   ) {}
 
   onModuleInit(): void {
-    const httpServer = this.httpAdapterHost.httpAdapter.getHttpServer() as HttpServer;
+    const httpServer =
+      this.httpAdapterHost.httpAdapter.getHttpServer() as HttpServer;
     const configuredOrigins = this.config.get<string>('CORS_ORIGIN');
-    const allowedOrigins = configuredOrigins?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? false;
+    const allowedOrigins =
+      configuredOrigins
+        ?.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean) ?? false;
     this.io = new Server(httpServer, { cors: { origin: allowedOrigins } });
     const redisUrl = this.config.get<string>('REDIS_URL');
     if (redisUrl) {
@@ -87,9 +96,12 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     const data = record(value);
     const auth = record(socket.handshake.auth);
     const headers = socket.handshake.headers;
+    const query = record(socket.handshake.query);
     const authorization = typeof data['authorization'] === 'string' ? data['authorization'] :
       typeof auth['authorization'] === 'string' ? auth['authorization'] :
-        typeof auth['token'] === 'string' ? `Bearer ${auth['token']}` : headers.authorization;
+        typeof auth['token'] === 'string' ? `Bearer ${auth['token']}` :
+          typeof query['token'] === 'string' ? `Bearer ${query['token']}` :
+            typeof query['authorization'] === 'string' ? query['authorization'] : headers.authorization;
     const token = typeof authorization === 'string' ? authorization.match(/^Bearer\s+(.+)$/i)?.[1] : undefined;
     if (!token) throw new Error('Bearer token required');
     const payload = verifyToken(token, this.config.getOrThrow<string>('JWT_SECRET'));
@@ -103,20 +115,22 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     if (requested !== 'kitchen' && requested !== 'hall') throw new Error('Invalid tenant room');
     const room = `tenant_${user.tenantId}_${requested}`;
     await socket.join(room);
-    (socket.data as Record<string, unknown>)['staff'] = { tenantId: user.tenantId, role: user.role };
+    (socket.data as Record<string, unknown>)['staff'] = { tenantId: user.tenantId, userId: user.id, role: user.role };
     return room;
   }
 
   private async updateOrderStatus(socket: Socket, value: unknown): Promise<void> {
-    const staff = (socket.data as Record<string, unknown>)['staff'] as { tenantId: string; role: string } | undefined;
+    const staff = (socket.data as Record<string, unknown>)['staff'] as { tenantId: string; userId: string; role: string } | undefined;
     const data = record(value);
-    if (!staff || staff.role !== 'CHEF' || typeof data['orderId'] !== 'string') throw new Error('Chef access required');
-    const order = await this.prisma.forTenant(staff.tenantId).order.update({
-      where: { id_tenantId: { id: data['orderId'], tenantId: staff.tenantId } },
-      data: { status: 'COOKING' },
-      select: { id: true, status: true, tenantId: true },
-    });
-    this.emitOrderStatusChanged(order.tenantId, order.id, order.status);
+    if (
+      !staff || staff.role !== UserRole.CHEF ||
+      typeof data['orderId'] !== 'string' ||
+      typeof data['department'] !== 'string'
+    ) throw new Error('Chef access and department are required');
+    const order = await this.ordersService.updateKitchenStatusForTenant(
+      staff.tenantId, data['orderId'], 'COOKING', data['department'], staff.userId, UserRole.CHEF,
+    );
+    this.emitOrderStatusChanged(staff.tenantId, order.id, order.status);
   }
 
   emitOrderCreated(tenantId: string, order: unknown): void {
@@ -143,6 +157,14 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     this.io.in(`order_${orderId}`).disconnectSockets(true);
   }
 
+  emitKitchenOrder(tenantId: string, event: 'order:created' | 'order:updated', order: unknown): void {
+    this.io.to(`tenant_${tenantId}_kitchen`).emit(event, order);
+  }
+
+  emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
+    this.io.to(`tenant:${tenantId}`).emit('tenant:service_mode_changed', { serviceMode });
+  }
+
   emitStopListChanged(tenantId: string, itemId: string, isInStopList: boolean): void {
     const event = { itemId, isInStopList };
     this.io.to(`tenant_${tenantId}_kitchen`).emit('menu:stop_list_changed', event);
@@ -156,4 +178,5 @@ function record(value: unknown): Record<string, unknown> {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+
 }

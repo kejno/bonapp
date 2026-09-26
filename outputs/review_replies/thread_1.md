@@ -1,0 +1,1 @@
+WebSocket теперь вызывает `OrdersService.updateKitchenStatusForTenant` с выбранным цехом. Сервис устанавливает tenant context и применяет ту же проверку переходов KDS, что и REST. Добавил проверку, что оплаченный заказ нельзя вернуть в `COOKING`.
