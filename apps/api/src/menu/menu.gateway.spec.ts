@@ -6,7 +6,11 @@ import { MenuGateway } from './menu.gateway';
 
 describe('MenuGateway', () => {
   function makeGateway() {
-    const prisma = { findTableByQrToken: jest.fn() };
+    const findFirst = jest.fn();
+    const prisma = {
+      findTableByQrToken: jest.fn(),
+      forTenant: jest.fn(() => ({ order: { findFirst } })),
+    };
     const gateway = new MenuGateway(
       {} as HttpAdapterHost,
       prisma as unknown as PrismaService,
@@ -15,7 +19,7 @@ describe('MenuGateway', () => {
     const emitFn = jest.fn();
     const toFn = jest.fn().mockReturnValue({ emit: emitFn });
     (gateway as unknown as Record<string, unknown>)['io'] = { to: toFn };
-    return { gateway, prisma, toFn, emitFn };
+    return { gateway, prisma, toFn, emitFn, findFirst };
   }
 
   it('joins only the tenant resolved from the authenticated QR token', async () => {
@@ -100,5 +104,31 @@ describe('MenuGateway', () => {
     expect(toFn).toHaveBeenCalledWith('tenant:tenant-a');
     expect(toFn).toHaveBeenCalledWith('tenant:tenant-b');
     expect(toFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('joins an order room only when the authenticated table owns that order', async () => {
+    const { gateway, prisma, findFirst } = makeGateway();
+    const join = jest.fn();
+    prisma.findTableByQrToken.mockResolvedValue({ id: 'table-1', tenantId: 'tenant-1' });
+    findFirst.mockResolvedValue({ id: 'order-1' });
+
+    await (gateway as unknown as { joinOrderRoom(socket: unknown, payload: unknown): Promise<void> }).joinOrderRoom({
+      handshake: { auth: { qrToken: 'qr-token' } }, join,
+    }, { orderId: 'order-1' });
+
+    expect(findFirst).toHaveBeenCalledWith({ where: { id: 'order-1', tableId: 'table-1' }, select: { id: true } });
+    expect(join).toHaveBeenCalledWith('order:order-1');
+  });
+
+  it('emits only the guest status fields to the order room', () => {
+    const { gateway, toFn, emitFn } = makeGateway();
+    const updatedAt = new Date('2026-09-26T12:00:00.000Z');
+
+    gateway.emitOrderStatusChanged({ id: 'order-1', dailyOrderNumber: 48, status: 'COOKING', updatedAt });
+
+    expect(toFn).toHaveBeenCalledWith('order:order-1');
+    expect(emitFn).toHaveBeenCalledWith('order:status_changed', {
+      id: 'order-1', dailyOrderNumber: 48, status: 'COOKING', estimatedReadyAt: '2026-09-26T12:12:00.000Z',
+    });
   });
 });

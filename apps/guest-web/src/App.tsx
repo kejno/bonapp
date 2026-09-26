@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import OrderStatusPage from './OrderStatusPage'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -14,8 +15,8 @@ type GuestMenu = Array<{
   items: Array<{ id: string; name: string; description: string | null; price: string | number }>
 }>
 
-export default function App() {
-  const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+function GuestMenuScreen() {
+  const qrToken = new URLSearchParams(window.location.search).get('qr_token') ?? window.sessionStorage.getItem('qrToken')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuLoaded, setMenuLoaded] = useState(false)
@@ -34,6 +35,7 @@ export default function App() {
       })
       .then(async (resolvedSession) => {
         sessionResolved = true
+        window.sessionStorage.setItem('qrToken', qrToken!)
         setSession(resolvedSession)
         const response = await fetch(
           `${API_BASE}/guest/menu?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
@@ -61,6 +63,7 @@ export default function App() {
           <h2>{session.tenant.name}</h2>
           <p>Стол {session.table.tableNumber} · {session.table.areaName}</p>
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
+          {session.activeOrder && <a href={`/order/${encodeURIComponent(session.activeOrder.id)}/status`}>Статус заказа</a>}
           <section aria-label="Меню">
             <h3>Меню</h3>
             {menuError && <p role="alert">Не удалось загрузить меню</p>}
@@ -80,4 +83,11 @@ export default function App() {
       </section>
     </main>
   )
+}
+
+export default function App() {
+  const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
+  return statusMatch
+    ? <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
+    : <GuestMenuScreen />
 }
