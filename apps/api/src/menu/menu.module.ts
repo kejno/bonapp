@@ -7,6 +7,7 @@ import { MenuCatalogService } from './menu-catalog.service';
 import { MenuAdminController } from './menu-admin.controller';
 import { MenuAdminService } from './menu-admin.service';
 import { MenuService } from './menu.service';
+import { MenuGateway } from './menu.gateway';
 import { StopListController } from './stop-list.controller';
 
 @Module({
@@ -18,6 +19,7 @@ import { StopListController } from './stop-list.controller';
     MediaController,
     MenuAdminController,
   ],
-  providers: [MenuService, MenuAdminService, MenuCatalogService],
+  providers: [MenuService, MenuAdminService, MenuCatalogService, MenuGateway],
+  exports: [MenuGateway],
 })
 export class MenuModule {}
