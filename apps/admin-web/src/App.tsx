@@ -13,6 +13,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import WaiterCallNotifications from './components/WaiterCallNotifications';
 import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
 import StaffPage from './pages/StaffPage';
@@ -35,6 +36,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <WaiterCallNotifications />
         <Routes>
           <Route
             path="/login"

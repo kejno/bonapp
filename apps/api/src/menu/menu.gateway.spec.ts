@@ -76,7 +76,7 @@ describe('MenuGateway event routing', () => {
   it('routes ready status to the hall and waiter calls only to the hall', () => {
     const { gateway, emissions } = makeGateway();
     gateway.emitOrderStatusChanged('tenant-1', 'order-2', 'READY');
-    gateway.emitWaiterCalled('tenant-1', { tableId: 'table-1' });
+    gateway.emitWaiterCalled('tenant-1', { tableId: 'table-1', tableNumber: 4, reason: 'NEED_BILL' });
 
     expect(emissions.map(({ room }) => room)).toEqual([
       'order_order-2', 'tenant_tenant-1_hall', 'tenant_tenant-1_hall',
