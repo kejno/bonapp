@@ -6,10 +6,15 @@ import {
   HttpCode,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
+import { AdminRoleGuard } from '../auth/admin-role.guard';
+import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
+@UseGuards(AuthGuard, TenantContextGuard)
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
@@ -27,6 +32,7 @@ export class OrdersController {
   }
 
   @Post(':id/pay')
+  @UseGuards(AdminRoleGuard)
   @HttpCode(200)
   pay(@Param('id') id: string) {
     return this.ordersService.pay(id);
