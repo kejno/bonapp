@@ -1,18 +1,21 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, TableStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, TableStatus } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly menuGateway: MenuGateway,
   ) {}
 
   async findAll() {
@@ -22,11 +25,47 @@ export class OrdersService {
 
   async findOne(id: string) {
     const tenantId = this.tenantContext.getTenantId();
-    const order = await this.prisma.db.order.findFirst({ where: { id } });
+    const order = await this.prisma.db.order.findFirst({ where: { id }, include: { items: true, payments: true } });
     if (!order || order.tenantId !== tenantId) {
       throw new ForbiddenException();
     }
     return order;
+  }
+
+  async findActive() {
+    const tenantId = this.tenantContext.getTenantId();
+    return this.prisma.db.order.findMany({
+      where: { tenantId, status: { in: [OrderStatus.NEW, OrderStatus.COOKING, OrderStatus.READY] } },
+      include: { table: true, items: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async changeStatus(id: string, status: OrderStatus) {
+    const tenantId = this.tenantContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException();
+    if (status === OrderStatus.PAID) throw new BadRequestException('PAID requires a successful payment');
+    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const order = await tx.order.findFirst({ where: { id, tenantId } });
+      if (!order) throw new NotFoundException(`Order ${id} not found`);
+      const transitions: Partial<Record<OrderStatus, OrderStatus[]>> = {
+        [OrderStatus.NEW]: [OrderStatus.COOKING, OrderStatus.CANCELLED],
+        [OrderStatus.COOKING]: [OrderStatus.READY, OrderStatus.CANCELLED],
+        [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
+        [OrderStatus.SERVED]: [OrderStatus.CANCELLED],
+      };
+      if (!transitions[order.status]?.includes(status)) {
+        throw new BadRequestException(`Transition ${order.status} → ${status} is not allowed`);
+      }
+      const updated = await tx.order.update({ where: { id_tenantId: { id, tenantId } }, data: { status } });
+      if (status === OrderStatus.SERVED) {
+        await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.OCCUPIED } });
+      } else if (status === OrderStatus.CANCELLED) {
+        await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.AVAILABLE } });
+      }
+      this.menuGateway.emitOrderStatusChanged(tenantId, id, status);
+      return updated;
+    });
   }
 
   async create(tableId: string) {
@@ -68,6 +107,10 @@ export class OrdersService {
       if (order.isPaid || order.status === OrderStatus.PAID) {
         throw new ConflictException('Order is already paid');
       }
+      const payment = await tx.payment.findFirst({
+        where: { orderId: id, tenantId, status: PaymentStatus.SUCCEEDED },
+      });
+      if (!payment) throw new ConflictException('A successful payment is required');
 
       const paidOrder = await tx.order.update({
         where: { id_tenantId: { id, tenantId } },
@@ -77,6 +120,7 @@ export class OrdersService {
         where: { id_tenantId: { id: order.tableId, tenantId } },
         data: { status: TableStatus.AVAILABLE },
       });
+      this.menuGateway.emitOrderStatusChanged(tenantId, id, OrderStatus.PAID);
       return paidOrder;
     });
   }

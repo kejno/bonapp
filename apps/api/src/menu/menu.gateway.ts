@@ -67,4 +67,10 @@ export class MenuGateway implements OnModuleInit {
       isInStopList,
     });
   }
+
+  emitOrderStatusChanged(tenantId: string, orderId: string, status: string): void {
+    const payload = { orderId, status };
+    this.io.to(`order_${orderId}`).emit('order:status_changed', payload);
+    this.io.to(`tenant:${tenantId}:tenant_kitchen`).emit('order:status_changed', payload);
+  }
 }
