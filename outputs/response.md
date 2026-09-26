@@ -22,10 +22,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и состояния рабочего дерева.
-- `npx eslint` по всем изменённым TypeScript-файлам — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
+- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
+- `npm run typecheck` — успешно во всех четырёх workspace. Перед повторным запуском выполнен `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma`, так как начальный typecheck использовал устаревший сгенерированный Prisma Client.
 - `npm test` — успешно: API — 58 наборов / 531 тест; admin-web — 28 файлов / 76 тестов; guest-web — 1 файл / 3 теста. Сборка и проверка design tokens также завершились успешно.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand --detectOpenHandles --forceExit admin-orders.e2e-spec.ts` — успешно; проверены создание заказов, агрегация позиций, доставка в KDS и изоляция гостей двух столов.
-- Blast-radius для схемы и миграций проверен командами `git diff --name-status origin/main...HEAD -- '*/migrations/*'`, `git diff --cached origin/main --name-status -- '*/migrations/*'` и поиском `rg` по `tableSession`, `table_sessions`, `guestId` в `apps/api/src` и `apps/api/test`. Добавлена только миграция `20260926220000_admin_order_guests`; её timestamp позже последней миграции `origin/main` (`20260926180001_add_table_sessions`). Существующие миграции не изменялись. CodeGraph недоступен, потребители проверены поиском по исходникам.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно (1 suite / 1 тест); проверены создание заказов, агрегация позиций, доставка в KDS и отсутствие события у QR-гостя другого стола.
+- Проверка blast-radius схемы и миграций: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только новую миграцию `20260926220000_admin_order_guests`, её timestamp позже последней миграции `origin/main` (`20260926180001_add_table_sessions`); существующие миграции не изменялись. Поиск `rg` по `tableSession`, `table_sessions`, `guestId` выполнен в `apps/api/src` и `apps/api/test`. CodeGraph недоступен, потребители проверены поиском по исходникам.
 - `git diff --check` и `git diff --cached --check` — успешно.
