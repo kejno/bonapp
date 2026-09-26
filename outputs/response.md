@@ -1,17 +1,16 @@
-### Root Cause
-- `TableQrPdfService.render` создавал PDF сразу после события `load`, которое не гарантирует завершение декодирования встроенных QR-изображений.
-- Из-за гонки PDF мог содержать корректную структуру, но не отображённые QR-коды.
+### Что изменено
+- Добавлен экран `/kds` с четырьмя колонками, фильтром по цехам, карточками заказов, drag-and-drop и Bump.
+- Socket.io обновляет доску в реальном времени; Howler воспроизводит сигнал при новом заказе.
+- API фильтрует позиции повара по назначенным цехам и переводит общий статус после обработки всех позиций.
 
-### Previous Attempt
-- PR #138 добавил проверку QR-кодов в BNP-387, но не устранил гонку при рендеринге.
+### Ключевые решения
+- Добавлено поле `kitchenDepartments` для назначений поваров; доступ к KDS ограничен ролями CHEF, OWNER и MANAGER на API и WebSocket.
+- Повторно использован общий Socket.io gateway проекта.
 
-### Fix
-- `table-qr-pdf.service.ts`: перед `page.pdf()` сервис ожидает завершения `decode()` всех изображений.
-
-### Test Coverage
-- `BNP-387.e2e-spec.ts` — проверка RED без ожидания декодирования, GREEN после исправления; PDF содержит декодируемые QR двух выбранных столов.
-- Полный набор unit-тестов API: 508 пройдено.
-- Полный e2e-набор: заблокирован отсутствующими `DATABASE_URL` и Redis.
-
-### Notes
-- Полный e2e-прогон требует настроенных PostgreSQL и Redis.
+### Как проверить
+```bash
+npm test --workspace apps/admin-web
+npm test --workspace apps/api -- --runInBand
+npm run typecheck --workspace apps/admin-web
+npm run typecheck --workspace apps/api
+```

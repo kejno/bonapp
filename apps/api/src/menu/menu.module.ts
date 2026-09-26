@@ -20,5 +20,6 @@ import { StopListController } from './stop-list.controller';
     MenuAdminController,
   ],
   providers: [MenuService, MenuAdminService, MenuCatalogService, MenuGateway],
+  exports: [MenuGateway],
 })
 export class MenuModule {}
