@@ -53,6 +53,9 @@ model Tenant {
   modifierGroups   ModifierGroup[]
   modifiers        Modifier[]
   stopListItems    StopListItem[]
+  shifts           Shift[]
+  shiftReports     ShiftReport[]
+  dailyOrderNumber Int          @default(0) @map("daily_order_number")
 
   @@map("tenants")
 }
@@ -76,6 +79,7 @@ model User {
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   assignedOrders Order[]   @relation("AssignedWaiterOrders")
+  cashierShifts  Shift[]   @relation("ShiftCashier")
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
@@ -339,4 +343,43 @@ model StopListItem {
   @@index([tenantId])
   @@unique([tenantId, menuItemId])
   @@map("stop_list_items")
+}
+
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model Shift {
+  id        String      @id @default(uuid())
+  tenantId  String      @map("tenant_id")
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  cashierId String      @map("cashier_id")
+  cashier   User        @relation("ShiftCashier", fields: [cashierId, tenantId], references: [id, tenantId])
+  status    ShiftStatus @default(OPEN)
+  openedAt  DateTime    @default(now()) @map("opened_at")
+  closedAt  DateTime?   @map("closed_at")
+  report    ShiftReport?
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@map("shifts")
+}
+
+model ShiftReport {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  shiftId      String   @unique @map("shift_id")
+  shift        Shift    @relation(fields: [shiftId, tenantId], references: [id, tenantId])
+  cashierId    String   @map("cashier_id")
+  openedAt     DateTime @map("opened_at")
+  closedAt     DateTime @map("closed_at")
+  totalAmount  Decimal  @map("total_amount") @db.Decimal(12, 2)
+  orderCount   Int      @map("order_count")
+
+  @@unique([shiftId, tenantId])
+  @@index([tenantId])
+  @@map("shift_reports")
 }
