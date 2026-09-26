@@ -26,6 +26,7 @@ describe('BNP-387: PDF for selected tables', () => {
     TableQrPdfService.prototype,
   ) as TableQrPdfService;
   let browser: Awaited<ReturnType<typeof puppeteer.launch>>;
+  let renderWaitedForImageDecode = false;
 
   beforeAll(async () => {
     const cache = {
@@ -58,9 +59,16 @@ describe('BNP-387: PDF for selected tables', () => {
     jest.spyOn(browser, 'newPage').mockImplementation(async (...args) => {
       const page = await newPage(...args);
       const setContent = page.setContent.bind(page);
+      let renderingPdf = false;
       jest.spyOn(page, 'setContent').mockImplementation(async (html, options) => {
+        renderingPdf = true;
         renderedHtml = html;
         await setContent(html, options);
+      });
+      const evaluate = page.evaluate.bind(page);
+      jest.spyOn(page, 'evaluate').mockImplementation(async (...args) => {
+        if (renderingPdf) renderWaitedForImageDecode = true;
+        return evaluate(...args);
       });
       return page;
     });
@@ -115,6 +123,7 @@ describe('BNP-387: PDF for selected tables', () => {
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
     const pdf = response.body as Buffer;
+    expect(renderWaitedForImageDecode).toBe(true);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(1000);
     const pdfStructure = pdf.toString('latin1');
