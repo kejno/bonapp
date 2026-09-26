@@ -44,4 +44,44 @@ describe('BNP-362: изменение статуса стола', () => {
       ).resolves.toMatchObject({ status });
     }
   });
+
+  it('меняет статус стола при создании заказа и освобождает его после оплаты', async () => {
+    const area = await fixture.prisma.diningArea.create({
+      data: { tenantId: fixture.tenantId, name: 'Зона заказа' },
+    });
+    const table = await fixture.prisma.table.create({
+      data: {
+        tenantId: fixture.tenantId,
+        areaId: area.id,
+        tableNumber: 42,
+        qrToken: `bnp362-order-${fixture.tenantId}`,
+        status: TableStatus.AVAILABLE,
+      },
+    });
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.AVAILABLE });
+
+    const orderResponse = await request(fixture.app.getHttpServer())
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({ tableId: table.id })
+      .expect(201);
+    const orderId = (orderResponse.body as { id: string }).id;
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.OCCUPIED });
+
+    await request(fixture.app.getHttpServer())
+      .post(`/api/v1/orders/${orderId}/pay`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({})
+      .expect(200);
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.AVAILABLE });
+  });
 });
