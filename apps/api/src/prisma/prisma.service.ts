@@ -4,6 +4,7 @@ import { TenantContextService } from '../tenant/tenant-context.service';
 
 export const TENANT_SCOPED_MODELS = new Set([
   'User',
+  'StaffShift',
   'Tenant',
   'DiningArea',
   'Table',
@@ -17,6 +18,8 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Modifier',
   'MenuItemModifierGroup',
   'StopListItem',
+  'Shift',
+  'ShiftReport',
 ]);
 
 const RELATION_SCOPED_MODELS: Record<string, string> = {

@@ -5,7 +5,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyToken } from '../staff-auth/staff-jwt.util';
-import { UserRole } from '@prisma/client';
+import { ServiceMode, UserRole } from '@prisma/client';
 
 @Injectable()
 export class MenuGateway implements OnModuleInit {
@@ -118,5 +118,9 @@ export class MenuGateway implements OnModuleInit {
     order: unknown,
   ): void {
     this.io.to(`tenant_kitchen:${tenantId}`).emit(event, order);
+  }
+
+  emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
+    this.io.to(`tenant:${tenantId}`).emit('tenant:service_mode_changed', { serviceMode });
   }
 }

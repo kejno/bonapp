@@ -20,6 +20,9 @@ export default function DashboardPage() {
           Live KDS
         </Link>
       )}
+      <Link to="/settings" className="text-sm text-primary hover:underline">
+        Настройки заведения
+      </Link>
       <Link
         to="/tables"
         className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"

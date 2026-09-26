@@ -15,6 +15,8 @@ import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
+import StaffPage from './pages/StaffPage';
+import SettingsPage from './settings/SettingsPage';
 
 const queryClient = new QueryClient();
 
@@ -67,6 +69,8 @@ function App() {
             }
           />
           <Route path="/kds" element={<KdsRoute />} />
+          <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route
             path="/tables"
             element={

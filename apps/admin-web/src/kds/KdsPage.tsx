@@ -13,7 +13,7 @@ import {
 const columns = [
   { status: 'NEW', label: 'Новые', color: 'border-amber-400' },
   { status: 'COOKING', label: 'Готовятся', color: 'border-blue-500' },
-  { status: 'READY', label: 'Поданы', color: 'border-green-500' },
+  { status: 'SERVED', label: 'Поданы', color: 'border-green-500' },
   { status: 'PAID', label: 'Оплачены', color: 'border-slate-400' },
 ];
 const departmentLabels: Record<string, string> = {
@@ -248,7 +248,7 @@ export default function KdsPage() {
                     <button
                       disabled={
                         mutation.isPending ||
-                        column.status === 'READY' ||
+                        column.status === 'SERVED' ||
                         column.status === 'PAID'
                       }
                       onClick={() => void advance(order)}

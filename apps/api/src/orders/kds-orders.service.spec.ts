@@ -5,6 +5,9 @@ import { TenantContextService } from '../tenant/tenant-context.service';
 import { OrdersService } from './orders.service';
 
 describe('OrdersService KDS', () => {
+  type KitchenOrdersFilter = {
+    where: { tenantId: string; status: { in: OrderStatus[] } };
+  };
   const orders = [
     {
       id: 'order-1',
@@ -28,6 +31,9 @@ describe('OrdersService KDS', () => {
   ];
   const orderUpdate = jest.fn();
   const orderItemUpdate = jest.fn();
+  const findKitchenOrders = jest.fn((filter: KitchenOrdersFilter) =>
+    orders.filter((order) => filter.where.status.in.includes(order.status)),
+  );
   const transaction = {
     order: {
       findFirst: jest.fn().mockResolvedValue(orders[0]),
@@ -41,7 +47,7 @@ describe('OrdersService KDS', () => {
         findFirst: jest.fn().mockResolvedValue({ kitchenDepartments: ['HOT'] }),
       },
       order: {
-        findMany: jest.fn().mockResolvedValue(orders),
+        findMany: findKitchenOrders,
         findFirst: jest.fn().mockResolvedValue(orders[0]),
         update: orderUpdate,
       },
@@ -69,6 +75,37 @@ describe('OrdersService KDS', () => {
     const result = await service.findKitchenOrders('chef-1', UserRole.CHEF);
     expect(result.departments).toEqual(['HOT']);
     expect(result.orders[0].items.map((item) => item.name)).toEqual(['Суп']);
+  });
+
+  it('includes served orders in the KDS order list', async () => {
+    await service.findKitchenOrders('chef-1', UserRole.CHEF);
+    expect(findKitchenOrders.mock.calls[0]?.[0].where.status.in).toContain(
+      OrderStatus.SERVED,
+    );
+  });
+
+  it('allows advancing cooking items to served', async () => {
+    transaction.order.findFirst.mockResolvedValueOnce({
+      ...orders[0],
+      status: OrderStatus.COOKING,
+      items: orders[0].items.map((item) => ({
+        ...item,
+        status: OrderStatus.COOKING,
+      })),
+    });
+
+    await service.updateKitchenStatus(
+      'order-1',
+      OrderStatus.SERVED,
+      'HOT',
+      'chef-1',
+      UserRole.CHEF,
+    );
+
+    expect(orderItemUpdate).toHaveBeenCalledWith({
+      where: { id: { in: ['hot-1'] }, orderId: 'order-1' },
+      data: { status: OrderStatus.SERVED },
+    });
   });
 
   it('advances only the selected department and leaves the shared order status until all departments advance', async () => {

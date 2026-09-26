@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { OrderStatus, TableStatus, UserRole } from '@prisma/client';
+import { OrderStatus, ServiceMode, TableStatus, UserRole } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
@@ -38,6 +38,7 @@ export class OrdersService {
             OrderStatus.NEW,
             OrderStatus.COOKING,
             OrderStatus.READY,
+            OrderStatus.SERVED,
             OrderStatus.PAID,
           ],
         },
@@ -110,7 +111,7 @@ export class OrdersService {
     const progression: OrderStatus[] = [
       OrderStatus.NEW,
       OrderStatus.COOKING,
-      OrderStatus.READY,
+      OrderStatus.SERVED,
     ];
     const targetIndex = progression.indexOf(
       status as (typeof progression)[number],
@@ -211,6 +212,11 @@ export class OrdersService {
     if (!tenantId) throw new ForbiddenException();
 
     return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+      if (tenant?.serviceMode === ServiceMode.VIEW_ONLY) {
+        throw new ConflictException('Ordering is disabled for this tenant');
+      }
       const table = await tx.table.findFirst({ where: { id: tableId } });
       if (!table) throw new NotFoundException(`Table ${tableId} not found`);
       const reservation = await tx.table.updateMany({
@@ -220,15 +226,12 @@ export class OrdersService {
       if (reservation.count !== 1) {
         throw new ConflictException('Table is not available');
       }
-      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
-      const timeZone = tenant?.timezone ?? 'Europe/Minsk';
-      const now = new Date();
-      const [start, end, businessDate] = businessDayBounds(now, timeZone);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${businessDate}))`;
-      const dailyOrderNumber =
-        (await tx.order.count({
-          where: { tenantId, createdAt: { gte: start, lt: end } },
-        })) + 1;
+      const updatedTenant = await tx.tenant.update({
+        where: { id: tenantId },
+        data: { dailyOrderNumber: { increment: 1 } },
+        select: { dailyOrderNumber: true },
+      });
+      const dailyOrderNumber = updatedTenant.dailyOrderNumber;
       const order = await tx.order.create({
         data: { tenantId, tableId, dailyOrderNumber },
       });
@@ -261,66 +264,4 @@ export class OrdersService {
       return paidOrder;
     });
   }
-}
-
-function businessDayBounds(now: Date, timeZone: string): [Date, Date, string] {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const values = Object.fromEntries(
-    parts.map(({ type, value }) => [type, value]),
-  );
-  const date = `${values['year']}-${values['month']}-${values['day']}`;
-  const start = zonedMidnight(date, timeZone);
-  const nextDate = new Date(
-    Date.UTC(
-      Number(values['year']),
-      Number(values['month']) - 1,
-      Number(values['day']) + 1,
-    ),
-  );
-  const nextParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(nextDate);
-  const nextValues = Object.fromEntries(
-    nextParts.map(({ type, value }) => [type, value]),
-  );
-  const next = `${nextValues['year']}-${nextValues['month']}-${nextValues['day']}`;
-  return [start, zonedMidnight(next, timeZone), date];
-}
-
-function zonedMidnight(date: string, timeZone: string): Date {
-  const target = Date.parse(`${date}T00:00:00Z`);
-  let result = target;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(result));
-    const values = Object.fromEntries(
-      parts.map(({ type, value }) => [type, value]),
-    );
-    const represented = Date.UTC(
-      Number(values['year']),
-      Number(values['month']) - 1,
-      Number(values['day']),
-      Number(values['hour']),
-      Number(values['minute']),
-      Number(values['second']),
-    );
-    result += target - represented;
-  }
-  return new Date(result);
 }

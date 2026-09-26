@@ -6,8 +6,8 @@ import { MediaController, MenuCatalogController } from './menu-catalog.controlle
 import { MenuCatalogService } from './menu-catalog.service';
 import { MenuAdminController } from './menu-admin.controller';
 import { MenuAdminService } from './menu-admin.service';
-import { MenuGateway } from './menu.gateway';
 import { MenuService } from './menu.service';
+import { MenuGateway } from './menu.gateway';
 import { StopListController } from './stop-list.controller';
 
 @Module({
