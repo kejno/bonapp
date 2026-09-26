@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { TenantContextGuard } from '../src/auth/tenant-context.guard';
+import { AdminRoleGuard } from '../src/auth/admin-role.guard';
 import { HallsService } from '../src/halls/halls.service';
 import { TableQrPdfService } from '../src/halls/table-qr-pdf.service';
 import { TablesController } from '../src/halls/tables.controller';
@@ -21,6 +22,7 @@ describe('BNP-395: unauthorized PDF generation', () => {
         { provide: HallsService, useValue: {} },
         { provide: TableQrPdfService, useValue: { generate } },
         { provide: ConfigService, useValue: { getOrThrow: () => jwtSecret } },
+        AdminRoleGuard,
         {
           provide: PrismaService,
           useValue: {
