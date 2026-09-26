@@ -58,3 +58,33 @@ at least one Test Case blocks merge:
 1. Replace the CSS selector with a role-based locator (getByRole/getByText), matching the existing specs in apps/api/test/
 2. Replace waitForTimeout with an auto-retrying expect(...) assertion
 ```
+
+### outputs/pr_review.json — genuine product defect, APPROVE not BLOCK
+
+`BNP-389` correctly edits an existing dish and sets both an empty name and an
+invalid modifier range (`minSelection > maxSelection`) in one save attempt,
+matching the Test Case exactly. The target run shows only the name error —
+the range error never renders. The test is right; the product has the
+defect. This gets `APPROVE`, so the ticket moves to `Failed` and the
+pipeline's bug-creation rule can open a Bug — not `BLOCK`, which would only
+route back to test rework and can never fix the product:
+
+```json
+{
+  "recommendation": "APPROVE",
+  "summary": "BNP-389 correctly reproduces a genuine product defect: the modifier-range validation error never renders when the name field is also invalid.",
+  "generalComment": "outputs/pr_review_general.md",
+  "inlineComments": [],
+  "issueCounts": {"blocking":0,"important":0,"suggestions":0},
+  "perTestCase": {"BNP-389": "APPROVE"}
+}
+```
+
+```markdown
+## Automated Test PR Review — APPROVE
+
+**Summary**: BNP-389 is correct and catches a real defect — the dish form
+only shows the name-empty error and never renders the modifier-range error
+when both are invalid at once. Approving so this routes to Bug creation;
+do not request further test changes for this failure.
+```

@@ -74,6 +74,16 @@ describe('BNP-362: изменение статуса стола', () => {
       fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
     ).resolves.toMatchObject({ status: TableStatus.OCCUPIED });
 
+    const listing = await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    expect(listing.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: table.id, status: TableStatus.OCCUPIED }),
+      ]),
+    );
+
     await request(fixture.app.getHttpServer())
       .post(`/api/v1/orders/${orderId}/pay`)
       .set('Authorization', `Bearer ${fixture.token()}`)

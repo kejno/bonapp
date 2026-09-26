@@ -27,6 +27,12 @@ describe('BNP-360: создание, изменение и удаление ст
 
     expect(created.qrToken).toEqual(expect.any(String));
     expect(created.qrToken.length).toBeGreaterThan(0);
+    const secondResponse = await request(fixture.app.getHttpServer())
+      .post('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({ tableNumber: 33, label: 'У стены', seatsCount: 4, areaId: area.id })
+      .expect(201);
+    expect((secondResponse.body as TableResponse).qrToken).not.toBe(created.qrToken);
     const persisted = await fixture.prisma.table.findUniqueOrThrow({
       where: { id: created.id },
     });

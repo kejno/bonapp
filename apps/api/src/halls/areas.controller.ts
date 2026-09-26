@@ -15,9 +15,10 @@ import { HallsService } from './halls.service';
 interface CreateAreaBody {
   name: string;
   sortOrder?: number;
+  sort_order?: number;
 }
 
-@Controller('api/v1/admin/areas')
+@Controller('admin/areas')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class AreasController {
   constructor(private readonly hallsService: HallsService) {}
@@ -34,7 +35,7 @@ export class AreasController {
     }
     return this.hallsService.createArea(req.user!.tenantId!, {
       name: body.name.trim(),
-      sortOrder: body.sortOrder,
+      sortOrder: body.sort_order ?? body.sortOrder,
     });
   }
 
@@ -45,7 +46,9 @@ export class AreasController {
       typeof b['name'] === 'string' &&
       b['name'].trim().length > 0 &&
       (b['sortOrder'] === undefined ||
-        (typeof b['sortOrder'] === 'number' && Number.isInteger(b['sortOrder'])))
+        (typeof b['sortOrder'] === 'number' && Number.isInteger(b['sortOrder']))) &&
+      (b['sort_order'] === undefined ||
+        (typeof b['sort_order'] === 'number' && Number.isInteger(b['sort_order'])))
     );
   }
 }
