@@ -19,6 +19,7 @@ describe('GuestSessionService order status', () => {
     await expect(service.getOrderStatus('order-1', 'tenant-1', 'table-1')).resolves.toEqual({
       id: 'order-1', dailyOrderNumber: 48, status: 'COOKING',
       estimatedReadyAt: '2026-09-26T12:12:00.000Z',
+      updatedAt: '2026-09-26T12:00:00.000Z',
     });
     expect(forTenant).toHaveBeenCalledWith('tenant-1');
     expect(findFirst).toHaveBeenCalledWith({

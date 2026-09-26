@@ -4,6 +4,7 @@ export interface GuestOrder {
   id: string
   dailyOrderNumber: number
   status: string
+  updatedAt: string
   estimatedReadyAt: string | null
 }
 
@@ -14,5 +15,10 @@ interface OrdersState {
 
 export const useOrdersStore = create<OrdersState>((set) => ({
   order: null,
-  setOrder: (order) => set({ order }),
+  setOrder: (order) => set((state) => {
+    if (state.order?.id === order.id && Date.parse(order.updatedAt) < Date.parse(state.order.updatedAt)) {
+      return state
+    }
+    return { order }
+  }),
 }))

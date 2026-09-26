@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 describe('OrdersController', () => {
   const ordersService = {
@@ -8,8 +9,11 @@ describe('OrdersController', () => {
     findOne: jest.fn(),
     updateStatus: jest.fn(),
   };
-  const menuGateway = { emitOrderStatusChanged: jest.fn() };
-  const controller = new OrdersController(ordersService as unknown as OrdersService, menuGateway as never);
+  const menuGateway = { emitOrderCreated: jest.fn(), emitOrderStatusChanged: jest.fn() };
+  const controller = new OrdersController(
+    ordersService as unknown as OrdersService,
+    menuGateway as unknown as MenuGateway,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -45,18 +49,10 @@ describe('OrdersController', () => {
     });
   });
 
-  it('emits the updated order status for connected guests', async () => {
-    const order = { id: 'order-1', dailyOrderNumber: 48, status: 'COOKING', updatedAt: new Date() };
-    ordersService.updateStatus.mockResolvedValue(order);
-
-    await expect(controller.updateStatus('order-1', { status: 'COOKING' })).resolves.toEqual(order);
-
-    expect(ordersService.updateStatus).toHaveBeenCalledWith('order-1', 'COOKING');
-    expect(menuGateway.emitOrderStatusChanged).toHaveBeenCalledWith(order);
-  });
-
-  it('rejects unsupported order statuses before updating the order', async () => {
-    await expect(controller.updateStatus('order-1', { status: 'INVALID' })).rejects.toThrow('Valid order status is required');
+  it('does not allow the generic status endpoint to bypass payment processing', async () => {
+    await expect(controller.updateStatus('order-1', { status: 'PAID' })).rejects.toThrow(
+      'Valid unpaid order status is required',
+    );
     expect(ordersService.updateStatus).not.toHaveBeenCalled();
   });
 });

@@ -38,6 +38,10 @@ export class StorageService {
     return `${this.publicEndpoint}/${this.bucket}/${key}`;
   }
 
+  isPublicUrlForKeyPrefix(url: string, keyPrefix: string): boolean {
+    return url.startsWith(`${this.publicEndpoint}/${this.bucket}/${keyPrefix}`);
+  }
+
   async getPresignedUploadUrl(
     key: string,
     contentType: string,

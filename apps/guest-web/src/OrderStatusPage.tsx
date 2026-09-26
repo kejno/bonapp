@@ -39,7 +39,10 @@ export default function OrderStatusPage({ orderId }: OrderStatusPageProps) {
     if (!qrToken) return
     const socket = io(SOCKET_BASE, { auth: { qrToken }, reconnection: true })
     const joinOrderRoom = () => {
-      void refreshOrder().finally(() => socket.emit('join_order_room', { orderId }))
+      socket.emit('join_order_room', { orderId }, (result: { ok?: boolean }) => {
+        if (result?.ok) void refreshOrder()
+        else setError(true)
+      })
     }
     const onStatusChanged = (update: GuestOrder) => {
       if (update.id === orderId) setOrder(update)
@@ -69,7 +72,7 @@ export default function OrderStatusPage({ orderId }: OrderStatusPageProps) {
     : order?.status === 'COOKING' ? 'Готовится на кухне'
       : order?.status === 'READY' ? 'Готово — зовите официанта'
         : order ? 'Новый' : ''
-  const menuUrl = `/menu?qr_token=${encodeURIComponent(qrToken ?? '')}&orderId=${encodeURIComponent(orderId)}`
+  const menuUrl = `/?qr_token=${encodeURIComponent(qrToken ?? '')}&orderId=${encodeURIComponent(orderId)}`
 
   return <main className="flex min-h-svh justify-center bg-background px-5 py-10 text-on-background">
     <section className="w-full max-w-lg text-center">
