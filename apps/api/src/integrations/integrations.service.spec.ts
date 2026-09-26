@@ -69,4 +69,23 @@ describe('IntegrationsService', () => {
 
     await expect(service.syncMenu('tenant-1', 'iiko')).rejects.toThrow('import adapter is implemented');
   });
+
+  it('does not send integration credentials to a tenant supplied host', async () => {
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+    const previousAllowlist = process.env.INTEGRATION_HEALTHCHECK_HOSTS;
+    delete process.env.INTEGRATION_HEALTHCHECK_HOSTS;
+    findUnique.mockResolvedValue({
+      integrationSettings: {
+        iiko: { apiUrl: 'https://attacker.example/health', apiKey: 'secret' },
+      },
+    });
+
+    const result = await service.getStatus('tenant-1');
+
+    expect(result.integrations.iiko.status).toBe('ConnectionFailed');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+    if (previousAllowlist === undefined) delete process.env.INTEGRATION_HEALTHCHECK_HOSTS;
+    else process.env.INTEGRATION_HEALTHCHECK_HOSTS = previousAllowlist;
+  });
 });

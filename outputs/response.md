@@ -1,17 +1,30 @@
-### Root Cause
-- `TableQrPdfService.render` создавал PDF сразу после события `load`, которое не гарантирует завершение декодирования встроенных QR-изображений.
-- Из-за гонки PDF мог содержать корректную структуру, но не отображённые QR-коды.
+# Исправления PR BNP-165
 
-### Previous Attempt
-- PR #138 добавил проверку QR-кодов в BNP-387, но не устранил гонку при рендеринге.
+## Issues/Notes
 
-### Fix
-- `table-qr-pdf.service.ts`: перед `page.pdf()` сервис ожидает завершения `decode()` всех изображений.
+- Устранена отправка API-ключа на произвольный URL, заданный настройками tenant.
+- Ручной импорт меню остаётся не реализован: в репозитории нет POS-адаптера, обработчика задачи импорта или описания контрактов iiko/r_keeper. Endpoint продолжает возвращать ошибку, а не ложный `202 Accepted`; замечание о синхронизации остаётся блокирующим.
+- В `input/BNP-165/pr_info.md` описание PR относится к PDF/QR и не соответствует фактическим изменениям экрана интеграций. Описание PR нужно актуализировать перед повторным ревью.
+- Входные данные не содержат `ci_failures.md`, полного CI-лога, `ticket.md`, файла `instruction.md` или `AGENTS.md` проекта. Использованы доступные `request.md`, `comments.md`, ответы на вопросы и локальные инструкции `agents/instructions/pr_rework/`.
 
-### Test Coverage
-- `BNP-387.e2e-spec.ts` — проверка RED без ожидания декодирования, GREEN после исправления; PDF содержит декодируемые QR двух выбранных столов.
-- Полный набор unit-тестов API: 508 пройдено.
-- Полный e2e-набор: заблокирован отсутствующими `DATABASE_URL` и Redis.
+## Approach
 
-### Notes
-- Полный e2e-прогон требует настроенных PostgreSQL и Redis.
+- Health-check разрешён только для hostname, явно перечисленных сервером в `INTEGRATION_HEALTHCHECK_HOSTS` (список точных имён через запятую). URL tenant не может сам добавить адрес в allowlist.
+- Перед запросом все DNS-адреса проверяются: допускаются только публичные IPv4. HTTPS-соединение закрепляется за уже проверенным адресом, при этом проверка сертификата сохраняет исходное имя хоста. Redirect не используется.
+- Добавлен регрессионный тест: произвольный URL не получает запрос с API-ключом.
+- Проверка влияния: изменение касается приватного health-check метода интеграций и серверной конфигурации allowlist. Публичные сигнатуры, схема БД, миграции и глобальные провайдеры не менялись в этом раунде. Поиск выполнен через `rg`; CodeGraph недоступен.
+
+## Files Modified
+
+- `apps/api/src/integrations/integrations.service.ts` — allowlist, проверка DNS-адресов и подключение к закреплённому публичному IP.
+- `apps/api/src/integrations/integrations.service.spec.ts` — регрессионный тест утечки credentials на произвольный URL.
+- `apps/api/.env.example` — документирована настройка `INTEGRATION_HEALTHCHECK_HOSTS`.
+
+## Test Coverage
+
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка списка файлов PR.
+- `git status --short` — проверены изменения текущего раунда.
+- `npx eslint apps/api/src/integrations/integrations.service.ts apps/api/src/integrations/integrations.service.spec.ts` — пройдено.
+- `npm run typecheck` — пройдено для всех четырёх workspace.
+- `npm test` — пройдено: 54 API suites / 514 тестов и 25 frontend suites / 72 теста; также прошли сборка и проверка design tokens.
+- Точечный тест `npx jest src/integrations/integrations.service.spec.ts --runInBand` — пройдено: 6 тестов.

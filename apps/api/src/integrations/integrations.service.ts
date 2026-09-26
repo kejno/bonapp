@@ -5,6 +5,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { lookup } from 'node:dns/promises';
+import { request as httpsRequest } from 'node:https';
 import { connect } from 'node:net';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -23,6 +25,21 @@ const REQUIRED_FIELDS: Record<Provider, string[]> = {
   bePaid: ['shopId', 'mode', 'secretKey'],
   skno: ['serialNumber', 'host', 'port'],
 };
+
+function isPublicIpv4(address: string): boolean {
+  const octets = address.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  const [a, b, c] = octets;
+  return !(
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+    (a === 203 && b === 0 && c === 113)
+  );
+}
 
 function isConfigured(provider: Provider, settings: Settings): boolean {
   return REQUIRED_FIELDS[provider].every((key) => {
@@ -122,7 +139,7 @@ export class IntegrationsService {
       select: { integrationSettings: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
-    const value = tenant.integrationSettings;
+    const value: unknown = tenant.integrationSettings;
     if (!value || typeof value !== 'object' || Array.isArray(value)) return structuredClone(EMPTY_SETTINGS);
     return Object.fromEntries(
       PROVIDERS.map((provider) => {
@@ -168,20 +185,41 @@ export class IntegrationsService {
       return { status: 'ConnectionFailed', pingMs: null };
     }
 
-    const startedAt = Date.now();
+    const allowedHosts = (process.env.INTEGRATION_HEALTHCHECK_HOSTS ?? '')
+      .split(',').map((host) => host.trim().toLowerCase()).filter(Boolean);
+    const hostname = url.hostname.toLowerCase();
+    if (!allowedHosts.includes(hostname)) return { status: 'ConnectionFailed', pingMs: null };
+
+    let addresses: { address: string; family: number }[];
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(4000),
-        redirect: 'error',
-      });
-      return {
-        status: response.ok ? 'Online' : 'ConnectionFailed',
-        pingMs: response.ok ? Date.now() - startedAt : null,
-      };
+      addresses = await lookup(hostname, { all: true, verbatim: true });
     } catch {
       return { status: 'Offline', pingMs: null };
     }
+    if (addresses.length === 0 || addresses.some(({ address, family }) => family !== 4 || !isPublicIpv4(address))) {
+      return { status: 'ConnectionFailed', pingMs: null };
+    }
+
+    const startedAt = Date.now();
+    const address = addresses[0].address;
+    return new Promise((resolve) => {
+      const request = httpsRequest({
+        protocol: 'https:',
+        hostname: address,
+        port: url.port || 443,
+        path: `${url.pathname}${url.search}`,
+        servername: hostname,
+        method: 'GET',
+        headers: { Host: hostname, Authorization: `Bearer ${apiKey}` },
+        timeout: 4000,
+      }, (response) => {
+        response.resume();
+        const online = Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 300);
+        resolve({ status: online ? 'Online' : 'ConnectionFailed', pingMs: online ? Date.now() - startedAt : null });
+      });
+      request.once('timeout', () => request.destroy(new Error('Health check timed out')));
+      request.once('error', () => resolve({ status: 'Offline', pingMs: null }));
+      request.end();
+    });
   }
 }

@@ -1,0 +1,1 @@
+Добавил серверный allowlist `INTEGRATION_HEALTHCHECK_HOSTS`. Health-check отклоняет неразрешённые hostname и DNS-ответы с непубличными IPv4; соединение закрепляется за проверенным IP, поэтому tenant URL больше не может перенаправить API-ключ на произвольный хост. Настройка описана в `apps/api/.env.example`.
