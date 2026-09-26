@@ -26,6 +26,15 @@ describe('BNP-362: изменение статуса стола', () => {
         status: TableStatus.AVAILABLE,
       },
     });
+    const order = await fixture.prisma.order.create({
+      data: {
+        tenantId: fixture.tenantId,
+        tableId: table.id,
+        dailyOrderNumber: 1,
+        status: 'COOKING',
+        totalAmountByn: 25,
+      },
+    });
 
     await expect(
       fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
@@ -43,6 +52,23 @@ describe('BNP-362: изменение статуса стола', () => {
         fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
       ).resolves.toMatchObject({ status });
     }
+
+    const listing = await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    expect(listing.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: table.id,
+          status: TableStatus.BILL_REQUESTED,
+          orders: [expect.objectContaining({ id: order.id, status: 'COOKING' })],
+        }),
+      ]),
+    );
+    await expect(
+      fixture.prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+    ).resolves.toMatchObject({ tableId: table.id, status: 'COOKING' });
   });
 
   it('меняет статус стола при создании заказа и освобождает его после оплаты', async () => {
