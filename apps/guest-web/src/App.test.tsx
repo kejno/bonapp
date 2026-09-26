@@ -2,6 +2,8 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
+vi.mock('socket.io-client', () => ({ io: () => ({ on: vi.fn(), disconnect: vi.fn() }) }))
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -28,6 +30,9 @@ describe('App', () => {
       }),
     } as Response).mockResolvedValueOnce({
       ok: true,
+      json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }),
+    } as Response).mockResolvedValueOnce({
+      ok: true,
       json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', price: 8.5 }] }],
     } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
@@ -40,6 +45,10 @@ describe('App', () => {
     expect(screen.getByText('8.5 BYN')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/stable-qr-token$/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/guest\/tenant\/config\?tenantId=tenant-1$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(fetchSpy).toHaveBeenCalledWith(

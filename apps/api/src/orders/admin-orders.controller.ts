@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
@@ -9,6 +9,22 @@ import { OrdersService } from './orders.service';
 @UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class AdminOrdersController {
   constructor(private readonly ordersService: OrdersService) {}
+
+  @Post()
+  create(@Body() body: unknown) {
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      typeof (body as Record<string, unknown>)['tableId'] !== 'string' ||
+      !(body as Record<string, string>)['tableId'].trim() ||
+      typeof (body as Record<string, unknown>)['phone'] !== 'string' ||
+      !(body as Record<string, string>)['phone'].trim()
+    ) {
+      throw new BadRequestException('tableId and phone are required');
+    }
+    const value = body as { tableId: string; phone: string };
+    return this.ordersService.create(value.tableId.trim(), value.phone.trim());
+  }
 
   @Get('active')
   findActive() {

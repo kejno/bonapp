@@ -1,0 +1,1 @@
+Исправлено в `MenuGateway.emitOrderStatusChanged`: событие теперь отправляется в `tenant:<tenantId>` для гостей с QR-токеном и `tenant_kitchen:<tenantId>` для авторизованного KDS. Добавлена проверка маршрутизации в существующем тесте gateway.

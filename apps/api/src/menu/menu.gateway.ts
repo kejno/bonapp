@@ -4,6 +4,8 @@ import { HttpAdapterHost } from '@nestjs/core';
 import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { verifyToken } from '../staff-auth/staff-jwt.util';
+import { ServiceMode, UserRole } from '@prisma/client';
 
 @Injectable()
 export class MenuGateway implements OnModuleInit {
@@ -17,12 +19,14 @@ export class MenuGateway implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    const httpServer = this.httpAdapterHost.httpAdapter.getHttpServer() as HttpServer;
+    const httpServer =
+      this.httpAdapterHost.httpAdapter.getHttpServer() as HttpServer;
     const configuredOrigins = this.config.get<string>('CORS_ORIGIN');
-    const allowedOrigins = configuredOrigins
-      ?.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean) ?? false;
+    const allowedOrigins =
+      configuredOrigins
+        ?.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean) ?? false;
 
     this.io = new Server(httpServer, { cors: { origin: allowedOrigins } });
     this.io.on('connection', (socket: Socket) => {
@@ -39,8 +43,48 @@ export class MenuGateway implements OnModuleInit {
 
   private async joinTenantRoom(socket: Socket): Promise<void> {
     const auth = socket.handshake.auth;
+    const accessToken =
+      auth !== null &&
+      typeof auth === 'object' &&
+      typeof auth['accessToken'] === 'string'
+        ? auth['accessToken']
+        : undefined;
+    if (accessToken) {
+      try {
+        const payload = verifyToken(
+          accessToken,
+          this.config.getOrThrow<string>('JWT_SECRET'),
+        );
+        if (payload.type !== 'access') throw new Error('Invalid token type');
+        const user = await this.prisma
+          .forTenant(payload.tenantId)
+          .user.findFirst({
+            where: {
+              id: payload.userId,
+              isActive: true,
+              isBlocked: false,
+              sessionVersion: payload.sessionVersion,
+            },
+            select: { role: true },
+          });
+        const kdsRoles: UserRole[] = [
+          UserRole.CHEF,
+          UserRole.OWNER,
+          UserRole.MANAGER,
+        ];
+        if (!user || !kdsRoles.includes(user.role))
+          throw new Error('KDS access denied');
+        await socket.join(`tenant_kitchen:${payload.tenantId}`);
+        return;
+      } catch {
+        socket.disconnect(true);
+        return;
+      }
+    }
     const qrToken =
-      auth !== null && typeof auth === 'object' && typeof auth['qrToken'] === 'string'
+      auth !== null &&
+      typeof auth === 'object' &&
+      typeof auth['qrToken'] === 'string'
         ? auth['qrToken']
         : undefined;
     if (!qrToken) {
@@ -70,7 +114,19 @@ export class MenuGateway implements OnModuleInit {
 
   emitOrderStatusChanged(tenantId: string, orderId: string, status: string): void {
     const payload = { orderId, status };
-    this.io.to(`order_${orderId}`).emit('order:status_changed', payload);
-    this.io.to(`tenant:${tenantId}:tenant_kitchen`).emit('order:status_changed', payload);
+    this.io.to(`tenant:${tenantId}`).emit('order:status_changed', payload);
+    this.io.to(`tenant_kitchen:${tenantId}`).emit('order:status_changed', payload);
+  }
+
+  emitKitchenOrder(
+    tenantId: string,
+    event: 'order:created' | 'order:updated',
+    order: unknown,
+  ): void {
+    this.io.to(`tenant_kitchen:${tenantId}`).emit(event, order);
+  }
+
+  emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
+    this.io.to(`tenant:${tenantId}`).emit('tenant:service_mode_changed', { serviceMode });
   }
 }

@@ -101,4 +101,18 @@ describe('MenuGateway', () => {
     expect(toFn).toHaveBeenCalledWith('tenant:tenant-b');
     expect(toFn).toHaveBeenCalledTimes(2);
   });
+
+  it('publishes order status to rooms joined by guests and authenticated kitchen clients', () => {
+    const { gateway, toFn, emitFn } = makeGateway();
+
+    gateway.emitOrderStatusChanged('tenant-1', 'order-7', 'COOKING');
+
+    expect(toFn).toHaveBeenNthCalledWith(1, 'tenant:tenant-1');
+    expect(toFn).toHaveBeenNthCalledWith(2, 'tenant_kitchen:tenant-1');
+    expect(emitFn).toHaveBeenCalledWith('order:status_changed', {
+      orderId: 'order-7',
+      status: 'COOKING',
+    });
+  });
+
 });
