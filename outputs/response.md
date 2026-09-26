@@ -2,29 +2,30 @@
 
 ## Issues/Notes
 
-- Исправлено замечание IMPORTANT: колонка «Поданы» использует `SERVED`; API возвращает заказы с этим статусом и разрешает переход `COOKING → SERVED`.
-- CI-логи не приложены во входных данных. E2E отдельно не запускался.
+- Исправлено замечание IMPORTANT: колонка «Поданы» использует статус `SERVED`; API включает заказы `SERVED` в выборку и допускает переход позиций `COOKING → SERVED`.
+- В `input/BNP-156` отсутствуют файлы CI и merge-конфликтов, поэтому дополнительных CI-сбоев и конфликтов для разбора не было.
+- Перед проверками установлены объявленные в workspace зависимости и сгенерирован Prisma Client: в исходном окружении отсутствовал `howler`, а клиент не соответствовал схеме.
 
 ## Approach
 
-- Регрессионный тест проверяет через `findKitchenOrders`, что заказ `SERVED` действительно входит в возвращаемый список. Также проверен перевод позиций `COOKING → SERVED`.
-- Сохранены маршруты KDS, сотрудников и настроек, события Socket.IO для KDS и режима обслуживания, а также счётчик `dailyOrderNumber` из актуальной ветки `main`.
+- Проверены колонка KDS и выборка заказов, затем добавленные регрессионные тесты выдачи заказов `SERVED` и перехода `COOKING → SERVED`.
+- Существующая миграция KDS добавлена отдельным файлом; уже существующие миграции не изменялись.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx`, `apps/admin-web/src/pages/DashboardPage.tsx` — сохранены маршруты и ссылки на KDS и настройки.
-- `apps/admin-web/src/kds/KdsPage.tsx` — колонка «Поданы» сопоставлена со статусом `SERVED`.
-- `apps/api/src/menu/menu.gateway.ts`, `apps/api/src/menu/menu.module.ts` — сохранены события KDS и режима обслуживания.
-- `apps/api/src/orders/orders.service.ts` — `SERVED` включён в выборку KDS и переход статуса.
-- `apps/api/src/orders/kds-orders.service.spec.ts` — добавлена проверка результата выдачи заказов `SERVED` и перехода позиций.
-- `apps/api/prisma/schema.prisma`, `apps/api/prisma/migrations/20260926180000_kds_staff_departments/migration.sql` — добавлены назначения поваров по цехам.
+- `apps/admin-web/src/kds/KdsPage.tsx` — колонка «Поданы» использует `SERVED`.
+- `apps/api/src/orders/orders.service.ts` — `SERVED` включён в список статусов KDS и переход статуса.
+- `apps/api/src/orders/kds-orders.service.spec.ts` — регрессионные проверки выдачи и перехода `SERVED`.
+- `apps/api/prisma/schema.prisma`, `apps/api/prisma/migrations/20260926180000_kds_staff_departments/migration.sql` — назначение поваров по цехам.
 - `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — отчёт и ответ на открытое обсуждение.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; изменены тест `apps/api/src/orders/kds-orders.service.spec.ts` и этот отчёт.
-- `npx eslint apps/api/src/orders/kds-orders.service.spec.ts` — пройден.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — проверены; рабочее дерево чистое до обновления отчёта.
+- `npx eslint apps/admin-web/src/kds/KdsPage.tsx apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts` — пройден.
 - `npm run typecheck` — пройден для всех четырёх workspace.
-- `npm test` — пройден: 56 API suites (523 теста), 28 admin-web файлов (76 тестов), 1 guest-web файл (3 теста); сборка и проверка дизайн-токенов завершились успешно.
+- `npm test` — пройден: API 56 suites / 523 теста, admin-web 28 файлов / 76 тестов, guest-web 1 файл / 3 теста; сборка и проверка дизайн-токенов также прошли.
 - `git diff --check` — пройден.
-- Проверка области влияния поля `kitchenDepartments`: поиск по `apps/api` и `apps/admin-web` нашёл использование в KDS-сервисе, схеме и тесте. Миграция добавлена новой записью `20260926180000_kds_staff_departments`; существующие миграции не изменены, timestamp новее миграций на `main`.
+- Проверка области влияния миграций: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавление `20260926180000_kds_staff_departments/migration.sql`; изменений существующих миграций нет.
+- Изменения не затрагивают глобальные провайдеры или публичные сигнатуры; поиск по `kitchenDepartments` в API и admin-web подтвердил использование в схеме, API KDS и клиенте KDS.
+- E2E-набор не запускался: изменения затрагивают список статусов KDS и его тесты, но не глобальные провайдеры; `npm test` выполнил полный набор unit-тестов workspace.
