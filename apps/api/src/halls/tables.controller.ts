@@ -106,7 +106,7 @@ function isValidStatusUpdate(body: unknown): body is StatusUpdateBody {
   return typeof b['status'] === 'string' && ALLOWED_STATUSES.has(b['status']);
 }
 
-@Controller('api/v1/admin/tables')
+@Controller('admin/tables')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TablesController {
   constructor(

@@ -90,6 +90,7 @@ describe('BNP-387: PDF for selected tables', () => {
       })
       .compile();
     app = module.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     await app.init();
   });
 
