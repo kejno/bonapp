@@ -11,7 +11,7 @@
 
 - Health-check разрешён только для hostname, явно перечисленных сервером в `INTEGRATION_HEALTHCHECK_HOSTS` (список точных имён через запятую). URL tenant не может сам добавить адрес в allowlist.
 - Перед запросом все DNS-адреса проверяются: допускаются только публичные IPv4. HTTPS-соединение закрепляется за уже проверенным адресом, при этом проверка сертификата сохраняет исходное имя хоста. Redirect не используется.
-- Добавлен регрессионный тест: произвольный URL не получает запрос с API-ключом.
+- Регрессионный тест проверяет, что для произвольного URL не вызывается реальный HTTPS-клиент. В первом прогоне тест выявил несовместимость `jest.spyOn` с неизменяемым Node binding; заменил его на Jest-мок HTTPS-клиента.
 - Проверка влияния: изменение касается приватного health-check метода интеграций и серверной конфигурации allowlist. Публичные сигнатуры, схема БД, миграции и глобальные провайдеры не менялись в этом раунде. Поиск выполнен через `rg`; CodeGraph недоступен.
 
 ## Files Modified
@@ -24,7 +24,7 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка списка файлов PR.
 - `git status --short` — проверены изменения текущего раунда.
-- `npx eslint apps/api/src/integrations/integrations.service.ts apps/api/src/integrations/integrations.service.spec.ts` — пройдено.
+- `npx eslint apps/api/src/integrations/integrations.service.spec.ts` — пройдено.
 - `npm run typecheck` — пройдено для всех четырёх workspace.
 - `npm test` — пройдено: 54 API suites / 514 тестов и 25 frontend suites / 72 теста; также прошли сборка и проверка design tokens.
-- Точечный тест `npx jest src/integrations/integrations.service.spec.ts --runInBand` — пройдено: 6 тестов.
+- Влияние на публичные сигнатуры и потребителей проверено поиском `rg` по `apps/*` и `packages/*`; изменения сигнатур отсутствуют. Схема БД, миграции и глобальные провайдеры в этом раунде не менялись.

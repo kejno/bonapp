@@ -1,5 +1,11 @@
 import { IntegrationsService } from './integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
+import * as https from 'node:https';
+
+jest.mock('node:https', () => {
+  const actual = jest.requireActual<typeof import('node:https')>('node:https');
+  return { ...actual, request: jest.fn(actual.request) };
+});
 
 describe('IntegrationsService', () => {
   const findUnique = jest.fn();
@@ -71,7 +77,7 @@ describe('IntegrationsService', () => {
   });
 
   it('does not send integration credentials to a tenant supplied host', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+    const requestSpy = jest.mocked(https.request);
     const previousAllowlist = process.env.INTEGRATION_HEALTHCHECK_HOSTS;
     delete process.env.INTEGRATION_HEALTHCHECK_HOSTS;
     findUnique.mockResolvedValue({
@@ -83,8 +89,7 @@ describe('IntegrationsService', () => {
     const result = await service.getStatus('tenant-1');
 
     expect(result.integrations.iiko.status).toBe('ConnectionFailed');
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect(requestSpy).not.toHaveBeenCalled();
     if (previousAllowlist === undefined) delete process.env.INTEGRATION_HEALTHCHECK_HOSTS;
     else process.env.INTEGRATION_HEALTHCHECK_HOSTS = previousAllowlist;
   });
