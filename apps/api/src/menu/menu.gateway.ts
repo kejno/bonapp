@@ -42,7 +42,27 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
       this.subClient = this.pubClient.duplicate();
       this.io.adapter(createAdapter(this.pubClient, this.subClient));
     }
-    this.io.on('connection', (socket) => this.registerHandlers(socket));
+    this.io.on('connection', (socket) => {
+      this.registerHandlers(socket);
+      const auth = record(socket.handshake.auth);
+      if (typeof auth['qrToken'] === 'string') {
+        void this.prisma.findTableByQrToken(auth['qrToken']).then((table) => {
+          if (table) return socket.join(`tenant:${table.tenantId}`);
+          socket.disconnect(true);
+        }).catch((error: unknown) => {
+          this.logger.warn(`Rejected QR menu connection: ${String(error)}`);
+          socket.disconnect(true);
+        });
+      } else if (typeof auth['accessToken'] === 'string') {
+        void this.joinTenantRoom(socket, {
+          room: 'hall',
+          authorization: `Bearer ${auth['accessToken']}`,
+        }).catch((error: unknown) => {
+          this.logger.warn(`Rejected staff hall connection: ${String(error)}`);
+          socket.disconnect(true);
+        });
+      }
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -145,7 +165,10 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     if (status === 'READY') this.io.to(`tenant_${tenantId}_hall`).emit('order:status_changed', event);
   }
 
-  emitWaiterCalled(tenantId: string, payload: unknown): void {
+  emitWaiterCalled(
+    tenantId: string,
+    payload: { tableId: string; tableNumber: number; reason: 'NEED_BILL' | 'CALL_STAFF' },
+  ): void {
     this.io.to(`tenant_${tenantId}_hall`).emit('waiter:called', payload);
   }
 
