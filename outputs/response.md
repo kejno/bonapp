@@ -2,26 +2,27 @@
 
 ## Issues/Notes
 
-- Удалено автоматическое присоединение QR-клиентов к общей комнате tenant. Такая комната раскрывает гостевым клиентам события, предназначенные всему заведению.
-- Открытый блокирующий тред учтён. Гость подключается к комнате заказа только после проверки действующей сессии стола и принадлежности заказа этому столу.
-- В `input/BNP-154` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневой `instruction.md`; CI-сбоев в подготовленных материалах нет. Конфликтных маркеров в рабочем дереве не обнаружено.
+- Ветка уже содержит исправление открытого блокирующего замечания: QR-гости не присоединяются к общей комнате tenant. Подключение к комнате заказа проходит только после проверки действующей table session и принадлежности активного заказа этому столу.
+- Открытый тред проверен сквозным тестом: статус получает гость своего заказа и подключённая кухня, а гость другого стола не получает событие.
+- `outputs/review_replies.json` содержит ссылку-ответ для открытого треда `PRRT_kwDOUUbUMs6mUrZr` с правильным `inReplyToId`.
+- В `input/BNP-154` отсутствуют `pr_files.txt`, `ci_failures.md`, `ci_failures_full.log`, `ticket.md` и корневой `instruction.md`. Для инструкций проекта прочитан `CLAUDE.md`; CI-сбоев и файлов с конфликтами среди подготовленных материалов нет.
 
 ## Approach
 
-- Удалена регистрация QR-сокета в общей комнате `tenant:<tenantId>`. Подключение персонала по `accessToken` оставлено с проверкой JWT и членства в tenant.
-- Использована существующая сквозная проверка: владелец заказа получает `order:status_changed`, гость другого стола не получает это событие, кухня получает событие в своей комнате.
+- Проверил маршрутизацию Socket.io в `MenuGateway`: событие гостю отправляется в `order_<id>`, а персоналу — в tenant-комнату кухни или зала. Tenant-комнату может открыть только персонал с действительным access token.
+- Проверил уже добавленный интеграционный сценарий создания заказа, подключения двух гостей к заказам разных столов, агрегации KDS и доставки `COOKING`.
+- Исходный код в этой итерации не менялся: исправление и регрессионный тест уже присутствуют в текущей ветке. Обновлены только отчёт и ответ для открытого review-треда.
 
 ## Files Modified
 
-- `apps/api/src/menu/menu.gateway.ts` — исключено автоматическое присоединение QR-гостей к общей комнате.
-- `outputs/response.md` — этот отчёт.
-- `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред.
+- `outputs/response.md` — актуальный отчёт о проверках и состоянии исправления.
+- `outputs/review_replies/thread_1.md` — ответ на единственный открытый inline-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены. В рабочем дереве уже присутствуют отдельные staged-изменения waiter-call; они не относятся к этому исправлению и не включены в список изменённых файлов выше.
-- `npx eslint apps/api/src/menu/menu.gateway.ts` — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace. Первый запуск выявил устаревший сгенерированный Prisma Client (`Guest` отсутствовал); после `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma` повторный запуск прошёл.
-- `npm test` — успешно: API — 60 suites / 538 тестов, admin-web — 29 файлов / 80 тестов, guest-web — 1 файл / 5 тестов. Сборка приложений и `test:design-tokens` также завершились успешно.
-- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно (1 suite / 1 тест); проверены доставка статуса владельцу заказа и отсутствие события у гостя другого стола.
-- `git diff --check` и `git diff --cached --check` — выполнены.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево до обновления отчёта было чистым.
+- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
+- `npm run typecheck` — успешно во всех четырёх workspace. Первый запуск обнаружил устаревший сгенерированный Prisma Client; после `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma` полный повтор проверки прошёл.
+- `npm test` — успешно: API — 60 наборов / 538 тестов, admin-web — 29 файлов / 80 тестов, guest-web — 1 файл / 5 тестов; сборка workspace и `test:design-tokens` также прошли.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно (1 набор / 1 тест). Проверены получение события гостем-владельцем и кухней, а также отсутствие события у гостя другого стола.
+- Проверка влияния Socket.io выполнена поиском `rg` по исходникам и тестам: гостевой доступ к комнате заказа проверяет table session и `tableId`; широковещательные tenant-комнаты доступны только авторизованному персоналу.
