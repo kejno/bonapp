@@ -2,7 +2,7 @@ import request from 'supertest';
 import { MenuGateway } from '../src/menu/menu.gateway';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
-describe('BNP-364: изменение стоп-листа блюда', () => {
+describe('BNP-364: update item stop-list state', () => {
   const fixture = new MenuCacheTestFixture();
 
   beforeAll(async () => {
@@ -13,27 +13,51 @@ describe('BNP-364: изменение стоп-листа блюда', () => {
     await fixture.stop();
   });
 
-  it('сохраняет состояние в базе и показывает его в обновлённом гостевом меню', async () => {
+  it('updates the database and guest menu and emits the tenant event', async () => {
+    const gateway = fixture.app.get(MenuGateway);
+    const emitStopListChanged = jest.spyOn(gateway, 'emitStopListChanged');
     const authorization = { Authorization: `Bearer ${fixture.token()}` };
-    const emitStopListChanged = jest.spyOn(fixture.app.get(MenuGateway), 'emitStopListChanged');
+
+    await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .set(authorization)
+      .expect(200);
+
     await request(fixture.app.getHttpServer())
       .patch(`/api/v1/admin/menu/items/${fixture.itemId}/stop-list`)
       .set(authorization)
       .send({ isInStopList: true })
       .expect(200);
-    expect(emitStopListChanged).toHaveBeenCalledWith(fixture.tenantId, fixture.itemId, true);
 
-    await expect(fixture.prisma.menuItem.findUnique({
-      where: { tenantId_id: { tenantId: fixture.tenantId, id: fixture.itemId } },
-      select: { isInStopList: true },
-    })).resolves.toEqual({ isInStopList: true });
+    await expect(
+      fixture.prisma.menuItem.findUnique({
+        where: { tenantId_id: { tenantId: fixture.tenantId, id: fixture.itemId } },
+        select: { isInStopList: true },
+      }),
+    ).resolves.toEqual({ isInStopList: true });
 
-    const guestMenu = (await request(fixture.app.getHttpServer())
+    const guestMenu = await request(fixture.app.getHttpServer())
       .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
       .set(authorization)
-      .expect(200)) as unknown as { body: Array<{ items: Array<{ id: string; isInStopList: boolean }> }> };
-    expect(guestMenu.body.some((category) =>
-      category.items.some((item) => item.id === fixture.itemId && item.isInStopList),
-    )).toBe(true);
+      .expect(200);
+    expect(hasStopListedItem(guestMenu.body, fixture.itemId)).toBe(true);
+    expect(emitStopListChanged).toHaveBeenCalledWith(fixture.tenantId, fixture.itemId, true);
   });
 });
+
+function hasStopListedItem(menu: unknown, itemId: string): boolean {
+  if (!Array.isArray(menu)) return false;
+  const categories: unknown[] = menu;
+  return categories.some((category: unknown) => {
+    if (!isRecord(category) || !Array.isArray(category.items)) return false;
+    const items: unknown[] = category.items;
+    return items.some(
+      (item: unknown) =>
+        isRecord(item) && item.id === itemId && item.isInStopList === true,
+    );
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
