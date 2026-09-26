@@ -88,6 +88,19 @@ export class OrdersService {
     };
   }
 
+  updateKitchenStatusForTenant(
+    tenantId: string,
+    id: string,
+    status: string,
+    department: string | undefined,
+    userId: string,
+    role: UserRole,
+  ) {
+    return this.tenantContext.run(tenantId, () =>
+      this.updateKitchenStatus(id, status, department, userId, role),
+    );
+  }
+
   async updateKitchenStatus(
     id: string,
     status: string,
@@ -231,9 +244,6 @@ export class OrdersService {
         data: { tenantId, tableId, dailyOrderNumber },
       });
       return order;
-    });
-    this.menuGateway?.emitKitchenOrder(tenantId, 'order:created', {
-      id: order.id,
     });
     return order;
   }

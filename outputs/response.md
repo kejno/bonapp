@@ -1,30 +1,30 @@
-# Исправления PR #147
+# Исправления PR #146
 
 ## Issues/Notes
 
-- Добавлена настройка назначения цехов поварам в разделе «Сотрудники и смены». Список и изменение назначений доступны только пользователям с административной ролью; API принимает только `HOT`, `COLD` и `BAR`.
-- События `order:created` и `order:updated` теперь отправляются только после успешного завершения транзакции.
-- CI-логи и описание тикета не приложены в `input/`; других замечаний помимо двух открытых inline-тредов не обнаружено.
+- Исправлена маршрутизация `tenant:service_mode_changed`: событие отправляется в комнаты кухни и зала, к которым подключается персонал.
+- Входящие замечания по проверке перехода статуса и JWT из query уже устранены в предыдущем изменении PR; текущий открытый тред касался только маршрутизации события.
+- В исходной локальной установке отсутствовал `@socket.io/redis-adapter`; зависимости восстановлены командой `npm install --ignore-scripts --no-audit --no-fund`, Prisma Client сгенерирован через `npx prisma generate --schema apps/api/prisma/schema.prisma`.
+- CI-логи и файл конфликтов слияния в `.dmtools/input/BNP-155/` отсутствуют, поэтому локально проверены доступные материалы и текущая ветка.
 
 ## Approach
 
-- Добавил API для списка поваров и сохранения их цехов, а также чекбоксы назначения в административном интерфейсе.
-- Добавил регрессионные проверки для назначения цехов и порядка фиксации транзакции и публикации события.
-- Проверил существующих потребителей обновлённого потока KDS полным набором тестов; публичные сигнатуры и схема БД этой доработкой не менялись.
+- Добавлен регрессионный тест с проверкой события и обеих целевых комнат.
+- Сначала тест воспроизвёл дефект: событие уходило в `tenant:<id>`. Затем Gateway был исправлен на отправку в `tenant_<id>_kitchen` и `tenant_<id>_hall`.
 
 ## Files Modified
 
-- `apps/api/src/staff/staff.controller.ts` — административные маршруты списка поваров и обновления назначений.
-- `apps/api/src/staff/staff.service.ts` — tenant-scoped чтение и проверка назначений цехов.
-- `apps/admin-web/src/pages/StaffPage.tsx` — настройка цехов в интерфейсе управления сотрудниками.
-- `apps/api/src/orders/orders.service.ts` — публикация Socket.io-событий после commit.
-- `apps/api/src/orders/kds-orders.service.spec.ts`, `apps/api/src/staff/staff.service.spec.ts`, `apps/api/test/kds-order-status.e2e-spec.ts`, `apps/admin-web/src/pages/StaffPage.test.tsx` — регрессионные проверки и обновление тестовой фикстуры.
+- `apps/api/src/menu/menu.gateway.ts` — маршрутизация события смены режима обслуживания в обе комнаты персонала.
+- `apps/api/src/menu/menu.gateway.spec.ts` — регрессионный тест маршрутизации.
+- `outputs/response.md` — отчёт о rework.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый review-тред.
 
 ## Test Coverage
 
-- `npx eslint apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/src/staff/staff.service.ts apps/api/src/staff/staff.service.spec.ts apps/api/src/staff/staff.controller.ts apps/api/test/kds-order-status.e2e-spec.ts apps/admin-web/src/pages/StaffPage.tsx apps/admin-web/src/pages/StaffPage.test.tsx` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки состава файлов и рабочей копии.
+- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 56 наборов / 524 теста; admin-web — 28 файлов / 76 тестов; guest-web — 1 файл / 3 теста. Сборка и проверка design tokens также прошли.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — 3 теста прошли, включая обновление назначения через API. После завершения Jest сообщил об открытой асинхронной операции и не завершил процесс самостоятельно.
+- `npm test` — успешно: API — 56 наборов и 525 тестов; admin-web — 28 файлов и 76 тестов; guest-web — 1 файл и 3 теста. Команда также запустила сборку и проверку design tokens.
+- `npm run test:design-tokens` — успешно; сборка трёх приложений и проверка design tokens завершились.
 - `git diff --check` — успешно.
-- Blast-radius: поиск потребителей не требовался — публичные сигнатуры не менялись; проверены API-поток KDS, административный маршрут назначения и все workspace тестами. Миграция схемы из исходного PR не редактировалась.
+- Blast-radius check для Prisma: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только новую миграцию (существующие миграции не изменены); `rg` по `tableSession`/`table_sessions` проверил все вызовы в `apps/api/src` и модель схемы.

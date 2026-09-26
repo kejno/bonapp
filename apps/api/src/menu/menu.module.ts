@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { StorageModule } from '../storage/storage.module';
 import { GuestMenuController } from './guest-menu.controller';
@@ -9,9 +9,10 @@ import { MenuAdminService } from './menu-admin.service';
 import { MenuService } from './menu.service';
 import { MenuGateway } from './menu.gateway';
 import { StopListController } from './stop-list.controller';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [AuthModule, StorageModule, forwardRef(() => OrdersModule)],
   controllers: [
     GuestMenuController,
     StopListController,
