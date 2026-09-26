@@ -4,9 +4,8 @@
 
 - WebSocket больше не записывает `COOKING` напрямую: переход выполняется общим сервисом KDS, который проверяет исходный статус и бизнес-правила, применяемые REST.
 - JWT персонала теперь принимается из `handshake.query` наряду с заголовком и `handshake.auth`.
-- Разрешены конфликты слияния в gateway, контроллере заказов и отчёте.
-- Первоначальный полный тестовый прогон выявил ошибку тестовой фикстуры и совпадение timestamp миграции с `main`; оба дефекта исправлены.
-- CI-логи в подготовленном `input/` отсутствуют.
+- В `input/BNP-155` нет файлов с CI-логами и отдельного файла с конфликтами слияния; конфликтных маркеров в рабочем diff нет.
+- Первый локальный typecheck выполнялся до восстановления зависимостей и генерации Prisma Client. После `npm ci` и генерации клиента все проверки прошли.
 
 ## Approach
 
@@ -26,9 +25,9 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки файлов и состояния рабочей копии.
-- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/src/menu/menu.module.ts apps/api/src/orders/orders.controller.ts apps/api/src/orders/orders.module.ts apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки файлов и состояния рабочей копии; после проверок изменён только этот отчёт.
+- `npx eslint` для всех изменённых TypeScript-файлов — успешно.
 - `npm run typecheck` — успешно во всех 4 workspace.
 - `npm test` — успешно: API 56 наборов / 524 теста, admin-web 28 файлов / 76 тестов, guest-web 1 файл / 3 теста; сборка и проверка design tokens также прошли.
 - `git diff --check` — успешно.
-- Blast-radius: циклические импорты модулей проверены typecheck и полным набором тестов. `rg` подтвердил WebSocket gateway единственным production-потребителем нового метода; проверены все вызовы `TableSession`. Новая миграция имеет timestamp `20260926180001`, существующие миграции не изменялись.
+- Blast-radius: циклические импорты модулей проверены typecheck и полным набором тестов. Поиск `rg` проверил вызовы нового tenant-scoped метода и модели `TableSession`; добавлена только новая миграция `20260926180001_add_table_sessions`, существующие миграции не изменялись.
