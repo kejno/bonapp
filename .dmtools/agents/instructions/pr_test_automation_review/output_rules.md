@@ -33,6 +33,11 @@ diff:
 - A single `BLOCKING` inline comment on a ticket's own file is enough to make
   that entry `"BLOCK"`; issues confined to a sibling ticket's file must NOT
   affect this ticket's entry.
+- Exception: a FAILED test whose failure is a genuine product defect (the
+  test itself is correct) gets `"APPROVE"`, never `"BLOCK"` — see "Genuine
+  defect → APPROVE" in `general_guidelines.md`. `APPROVE` on a FAILED result
+  is what routes the ticket to Bug creation; `BLOCK` would route it to
+  test-code rework instead, which cannot fix a product defect.
 - The top-level `recommendation` stays the overall PR verdict (BLOCK if ANY
   Test Case is BLOCK) — `perTestCase` is what actually drives each ticket's
   Jira status, so get it right per-file even when the overall verdict is
