@@ -8,6 +8,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import OnboardingStep4Page from './pages/OnboardingStep4Page';
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,10 @@ function App() {
                 <LoginPage />
               </PublicOnlyRoute>
             }
+          />
+          <Route
+            path="/onboarding/step-4"
+            element={<ProtectedRoute><OnboardingStep4Page /></ProtectedRoute>}
           />
           <Route
             path="/dashboard"

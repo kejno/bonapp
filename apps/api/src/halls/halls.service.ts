@@ -101,6 +101,16 @@ export class HallsService {
     });
   }
 
+  async getTableQrPreview(tenantId: string, tableId: string) {
+    const db = this.prisma.forTenant(tenantId);
+    const [table, tenant] = await Promise.all([db.table.findFirst({
+      where: { id: tableId },
+      select: { tableNumber: true, qrToken: true },
+    }), db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } })]);
+    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
+    return { tableNumber: table.tableNumber, restaurantName: tenant?.name ?? '', url: createGuestTableUrl(getGuestMenuBaseUrl(), table.qrToken) };
+  }
+
   async generateQrPdf(tenantId: string, tableIds: string[]): Promise<Buffer> {
     const menuBaseUrl = getGuestMenuBaseUrl();
     const tables = await this.prisma.forTenant(tenantId).table.findMany({
