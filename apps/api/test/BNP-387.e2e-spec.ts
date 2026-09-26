@@ -16,7 +16,7 @@ import { TablesController } from '../src/halls/tables.controller';
 
 describe('BNP-387: PDF for selected tables', () => {
   let app: INestApplication;
-  const selectedTables = [1, 2];
+  const selectedTables = [1, 3];
   const tables = [1, 2, 3].map((tableNumber) => ({
     id: `75fe5e2c-3b7b-4d76-9c19-bd0c32850a0${tableNumber}`,
     tableNumber,
@@ -142,7 +142,7 @@ describe('BNP-387: PDF for selected tables', () => {
         await pdfPage.goto(`file://${pdfPath}`);
         const expectedQrCodes = [
           'https://bonapp.by/t/qr-token-1',
-          'https://bonapp.by/t/qr-token-2',
+          'https://bonapp.by/t/qr-token-3',
         ];
         for (let pageNumber = 0; pageNumber < 2; pageNumber += 1) {
           if (pageNumber > 0) {
@@ -191,9 +191,9 @@ describe('BNP-387: PDF for selected tables', () => {
       QRCode.toDataURL(`https://bonapp.by/t/${tables[number - 1].qrToken}`),
     ));
     expect(renderedHtml).toContain('Стол 1');
-    expect(renderedHtml).toContain('Стол 2');
-    expect(renderedHtml).not.toContain('Стол 3');
+    expect(renderedHtml).toContain('Стол 3');
+    expect(renderedHtml).not.toContain('Стол 2');
     for (const qrImage of selectedQrImages) expect(renderedHtml).toContain(qrImage);
-    expect(renderedHtml).not.toContain(await QRCode.toDataURL('https://bonapp.by/t/qr-token-3'));
+    expect(renderedHtml).not.toContain(await QRCode.toDataURL('https://bonapp.by/t/qr-token-2'));
   }, 30000);
 });
