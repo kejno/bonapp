@@ -217,6 +217,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async unscopedTransaction<T>(
+    tenantId: string,
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return operation(tx);
+    });
+  }
+
   /**
    * Looks up a table by its globally-unique QR token without tenant scoping.
    * Used only for guest session initialization where the tenant must first be

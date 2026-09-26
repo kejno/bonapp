@@ -197,6 +197,17 @@ export class AuthService {
     this.appName = config.get<string>('APP_NAME', 'Bonapp');
   }
 
+  async setInitialPassword(userId: string, tenantId: string, password: string): Promise<{ success: true }> {
+    if (password.length < 8 || password.length > 128) {
+      throw new HttpException('Пароль должен содержать от 8 до 128 символов', HttpStatus.BAD_REQUEST);
+    }
+    const scoped = this.prisma.forTenant(tenantId);
+    const user = await scoped.user.findFirst({ where: { id: userId, role: 'OWNER', mustChangePassword: true }, select: { id: true } });
+    if (!user) throw new ForbiddenException('Настройка пароля недоступна');
+    await scoped.user.update({ where: { id: userId }, data: { passwordHash: await hash(password, BCRYPT_COST), mustChangePassword: false } });
+    return { success: true };
+  }
+
   async pinLogin(
     tenantSlug: string,
     pin: string,
