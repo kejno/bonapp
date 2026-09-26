@@ -22,10 +22,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; в итоговом статусе отмечен только обновлённый `outputs/response.md`.
-- `npx eslint apps/admin-web/src/kds/KdsPage.tsx apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/test/menu-cache-test.fixture.ts apps/api/test/kds-order-status.e2e-spec.ts` — пройден.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
+- `npx eslint apps/admin-web/src/kds/KdsPage.tsx apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/test/menu-cache-test.fixture.ts apps/api/test/kds-order-status.e2e-spec.ts` — пройден после установки зависимостей и генерации Prisma Client.
 - `npm run typecheck` — пройден во всех четырёх workspace.
 - `npm test` — пройден: API — 56 наборов / 521 тест, admin-web — 28 файлов / 76 тестов, guest-web — 1 файл / 3 теста; сборка и проверка дизайн-токенов также завершились успешно.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — оба e2e-теста пройдены на PostgreSQL и Redis. Jest вывел предупреждение об открытом handle после тестов.
+- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — оба e2e-теста пройдены на PostgreSQL и Redis. После тестов Jest сообщил об открытом async handle, поэтому процесс не завершился самостоятельно.
 - `git diff --check` — пройден.
 - `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — обнаружена только новая миграция `20260926180000_kds_staff_departments/migration.sql`; существующие миграции не изменялись.
