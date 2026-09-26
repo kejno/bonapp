@@ -34,6 +34,10 @@ export class OrdersService {
     if (!tenantId) throw new ForbiddenException();
 
     return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+      if (tenant?.serviceMode === 'VIEW_ONLY') {
+        throw new ConflictException('Ordering is disabled for this tenant');
+      }
       const table = await tx.table.findFirst({ where: { id: tableId } });
       if (!table) throw new NotFoundException(`Table ${tableId} not found`);
       const reservation = await tx.table.updateMany({
@@ -43,7 +47,6 @@ export class OrdersService {
       if (reservation.count !== 1) {
         throw new ConflictException('Table is not available');
       }
-      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
       const timeZone = tenant?.timezone ?? 'Europe/Minsk';
       const now = new Date();
       const [start, end, businessDate] = businessDayBounds(now, timeZone);

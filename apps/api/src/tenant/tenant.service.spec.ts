@@ -54,7 +54,6 @@ describe('TenantService', () => {
       mockStorageService.upload.mockResolvedValue(
         'http://s3/bucket/tenants/tenant-uuid/logo.png',
       );
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo(tenantId, file);
 
@@ -71,7 +70,6 @@ describe('TenantService', () => {
         name: 'Test Tenant',
       });
       mockStorageService.upload.mockResolvedValue('url');
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo('untrusted-tenant-id', file);
 
@@ -80,29 +78,18 @@ describe('TenantService', () => {
         file.buffer,
         'image/png',
       );
-      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
-        where: { id: 'tenant-from-context' },
-        data: { logoUrl: 'url' },
-      });
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
     });
 
-    it('should persist logoUrl to database', async () => {
-      const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
-      mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
-
+    it('does not persist a logo until the settings form is saved', async () => {
+      mockStorageService.upload.mockResolvedValue('url');
       await service.uploadLogo(tenantId, file);
-
-      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
-        where: { id: tenantId },
-        data: { logoUrl: url },
-      });
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
     });
 
     it('should return the public URL', async () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       const result = await service.uploadLogo(tenantId, file);
 
@@ -117,8 +104,6 @@ describe('TenantService', () => {
       } as Express.Multer.File;
 
       mockStorageService.upload.mockResolvedValue('url');
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
-
       await service.uploadLogo(tenantId, webpFile);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
@@ -153,6 +138,24 @@ describe('TenantService', () => {
         );
 
         expect(mockStorageService.upload).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('updateSettings', () => {
+    it('updates only editable profile, branding, legal and service mode fields for the current tenant', async () => {
+      const settings = {
+        name: 'Cafe', address: 'Minsk', unp: '123456789', legalName: 'Cafe LLC',
+        brandColor: '#123456', logoUrl: 'https://cdn/logo.png', serviceMode: 'VIEW_ONLY' as const,
+      };
+      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe', ...settings });
+
+      await service.updateSettings('tenant-uuid', settings);
+
+      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-uuid' },
+        data: settings,
+        select: { id: true, name: true, slug: true, address: true, unp: true, legalName: true, logoUrl: true, brandColor: true, serviceMode: true },
       });
     });
   });
