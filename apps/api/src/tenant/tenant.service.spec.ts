@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantContextService } from './tenant-context.service';
 
 const mockStorageService = {
   upload: jest.fn(),
@@ -28,6 +29,10 @@ describe('TenantService', () => {
         TenantService,
         { provide: StorageService, useValue: mockStorageService },
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: TenantContextService,
+          useValue: { getTenantId: () => 'tenant-uuid' },
+        },
       ],
     }).compile();
 
@@ -47,7 +52,10 @@ describe('TenantService', () => {
     } as Express.Multer.File;
 
     beforeEach(() => {
-      mockPrismaService.db.tenant.findUnique.mockResolvedValue({ id: tenantId, name: 'Test Tenant' });
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({
+        id: tenantId,
+        name: 'Test Tenant',
+      });
     });
 
     it('should upload file to storage with correct key', async () => {
@@ -154,6 +162,44 @@ describe('TenantService', () => {
 
         expect(mockStorageService.upload).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('payment credentials', () => {
+    it('persists encrypted gateway credentials and returns status without exposing secrets', async () => {
+      process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
+      const persisted: Record<string, unknown>[] = [];
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({
+        paymentCredentials: null,
+      });
+      mockPrismaService.db.tenant.update.mockImplementation(
+        ({
+          data,
+        }: {
+          data: { paymentCredentials: Record<string, unknown> };
+        }) => {
+          persisted.push(data.paymentCredentials);
+          mockPrismaService.db.tenant.findUnique.mockResolvedValue({
+            paymentCredentials: data.paymentCredentials,
+          });
+          return Promise.resolve({});
+        },
+      );
+
+      const result = await service.savePaymentCredentials({
+        gateway: 'oplati',
+        merchantId: 'secret-merchant',
+      });
+
+      const saved = persisted[0];
+      expect(JSON.stringify(saved)).not.toContain('secret-merchant');
+      expect(result).toEqual({
+        oplati: true,
+        erip: false,
+        bepaid: false,
+        skno: false,
+      });
+      delete process.env.PAYMENT_CREDENTIALS_SECRET;
     });
   });
 });

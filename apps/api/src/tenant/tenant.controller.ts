@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Post,
+  Get,
+  Put,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -40,5 +42,15 @@ export class TenantController {
     }
     const logoUrl = await this.tenantService.uploadLogo(tenantId, file);
     return { logoUrl };
+  }
+
+  @Get('onboarding/step3/payments')
+  getPaymentStatuses() {
+    return this.tenantService.getPaymentGatewayStatuses();
+  }
+
+  @Put('onboarding/step3/payments')
+  savePaymentCredentials(@Body() credentials: unknown) {
+    return this.tenantService.savePaymentCredentials(credentials);
   }
 }
