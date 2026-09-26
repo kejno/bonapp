@@ -28,6 +28,19 @@ describe('OrdersService KDS', () => {
         },
       ],
     },
+    {
+      id: 'served-order',
+      tenantId: 'tenant-1',
+      status: OrderStatus.SERVED,
+      items: [
+        {
+          id: 'served-hot-1',
+          itemId: 'dish-1',
+          status: OrderStatus.SERVED,
+          kitchenDepartment: 'HOT',
+        },
+      ],
+    },
   ];
   const orderUpdate = jest.fn();
   const orderItemUpdate = jest.fn();
@@ -78,9 +91,10 @@ describe('OrdersService KDS', () => {
   });
 
   it('includes served orders in the KDS order list', async () => {
-    await service.findKitchenOrders('chef-1', UserRole.CHEF);
-    expect(findKitchenOrders.mock.calls[0]?.[0].where.status.in).toContain(
-      OrderStatus.SERVED,
+    const result = await service.findKitchenOrders('chef-1', UserRole.CHEF);
+
+    expect(result.orders.some((order) => order.status === OrderStatus.SERVED)).toBe(
+      true,
     );
   });
 
