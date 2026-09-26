@@ -2,29 +2,29 @@
 
 ## Issues/Notes
 
-- Разрешён конфликт `apps/admin-web/src/App.tsx`: сохранены маршруты `/staff` и `/settings/integrations`.
-- Блокирующая синхронизация меню остаётся нерешённой. `IntegrationsService.syncMenu` после проверки настроек всегда выбрасывает `ServiceUnavailableException`. В репозитории нет адаптеров iiko/r_keeper и процесса импорта меню в каталог. Без реализации этих компонентов нельзя корректно подтвердить запуск и возвращать `202 Accepted`; открытый тред оставлен без заявления о выполненном исправлении.
-- У миграции интеграций был одинаковый timestamp с миграцией `staff_shifts`, появившейся при разрешении конфликта с `main`. Timestamp миграции интеграций обновлён до `20260926000003`, чтобы история миграций оставалась уникальной и append-only.
-- В `input/BNP-165` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `ticket.md`, `pr_files.txt` и `instruction.md`. Описание PR в `pr_info.md` не соответствует фактическому diff и требует обновления.
+- Блокирующий тред о синхронизации меню остаётся открытым. `IntegrationsService.syncMenu` после проверки настроек выбрасывает `ServiceUnavailableException`; адаптеров iiko/r_keeper и процесса импорта меню в каталог в проекте нет. Поэтому фактический запуск синхронизации не реализован и успех endpoint не заявлен.
+- Исправлен конфликт timestamp: миграция tenant integration settings перенесена с `20260926000003` на `20260926000004`, поскольку `origin/main` уже содержит миграцию смен с timestamp `20260926000003`.
+- В подготовленных материалах отсутствуют `ci_failures.md`, `ci_failures_full.log`, `ticket.md`, `pr_files.txt` и `instruction.md`. PR description в `pr_info.md` описывает исправление PDF/QR, не соответствующее diff.
+- В рабочем индексе уже были staged изменения для смен персонала (14 файлов) до этой проверки; они не относятся к устранению замечания интеграций и оставлены без изменений.
 
 ## Approach
 
-- Сохранены оба независимых маршрута в `App.tsx`; файл добавлен в индекс как разрешение конфликта.
-- Проверка влияния по истории миграций выявила совпадающий timestamp; для миграции интеграций выбран следующий свободный timestamp после миграций `main`.
-- Поиск по `apps/api/src` подтвердил отсутствие POS-адаптеров и существующего процесса импорта. Изменение endpoint, которое объявляло бы несуществующий запуск успешным, не внесено.
+- Сверены миграции с `origin/main`; миграция интеграций переименована на следующий уникальный timestamp.
+- Поиск в `apps/api/src` не обнаружил адаптеров POS или обработчика импорта, поэтому изменение поведения синхронизации без контракта поставщика и правил сопоставления каталога не внесено.
+- Проверка влияния миграции выполнена сравнением истории миграций и тестом `migration-history.spec.ts`.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — сохранены импорты и маршруты интеграций и персонала при разрешении конфликта.
-- `apps/api/prisma/migrations/20260926000003_add_tenant_integration_settings/migration.sql` — миграция перемещена на уникальный timestamp.
+- `apps/api/prisma/migrations/20260926000004_add_tenant_integration_settings/migration.sql` — уникальный timestamp после миграций `origin/main`.
 - `outputs/response.md` — этот отчёт.
-- `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — ответ на единственный открытый inline-тред.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред с указанием, что синхронизация ещё не реализована.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; просмотрены изменённые файлы и статус разрешённого конфликта.
-- `npx eslint apps/admin-web/src/App.tsx` — пройдено.
-- `npm run typecheck` — пройдено для всех четырёх workspace. Перед повторным прогоном обновлён Prisma Client командой `npx prisma generate --schema apps/api/prisma/schema.prisma`.
-- `npm test` — пройдено: unit-тесты API, admin-web и guest-web, production build и проверка design tokens.
-- Проверка blast radius миграций: просмотрен `migration-history.spec.ts` и список timestamp; миграция интеграций имеет отдельный timestamp `20260926000003`. Поиск POS-импорта выполнен через `rg`; CodeGraph недоступен.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; проверен перечень файлов PR.
+- `git status --short` — выполнено; обнаруженные ранее staged изменения смен персонала не изменялись.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/IntegrationsPage.tsx apps/api/src/app.module.ts apps/api/src/integrations/integrations.controller.ts apps/api/src/integrations/integrations.module.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.service.ts` — пройдено.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — выполнено для обновления локального Prisma Client.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: API 56 suites / 524 теста, admin-web 28 suites / 76 тестов, guest-web, production build и проверка design tokens. Первый прогон выявил дубликат timestamp; после переноса миграции повторный прогон прошёл.
 - `git diff --check` — пройдено.
