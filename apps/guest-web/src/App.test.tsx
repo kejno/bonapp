@@ -16,6 +16,34 @@ describe('App', () => {
     expect(heading).toBeInTheDocument()
     expect(heading).toHaveClass('text-primary')
     expect(heading.parentElement?.parentElement).toHaveClass('bg-background')
+    expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
+  })
+
+  it('loads the session from the token route and applies the restaurant brand', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tenant: { id: 'tenant-1', name: 'Test Restaurant', logoUrl: null, brandColor: '#123456', currency: 'BYN' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' },
+        activeOrder: null,
+      }),
+    } as Response).mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+    window.history.pushState({}, '', '/t/stable-qr-token')
+
+    render(<App />)
+
+    expect(await screen.findByText('Test Restaurant')).toBeInTheDocument()
+    expect(screen.getByText('Стол 5 · Main Hall')).toBeInTheDocument()
+    expect(document.documentElement).toHaveStyle('--color-primary: #123456')
+  })
+
+  it('shows the not-found message for an invalid token', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    window.history.pushState({}, '', '/t/unknown-token')
+
+    render(<App />)
+
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
@@ -54,7 +82,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Не удалось открыть стол по QR-коду')).toBeInTheDocument()
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

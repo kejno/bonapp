@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useGuestSessionStore } from './guest-session.store'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
 type GuestSession = {
-  tenant: { id: string; name: string; currency: string }
-  table: { tableNumber: number; areaName: string }
+  tenant: { id: string; name: string; currency: string; brandColor: string | null; logoUrl: string | null }
+  table: { id: string; tableNumber: number; areaName: string }
   activeOrder: { id: string; status: string } | null
 }
 
@@ -15,7 +16,10 @@ type GuestMenu = Array<{
 }>
 
 export default function App() {
-  const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const qrToken = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)?.[1]
+    ?? new URLSearchParams(window.location.search).get('qr_token')
+  const setGuestSession = useGuestSessionStore((state) => state.setSession)
+  const clearGuestSession = useGuestSessionStore((state) => state.clearSession)
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuLoaded, setMenuLoaded] = useState(false)
@@ -23,7 +27,10 @@ export default function App() {
   const [menuError, setMenuError] = useState(false)
 
   useEffect(() => {
-    if (!qrToken) return
+    if (!qrToken) {
+      clearGuestSession()
+      return
+    }
 
     const controller = new AbortController()
     let sessionResolved = false
@@ -35,6 +42,16 @@ export default function App() {
       .then(async (resolvedSession) => {
         sessionResolved = true
         setSession(resolvedSession)
+        setGuestSession({
+          tenantId: resolvedSession.tenant.id,
+          tableId: resolvedSession.table.id,
+          tableNumber: resolvedSession.table.tableNumber,
+          brandColor: resolvedSession.tenant.brandColor ?? '#e0533c',
+          logoUrl: resolvedSession.tenant.logoUrl,
+        })
+        const brandColor = resolvedSession.tenant.brandColor ?? '#e0533c'
+        document.documentElement.style.setProperty('--color-primary', brandColor)
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', brandColor)
         const response = await fetch(
           `${API_BASE}/guest/menu?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
           { signal: controller.signal },
@@ -45,19 +62,24 @@ export default function App() {
       })
       .catch((requestError: unknown) => {
         if (requestError instanceof Error && requestError.name === 'AbortError') return
-        if (!sessionResolved) setError(true)
+        if (!sessionResolved) {
+          clearGuestSession()
+          setError(true)
+        }
         else setMenuError(true)
       })
 
     return () => controller.abort()
-  }, [qrToken])
+  }, [qrToken, clearGuestSession, setGuestSession])
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background">
       <section className="text-center">
         <h1 className="text-2xl font-semibold text-primary">Bonapp — Guest</h1>
         {qrToken && !session && !error && <p>Открываем стол…</p>}
+        {qrToken && !session && !error && <div aria-label="Загрузка" className="mt-4 flex justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" /></div>}
         {session && <>
+          {session.tenant.logoUrl && <img src={session.tenant.logoUrl} alt={session.tenant.name} className="mx-auto mb-3 h-16 w-16 rounded-xl object-cover" />}
           <h2>{session.tenant.name}</h2>
           <p>Стол {session.table.tableNumber} · {session.table.areaName}</p>
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
@@ -76,7 +98,8 @@ export default function App() {
             </section>)}
           </section>
         </>}
-        {error && <p role="alert">Не удалось открыть стол по QR-коду</p>}
+        {!qrToken && <p>Сканируйте QR-код</p>}
+        {error && <p role="alert">Стол не найден</p>}
       </section>
     </main>
   )
