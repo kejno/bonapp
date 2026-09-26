@@ -99,4 +99,27 @@ describe('KDS order status API', () => {
       listBody.orders.find((order) => order.id === cookingOrderId)?.status,
     ).toBe('SERVED');
   });
+
+  it('lets a manager assign kitchen departments to a chef', async () => {
+    const chef = await fixture.prisma.user.create({
+      data: {
+        tenantId: fixture.tenantId,
+        email: `chef-${fixture.tenantId}@example.com`,
+        passwordHash: 'test-hash',
+        fullName: 'Повар KDS',
+        role: 'CHEF',
+      },
+    });
+
+    const response = await request(fixture.app.getHttpServer())
+      .put(`/api/v1/admin/staff/${chef.id}/kitchen-departments`)
+      .set(authorization())
+      .send({ kitchenDepartments: ['HOT', 'BAR'] })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: chef.id,
+      kitchenDepartments: ['HOT', 'BAR'],
+    });
+  });
 });

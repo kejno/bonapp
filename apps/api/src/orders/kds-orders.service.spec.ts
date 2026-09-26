@@ -116,4 +116,35 @@ describe('OrdersService KDS', () => {
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('publishes the status update only after the transaction commits', async () => {
+    const lifecycle: string[] = [];
+    prisma.transactionForTenant.mockImplementation(
+      async (_tenantId: string, work: (tx: typeof transaction) => unknown) => {
+        const result = await work(transaction);
+        lifecycle.push('commit');
+        return result;
+      },
+    );
+    orderItemUpdate.mockResolvedValue({ count: 1 });
+    orderUpdate.mockResolvedValue({ id: 'order-1' });
+    const gateway = {
+      emitKitchenOrder: jest.fn(() => lifecycle.push('emit')),
+    };
+    const serviceWithGateway = new OrdersService(
+      prisma as unknown as PrismaService,
+      tenantContext as unknown as TenantContextService,
+      gateway as never,
+    );
+
+    await serviceWithGateway.updateKitchenStatus(
+      'order-1',
+      OrderStatus.COOKING,
+      'HOT',
+      'chef-1',
+      UserRole.CHEF,
+    );
+
+    expect(lifecycle).toEqual(['commit', 'emit']);
+  });
 });

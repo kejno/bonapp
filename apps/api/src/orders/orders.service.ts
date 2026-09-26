@@ -119,7 +119,7 @@ export class OrdersService {
     if (targetIndex < 1) {
       throw new ConflictException('Invalid kitchen status transition');
     }
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    const updated = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const order = await tx.order.findFirst({
         where: { id, tenantId },
         include: { items: true },
@@ -137,9 +137,6 @@ export class OrdersService {
         const updated = await tx.order.update({
           where: { id_tenantId: { id, tenantId } },
           data: { status: status as OrderStatus },
-        });
-        this.menuGateway?.emitKitchenOrder(tenantId, 'order:updated', {
-          id: updated.id,
         });
         return updated;
       }
@@ -164,9 +161,6 @@ export class OrdersService {
           where: { id_tenantId: { id, tenantId } },
           data: { status: status as OrderStatus },
         });
-        this.menuGateway?.emitKitchenOrder(tenantId, 'order:updated', {
-          id: updated.id,
-        });
         return updated;
       }
       const updated = {
@@ -175,11 +169,12 @@ export class OrdersService {
           itemIds.includes(item.id) ? { ...item, status } : item,
         ),
       };
-      this.menuGateway?.emitKitchenOrder(tenantId, 'order:updated', {
-        id: updated.id,
-      });
       return updated;
     });
+    this.menuGateway?.emitKitchenOrder(tenantId, 'order:updated', {
+      id: updated.id,
+    });
+    return updated;
   }
 
   private async getKitchenDepartments(
@@ -211,7 +206,7 @@ export class OrdersService {
     const tenantId = this.tenantContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
 
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    const order = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
       if (tenant?.serviceMode === ServiceMode.VIEW_ONLY) {
@@ -235,11 +230,12 @@ export class OrdersService {
       const order = await tx.order.create({
         data: { tenantId, tableId, dailyOrderNumber },
       });
-      this.menuGateway?.emitKitchenOrder(tenantId, 'order:created', {
-        id: order.id,
-      });
       return order;
     });
+    this.menuGateway?.emitKitchenOrder(tenantId, 'order:created', {
+      id: order.id,
+    });
+    return order;
   }
 
   async pay(id: string) {
