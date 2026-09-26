@@ -14,6 +14,7 @@ var outputFiles = require('./common/outputFiles.js');
 const { GIT_CONFIG, STATUSES, LABELS, resolveStatuses } = require('./config.js');
 var cacheToReleases = require('./cacheToReleases.js');
 const tokenUsageComment = require('./common/tokenUsageComment.js');
+const gh = require('./common/githubHelpers.js');
 
 function hasPrApprovedLabel(ticket) {
     var labels = (ticket && ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
@@ -813,25 +814,73 @@ function action(params) {
 
                 if (agentResponse && agentResponse.trim()) {
                     // Case A: agent finished successfully, no code changes needed.
-                    console.log('No git changes detected — agent completed successfully (response.md present). Treating as "no change needed".');
+                    // "No changes needed" is only actionable as IN_REVIEW if there is
+                    // actually a PR to review (the assumption behind this path is that
+                    // the fix is "already present" — i.e. some existing PR covers it).
+                    // Without that check, moving straight to IN_REVIEW sent tickets
+                    // where the agent's own analysis said root cause was NOT
+                    // established (missing failedReason/CI log, just "current
+                    // filtering looks correct, local test passes") into IN_REVIEW
+                    // with no PR to find — pr_review then re-triggers every SM pass
+                    // with the identical "no PR found" result forever (observed on
+                    // BNP-401: 26+ runs over 2+ hours). A bare retry can't fix this
+                    // either — the missing diagnostic data doesn't appear on its own.
+                    console.log('No git changes detected — agent completed successfully (response.md present). Verifying a PR actually exists before treating as reviewable.');
+                    var existingPr = null;
+                    try {
+                        existingPr = gh.findPRForTicket(_scm, ticketKey) || gh.findMergedPRForTicket(_scm, ticketKey);
+                    } catch (e) {
+                        console.warn('Could not check for an existing PR:', e && e.toString ? e.toString() : String(e));
+                    }
+
+                    if (existingPr) {
+                        try {
+                            jira_post_comment({
+                                key: ticketKey,
+                                comment: 'h3. ℹ️ No Code Changes Needed\n\nThe AI agent completed its analysis and determined no code changes are required (e.g. the fix is already present in the target branch, or the ticket was resolved by a previous change).\n\n*Agent analysis:*\n\n' + agentResponse
+                            });
+                        } catch (e) {
+                            console.warn('Failed to post agent analysis comment:', e);
+                        }
+                        try {
+                            jira_move_to_status({ key: ticketKey, statusName: statuses.IN_REVIEW });
+                            console.log('✅ Moved', ticketKey, 'to', statuses.IN_REVIEW, '(no code changes needed, PR #' + existingPr.number + ' found)');
+                        } catch (e) {
+                            console.warn('Failed to move ticket to ' + statuses.IN_REVIEW + ':', e);
+                        }
+                        if (wipLabelIfNoChanges) {
+                            try { jira_remove_label({ key: ticketKey, label: wipLabelIfNoChanges }); } catch (e) {}
+                        }
+                        return { success: true, path: 'no-changes-needed', ticketKey: ticketKey, prNumber: existingPr.number };
+                    }
+
+                    // No PR exists anywhere — this is not "already fixed", it's the
+                    // agent unable to make progress (usually missing diagnostic data,
+                    // per its own analysis). Route to a human instead of a status a
+                    // downstream agent will loop on.
+                    console.log('No existing PR found for', ticketKey, '— "no changes needed" is not reviewable. Moving to Blocked instead of In Review.');
                     try {
                         jira_post_comment({
                             key: ticketKey,
-                            comment: 'h3. ℹ️ No Code Changes Needed\n\nThe AI agent completed its analysis and determined no code changes are required (e.g. the fix is already present in the target branch, or the ticket was resolved by a previous change).\n\n*Agent analysis:*\n\n' + agentResponse
+                            comment: 'h3. 🚫 Blocked — No Fix Made, No PR to Review\n\n' +
+                                'The AI agent made no code changes and no existing Pull Request covers this ticket, ' +
+                                'so there is nothing for {code}pr_review{code} to review. Moving to *' + statuses.BLOCKED + '* ' +
+                                'instead of ' + statuses.IN_REVIEW + ' to avoid an endless review-retry loop with no PR to find.\n\n' +
+                                '*Agent analysis:*\n\n' + agentResponse
                         });
                     } catch (e) {
-                        console.warn('Failed to post agent analysis comment:', e);
+                        console.warn('Failed to post blocked comment:', e);
                     }
                     try {
-                        jira_move_to_status({ key: ticketKey, statusName: statuses.IN_REVIEW });
-                        console.log('✅ Moved', ticketKey, 'to', statuses.IN_REVIEW, '(no code changes needed)');
+                        jira_move_to_status({ key: ticketKey, statusName: statuses.BLOCKED });
+                        console.log('✅ Moved', ticketKey, 'to', statuses.BLOCKED, '(no code changes and no PR to review)');
                     } catch (e) {
-                        console.warn('Failed to move ticket to ' + statuses.IN_REVIEW + ':', e);
+                        console.warn('Failed to move ticket to ' + statuses.BLOCKED + ':', e);
                     }
                     if (wipLabelIfNoChanges) {
                         try { jira_remove_label({ key: ticketKey, label: wipLabelIfNoChanges }); } catch (e) {}
                     }
-                    return { success: true, path: 'no-changes-needed', ticketKey: ticketKey };
+                    return { success: true, path: 'no-changes-no-pr-blocked', ticketKey: ticketKey };
                 }
 
                 // Case B: agent was genuinely interrupted — retry.
