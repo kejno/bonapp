@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
 type GuestSession = {
   tenant: { id: string; name: string; currency: string }
-  table: { tableNumber: number; areaName: string }
+  table: { id: string; tableNumber: number; areaName: string }
   activeOrder: { id: string; status: string } | null
 }
 
@@ -21,6 +21,23 @@ export default function App() {
   const [menuLoaded, setMenuLoaded] = useState(false)
   const [error, setError] = useState(false)
   const [menuError, setMenuError] = useState(false)
+  const [callModalOpen, setCallModalOpen] = useState(false)
+  const [callStatus, setCallStatus] = useState('')
+
+  async function callWaiter(reason: 'NEED_BILL' | 'CALL_STAFF') {
+    if (!qrToken) return
+    const response = await fetch(`${API_BASE}/guest/call-waiter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken },
+      body: JSON.stringify({ tableId: session?.table.id, reason }),
+    })
+    if (!response.ok) {
+      setCallStatus('Не удалось отправить вызов')
+      return
+    }
+    setCallModalOpen(false)
+    setCallStatus('Официант уже идёт')
+  }
 
   useEffect(() => {
     if (!qrToken) return
@@ -60,6 +77,14 @@ export default function App() {
         {session && <>
           <h2>{session.tenant.name}</h2>
           <p>Стол {session.table.tableNumber} · {session.table.areaName}</p>
+          <button onClick={() => setCallModalOpen(true)}>Вызвать официанта</button>
+          {callStatus && <p role="status">{callStatus}</p>}
+          {callModalOpen && <section role="dialog" aria-modal="true" aria-label="Вызвать официанта">
+            <h3>Вызвать официанта</h3>
+            <button onClick={() => void callWaiter('NEED_BILL')}>Попросить счёт</button>
+            <button onClick={() => void callWaiter('CALL_STAFF')}>Позвать официанта</button>
+            <button onClick={() => setCallModalOpen(false)}>Закрыть</button>
+          </section>}
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
           <section aria-label="Меню">
             <h3>Меню</h3>
