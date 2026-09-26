@@ -2,27 +2,27 @@
 
 ## Issues/Notes
 
-- **BLOCKING не устранён:** `IntegrationsService.syncMenu` возвращает `ServiceUnavailableException` для настроенных iiko и r_keeper. Подтверждённое решение BNP-184 требует `202 Accepted` после фактической постановки задания, однако в репозитории нет POS-адаптера, обработчика очереди синхронизации или описания API-контрактов и правил сопоставления меню провайдеров с каталогом Bonapp. Добавлять неработающее задание или сообщать об успешном запуске без этих контрактов означало бы ложный успех.
-- `pr_info.md` описывает исправление PDF/QR, а текущий diff — экран интеграций; описание PR не соответствует изменениям.
-- В `pr_discussions_raw.json` единственный открытый адресуемый inline-тред — № 6. На него подготовлен ответ. Открытые сводные комментарии без `threadId` и `rootCommentId` нельзя адресовать через `review_replies.json`.
-- Входные материалы не содержат `instruction.md`, `ticket.md`, `pr_files.txt`, `merge_conflicts.md`, `ci_failures.md` или `ci_failures_full.log`. Использованы `CLAUDE.md`, `request.md`, `existing_questions.json` и локальная история обсуждения.
+- **BLOCKING не устранён:** `IntegrationsService.syncMenu` по-прежнему отвечает `ServiceUnavailableException` для настроенных iiko и r_keeper. В проекте отсутствует адаптер POS-импорта и обработчик задания. В `input/BNP-165/request.md` не заданы контракты API поставщиков и правила переноса меню в каталог Bonapp, поэтому реализовать корректную синхронизацию по имеющимся требованиям невозможно. Успешный ответ или постановка пустого задания скрыли бы отсутствие запуска импорта.
+- Ограничение health-check, ранее отмеченное в ревью, уже присутствует: проверяются серверный allowlist hostname и публичные IPv4 DNS-ответы, запрос выполняется к закреплённому IP.
+- В `pr_discussions_raw.json` единственный открытый адресуемый inline-тред — № 6. Для него подготовлен ответ. Открытые сводные комментарии без `threadId` и `rootCommentId` нельзя адресовать через `review_replies.json`.
+- В `input/BNP-165/` отсутствуют `instruction.md`, `ticket.md`, `pr_files.txt`, `merge_conflicts.md`, `ci_failures.md` и `ci_failures_full.log`. В корне репозитория также нет `instruction.md` и `AGENTS.md` (кроме инструкции зависимости в `node_modules`).
+- Описание PR в `input/BNP-165/pr_info.md` посвящено PDF/QR, тогда как diff относится к экрану интеграций; описание не соответствует PR.
 
 ## Approach
 
-- Повторно проследил путь `POST /admin/integrations/:provider/sync` → `IntegrationsService.syncMenu` и поискал POS-импорт и обработчик очереди в `apps/api/src` и `packages/`. Реализации нет.
-- Производственный код не менял: постановка пустого задания не запускает импорт, а API и правила импорта для iiko/r_keeper не заданы. Существующий явный отказ сохраняет корректность ответа и не маскирует отсутствие функции.
-- Проверил влияния через `rg` по `apps/` и `packages/`; CodeGraph недоступен. В этой итерации производственные файлы, схема БД, миграции и публичные сигнатуры не менялись.
+- Проследил `POST /admin/integrations/:provider/sync` до `IntegrationsService.syncMenu` и выполнил поиск POS-импорта/обработчиков в `apps/api/src` и `packages/` — существующей реализации нет.
+- Производственный код не менял: корректный импорт требует отсутствующих контрактов поставщиков и правил сопоставления каталога. Оставлен явный отказ вместо ложного подтверждения запуска.
+- Проверку влияния выполнил через `rg` по `apps/` и `packages/`; CodeGraph недоступен. В этой итерации производственные файлы, публичные сигнатуры, схема и миграции не менялись.
 
 ## Files Modified
 
-- `outputs/response.md` — результат rework и причины оставшегося блокера.
-- `outputs/review_replies/thread_6.md` — адресный ответ на открытый inline-тред; существующая запись в `outputs/review_replies.json` проверена и соответствует треду № 6.
+- `outputs/response.md` — результат rework и описание неустранённого блокера.
+- `outputs/review_replies/thread_6.md` — адресный ответ на открытый inline-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check` — выполнены.
-- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/IntegrationsPage.tsx apps/api/src/app.module.ts apps/api/src/integrations/integrations.controller.ts apps/api/src/integrations/integrations.module.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.service.ts` — пройдено.
-- `npm run typecheck` — первый запуск сообщил о несоответствии сгенерированного Prisma Client текущей схеме; `npm test` выполнил штатный `prisma generate`, после чего повторный `npm run typecheck` прошёл во всех четырёх workspace.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
+- `npx eslint` для файлов этой итерации — неприменимо: изменялись только Markdown-отчёт и ответ на ревью, а не ESLint-файлы.
+- Первый `npm run typecheck` выявил устаревший Prisma Client без поля `integrationSettings`; после `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный `npm run typecheck` прошёл во всех четырёх workspace.
 - `npm test` — пройдено: 56 Jest-наборов (524 теста), 28 Vitest-файлов (76 тестов), сборки workspace и проверка design tokens.
-- Проверка влияния выполнена поиском по коду; затронутых потребителей публичных API и изменений миграций в этой итерации нет.
-- Успешные проверки не снимают функциональный блокер: настроенная интеграция всё ещё не запускает импорт меню.
+- Изменений миграций, глобальных провайдеров и публичных сигнатур в этой итерации нет; потребители изменённых символов не затрагивались.
