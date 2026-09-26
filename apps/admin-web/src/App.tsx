@@ -8,6 +8,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import IntegrationsPage from './pages/IntegrationsPage';
 import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
 
@@ -46,6 +47,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/settings/integrations" element={<ProtectedRoute><IntegrationsPage /></ProtectedRoute>} />
           <Route
             path="/orders/:orderId"
             element={
