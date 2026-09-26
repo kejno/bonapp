@@ -23,12 +23,12 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; после обновления этого отчёта изменён только `outputs/response.md`.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npm install --workspace @bonapp/admin-web --ignore-scripts` — установлены отсутствующие зависимости `admin-web`; lock-файл не изменился.
-- `npx eslint` по изменённым TypeScript-файлам — успешно.
+- `npm install --workspace @bonapp/admin-web --ignore-scripts` — установлены отсутствовавшие локально зависимости `howler` и типов; lock-файл не изменился.
+- `npx eslint apps/admin-web/src/kds/KdsPage.tsx apps/api/src/orders/orders.service.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/test/kds-order-status.e2e-spec.ts` — успешно после генерации Prisma Client.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 56 наборов / 521 тест, admin-web — 28 файлов / 76 тестов, guest-web — 1 файл / 3 теста; сборка и проверка design tokens также прошли.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — 2 теста прошли; Jest оставался активным из-за незакрытой асинхронной операции и был остановлен после отчёта об успешных тестах.
+- `npm test` — успешно: API — 56 наборов / 521 тест, admin-web — 28 файлов / 76 тестов, guest-web — 1 файл / 3 теста; сборки и проверка design tokens прошли.
+- `npm --workspace @bonapp/api run test:e2e -- --runInBand kds-order-status.e2e-spec.ts` — успешно: 2 теста прошли. Jest сообщил об оставшейся асинхронной операции и не завершил процесс самостоятельно; после успешного отчёта процесс остановлен.
 - `git diff --check` — успешно.
-- Blast-radius проверка: поиск вызовов `findKitchenOrders` и `updateKitchenStatus` во всех `apps/` и `packages/`; миграционная проверка показала только добавление новой миграции.
+- Blast-radius проверка: поиском по `apps/` и `packages/` проверены вызовы `findKitchenOrders` и `updateKitchenStatus`; миграционная проверка подтвердила, что добавлена новая миграция, существующие не менялись.
