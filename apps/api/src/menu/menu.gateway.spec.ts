@@ -11,6 +11,7 @@ describe('MenuGateway', () => {
       {} as HttpAdapterHost,
       prisma as unknown as PrismaService,
       { get: jest.fn() } as unknown as ConfigService,
+      { getTenantIdForSocketToken: jest.fn() } as never,
     );
     const emitFn = jest.fn();
     const toFn = jest.fn().mockReturnValue({ emit: emitFn });
@@ -30,6 +31,24 @@ describe('MenuGateway', () => {
 
     expect(prisma.findTableByQrToken).toHaveBeenCalledWith('valid-qr-token');
     expect(join).toHaveBeenCalledWith('tenant:tenant-1');
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+
+  it('joins a verified staff connection to the tenant hall room', async () => {
+    const authGuard = { getTenantIdForSocketToken: jest.fn().mockResolvedValue('tenant-1') };
+    const gateway = new MenuGateway(
+      {} as HttpAdapterHost,
+      { findTableByQrToken: jest.fn() } as unknown as PrismaService,
+      { get: jest.fn() } as unknown as ConfigService,
+      authGuard as never,
+    );
+    const join = jest.fn();
+    const disconnect = jest.fn();
+    await (gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }).joinTenantRoom({
+      handshake: { auth: { accessToken: 'staff-token' } }, join, disconnect,
+    });
+    expect(authGuard.getTenantIdForSocketToken).toHaveBeenCalledWith('staff-token');
+    expect(join).toHaveBeenCalledWith('tenant_tenant-1_hall');
     expect(disconnect).not.toHaveBeenCalled();
   });
 
@@ -89,6 +108,14 @@ describe('MenuGateway', () => {
       itemId: 'item-42',
       isInStopList: false,
     });
+  });
+
+  it('emits waiter calls to the tenant hall room', () => {
+    const { gateway, toFn, emitFn } = makeGateway();
+    const payload = { tableId: 'table-1', tableNumber: 4, reason: 'NEED_BILL' as const };
+    gateway.emitWaiterCalled('tenant-1', payload);
+    expect(toFn).toHaveBeenCalledWith('tenant_tenant-1_hall');
+    expect(emitFn).toHaveBeenCalledWith('waiter:called', payload);
   });
 
   it('routes events to separate rooms for different tenants', () => {

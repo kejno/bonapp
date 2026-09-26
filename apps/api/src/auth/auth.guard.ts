@@ -77,6 +77,22 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
+  async getTenantIdForSocketToken(token: string): Promise<string | null> {
+    try {
+      const payload = this.verifyToken(token);
+      const userId = payload.staffUserId ?? payload.userId;
+      if (!userId) return null;
+      const user = await this.prisma.forTenant(payload.tenantId).user.findFirst({
+        where: { id: userId, isActive: true, isBlocked: false },
+        select: { sessionVersion: true },
+      });
+      if (!user || (payload.sessionVersion ?? 0) !== (user.sessionVersion ?? 0)) return null;
+      return payload.tenantId;
+    } catch {
+      return null;
+    }
+  }
+
   private getBearerToken(authorization?: string): string {
     const match = authorization?.match(/^Bearer\s+(.+)$/i);
     if (!match) throw new UnauthorizedException();

@@ -8,6 +8,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import WaiterCallNotifications from './components/WaiterCallNotifications';
 
 const queryClient = new QueryClient();
 
@@ -15,6 +16,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <WaiterCallNotifications />
         <Routes>
           <Route
             path="/login"

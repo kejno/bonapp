@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -23,7 +23,7 @@ describe('App', () => {
       ok: true,
       json: async () => ({
         tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' },
-        table: { tableNumber: 5, areaName: 'Main Hall' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' },
         activeOrder: null,
       }),
     } as Response).mockResolvedValueOnce({
@@ -59,5 +59,25 @@ describe('App', () => {
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('sends a waiter call using the QR session and selected reason', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null,
+      }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+    render(<App />)
+    await screen.findByText('Стол 5 · Main Hall')
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Официант уже идёт')
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/call-waiter$/), expect.objectContaining({
+      method: 'POST', headers: expect.objectContaining({ 'X-QR-Token': 'stable-qr-token' }),
+      body: JSON.stringify({ tableId: 'table-1', reason: 'NEED_BILL' }),
+    }))
   })
 })
