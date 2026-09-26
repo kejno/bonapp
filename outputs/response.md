@@ -2,7 +2,7 @@
 
 ## Issues/Notes
 
-- **BLOCKING: ручная синхронизация меню не реализована.** `IntegrationsService.syncMenu` проверяет credentials, затем выбрасывает `ServiceUnavailableException`. В `apps/` и `packages/` не найдено POS-адаптеров, импортёра меню или обработчика задания. Контракт POS API и правила сопоставления с каталогом Bonapp в доступном контексте не определены. Нельзя отвечать `202 Accepted`, пока задание фактически не запущено; PR не закрывает это требование.
+- **BLOCKING: ручная синхронизация меню не реализована.** `IntegrationsService.syncMenu` проверяет credentials, затем выбрасывает `ServiceUnavailableException`. В `apps/` и `packages/` не найдено POS-адаптеров, импортёра меню или обработчика задания. Решение BNP-184 подтверждает endpoint и ожидаемый ответ после запуска процесса, но не задаёт контракт POS API и правила сопоставления каталога. Нельзя отвечать `202 Accepted`, пока задание фактически не запущено; PR не закрывает это требование.
 - Защита health-check от произвольных URL уже есть в ветке: разрешены только hostname из `INTEGRATION_HEALTHCHECK_HOSTS`, DNS-ответы с непубличными IPv4 отклоняются, соединение выполняется с проверенным IP. Существующий регрессионный тест подтверждает отказ для произвольного хоста.
 - Описание PR в `input/BNP-165/pr_info.md` относится к исправлению PDF/QR, а diff — к экрану интеграций. Описание PR нужно привести в соответствие с фактическими изменениями.
 - В `input/BNP-165/pr_discussions_raw.json` четыре треда с идентификаторами имеют `resolved: true`. Остальные записи — сводки без `threadId` и `rootCommentId`, поэтому адресный ответ для них сформировать нельзя. `outputs/review_replies.json` оставлен с пустым списком.
@@ -21,9 +21,9 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево на момент проверки чистое.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; новых изменений в рабочем дереве нет.
 - `npx eslint apps/api/src/integrations/integrations.service.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.controller.ts` — пройдено.
-- Первый `npm run typecheck` выявил устаревший локальный Prisma Client без поля `integrationSettings`. После генерации клиента командой `npm test` повторный `npm run typecheck` прошёл во всех четырёх workspace.
+- Первый `npm run typecheck` выявил устаревший локальный Prisma Client без поля `integrationSettings`. После `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный `npm run typecheck` прошёл во всех четырёх workspace.
 - `npm test` — пройдено: 56 наборов Jest (524 теста), 28 файлов Vitest (76 тестов), сборка и проверка design tokens.
 - Радиус влияния проверен поиском `rg` по `apps/` и `packages/`; импортёры/обработчики iiko и r_keeper не обнаружены. Глобальные провайдеры, схема/миграции, публичные сигнатуры и shared config в этой итерации не менялись.
 - PR остаётся заблокированным: фактический импорт меню не запускается. Успешные проверки этого требования не подтверждают.
