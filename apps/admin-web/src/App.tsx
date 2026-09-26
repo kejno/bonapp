@@ -9,6 +9,7 @@ import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import IntegrationsPage from './pages/IntegrationsPage';
+import SettingsPage from './settings/SettingsPage';
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ function App() {
           />
           <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
           <Route path="/menu/editor" element={<ProtectedRoute><MenuEditorPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route
             path="/tables"
             element={

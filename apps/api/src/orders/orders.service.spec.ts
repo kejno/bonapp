@@ -113,6 +113,17 @@ describe('OrdersService', () => {
   });
 
   describe('create()', () => {
+    it('rejects creating an order in VIEW_ONLY mode', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.table.findFirst.mockResolvedValue({ id: 'table-1', status: 'AVAILABLE' });
+      transaction.table.updateMany.mockResolvedValue({ count: 1 });
+      transaction.tenant.findUnique.mockResolvedValue({ serviceMode: 'VIEW_ONLY' });
+
+      await expect(service.create('table-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.order.create).not.toHaveBeenCalled();
+      expect(transaction.table.updateMany).not.toHaveBeenCalled();
+    });
+
     it('rejects when another request has already reserved the table', async () => {
       mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
       transaction.table.findFirst.mockResolvedValue({ id: 'table-1', status: 'AVAILABLE' });

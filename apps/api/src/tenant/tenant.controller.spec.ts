@@ -1,13 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantController } from './tenant.controller';
 import { TenantService } from './tenant.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 const mockTenantService = {
   uploadLogo: jest.fn(),
 };
+const mockMenuGateway = { emitServiceModeChanged: jest.fn() };
 
 describe('TenantController', () => {
   let controller: TenantController;
@@ -19,6 +20,7 @@ describe('TenantController', () => {
       controllers: [TenantController],
       providers: [
         { provide: TenantService, useValue: mockTenantService },
+        { provide: MenuGateway, useValue: mockMenuGateway },
         {
           provide: ConfigService,
           useValue: {
@@ -57,7 +59,7 @@ describe('TenantController', () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockTenantService.uploadLogo.mockResolvedValue(url);
 
-      const result = await controller.uploadLogo(file, tenantId);
+      const result = await controller.uploadLogo(file, { user: { tenantId } } as never);
 
       expect(result).toEqual({ logoUrl: url });
     });
@@ -65,22 +67,22 @@ describe('TenantController', () => {
     it('should call tenantService.uploadLogo with tenantId and file', async () => {
       mockTenantService.uploadLogo.mockResolvedValue('url');
 
-      await controller.uploadLogo(file, tenantId);
+      await controller.uploadLogo(file, { user: { tenantId } } as never);
 
       expect(mockTenantService.uploadLogo).toHaveBeenCalledWith(tenantId, file);
     });
 
-    it('should throw BadRequestException when tenantId is missing', async () => {
+    it('uses the authenticated tenant id', async () => {
       await expect(
-        controller.uploadLogo(file, ''),
-      ).rejects.toThrow(BadRequestException);
+        controller.uploadLogo(file, { user: { tenantId } } as never),
+      ).resolves.toEqual({ logoUrl: 'url' });
     });
 
     it('should propagate service errors', async () => {
       mockTenantService.uploadLogo.mockRejectedValue(new Error('storage error'));
 
       await expect(
-        controller.uploadLogo(file, tenantId),
+        controller.uploadLogo(file, { user: { tenantId } } as never),
       ).rejects.toThrow('storage error');
     });
   });
