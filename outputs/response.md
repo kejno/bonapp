@@ -26,8 +26,7 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check origin/main...HEAD` — выполнены; ошибок форматирования diff нет.
 - `npx eslint apps/api/src/integrations/integrations.service.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.controller.ts apps/admin-web/src/pages/IntegrationsPage.tsx apps/admin-web/src/App.tsx` — пройден.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — пройден.
-- `npm run typecheck` — пройден после генерации Prisma Client (все 4 workspace).
-- `npm test` — пройден: 56 наборов Jest (524 теста), 28 файлов Vitest (76 тестов), сборки и проверка design tokens.
+- `npm run typecheck` сначала выявил устаревший локальный Prisma Client; после `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный typecheck прошёл во всех 4 workspace.
+- `npm test` — завершился с кодом 0: 56 наборов Jest (524 теста), 28 файлов Vitest (76 тестов), сборки и проверка design tokens.
 - Blast-radius check: изменения в этой итерации не затронули приложение. Для миграции tenant-настроек проверен список миграций; CodeGraph отсутствует, поиск потребителей сделан через `rg`.
 - Несмотря на прохождение локальных проверок, PR нельзя считать готовым к принятию, пока не появятся POS-контракты и реальный процесс импорта, закрывающие открытый BLOCKING-тред.
