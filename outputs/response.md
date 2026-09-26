@@ -11,7 +11,7 @@
 
 - Проверены три открытых inline-треда из `pr_discussions_raw.json`; исправления и регрессионные проверки присутствуют в ветке.
 - Схема БД и миграции не менялись. Для blast-radius проверки вызовов `emitOrderStatusChanged` выполнен поиск по `apps/api/src`; места вызова находятся в контроллере заказов и WebSocket gateway.
-- Исправления уже находились в checkout; повторно выполнены обязательные проверки. До запуска проверок `git status --short` не показывал незакоммиченных изменений.
+- Исправления уже находились в checkout; повторно выполнены обязательные проверки. Перед проверками `git status --short` не показывал незакоммиченных изменений.
 
 ## Files Modified
 
@@ -23,10 +23,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; список изменений проверен, рабочее дерево до актуализации этого отчёта было чистым.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; состав изменений проверен, незакоммиченных файлов нет.
 - `npx eslint` для 15 изменённых TypeScript-файлов — успешно.
 - `npm run typecheck` — успешно для всех четырёх workspace.
 - `npm test` — успешно: API — 59 наборов и 535 тестов; admin-web — 29 файлов и 80 тестов; guest-web — 3 файла и 10 тестов.
 - В рамках `npm test` успешно выполнены сборки приложений и `node scripts/verify-design-tokens.mjs`.
-- Blast-radius проверка через `rg` охватила все вызовы `emitOrderStatusChanged`, подписку `join_order_room` и поток добавления позиции; найдены и проверены места в API и guest-web. CodeGraph недоступен.
-- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — миграций в PR нет; `git diff --check` — успешно.
+- Blast-radius проверка через `rg` охватила все вызовы `emitOrderStatusChanged`, обработчик `join_order_room` и поток добавления позиции; места вызовов найдены в API и guest-web. CodeGraph недоступен.
+- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — миграций в PR нет; `git diff --check origin/main...HEAD` — успешно.
