@@ -24,8 +24,8 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; проверен список файлов PR.
 - `git status --short` и `git diff --check` — выполнены; единственное незакоммиченное изменение — этот отчет, ошибок форматирования diff нет.
-- `npx eslint ...` — в этой итерации не запускался: исходный код не менялся. В предыдущей итерации lint изменённых PR-файлов был пройден.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/IntegrationsPage.tsx apps/api/src/app.module.ts apps/api/src/integrations/integrations.controller.ts apps/api/src/integrations/integrations.module.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.service.ts` — пройдено.
 - `npm run typecheck` — первый запуск выявил устаревший сгенерированный Prisma Client; после `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный запуск прошёл во всех четырёх workspace.
-- `npm test` — пройдено в этой итерации: 56 Jest-наборов (524 теста), 28 Vitest-файлов (76 тестов), сборка workspace и проверка design tokens.
+- `npm test` — пройдено: 56 Jest-наборов (524 теста), 28 Vitest-файлов (76 тестов), сборка workspace и проверка design tokens.
 - Радиус влияния проверен поиском по `apps/` и `packages/` (CodeGraph недоступен). Изменённая часть не затрагивает глобальные провайдеры, публичные сигнатуры или shared config; схема и добавочная миграция входят в исходный PR. Проверка миграций прошла в составе тестового набора API.
 - Успешные проверки не устраняют функциональный блокер: `syncMenu` всё ещё не запускает импорт.
