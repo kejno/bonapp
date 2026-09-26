@@ -10,6 +10,7 @@ import { Queue, Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../cache/cache.constants';
+import { createGuestTableUrl } from './guest-table-url';
 
 export const QR_PDF_SYNC_LIMIT = 20;
 const PDF_TTL_SECONDS = 3600;
@@ -129,17 +130,14 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
 
   private async render(name: string, logoUrl: string | null, tables: Array<{ tableNumber: number; qrToken: string }>): Promise<Buffer> {
     const logo = await this.logoData(logoUrl);
-    const entries = await Promise.all(tables.map(async (table) => ({ ...table, qr: await QRCode.toDataURL(`https://bonapp.by/t/${encodeURIComponent(table.qrToken)}`) })));
+    const menuBaseUrl = process.env.GUEST_MENU_URL?.trim() || 'https://bonapp.by/menu';
+    const entries = await Promise.all(tables.map(async (table) => ({ ...table, qr: await QRCode.toDataURL(createGuestTableUrl(menuBaseUrl, table.qrToken)) })));
     const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
     const sheets: string[] = [];
-    for (let i = 0; i < entries.length; i += 4) {
-      const group = entries.slice(i, i + 4);
-      for (const side of [group, [...group].reverse()]) {
-        const cards = side.map((t) => `<article><img class="logo" src="${logo}"/><h1>${escape(name)}</h1><div class="table">Стол ${t.tableNumber}</div><img class="qr" src="${t.qr}"/></article>`).join('');
-        sheets.push(`<section class="sheet"><div class="grid">${cards}</div><footer>Печать с двух сторон с переворотом по короткой стороне. Разрезать по меткам и согнуть по линии сгиба.</footer></section>`);
-      }
+    for (const table of entries) {
+      sheets.push(`<section class="sheet"><article><img class="logo" src="${logo}"/><h1>${escape(name)}</h1><div class="table">Стол ${table.tableNumber}</div><img class="qr" src="${table.qr}"/></article></section>`);
     }
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.sheet{height:281mm;page-break-after:always;display:flex;flex-direction:column}.grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}.grid article{border:1px dashed #888;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}.grid article:after{content:'';position:absolute;top:50%;left:0;right:0;border-top:1px dotted #aaa}.logo{max-width:42mm;max-height:18mm;object-fit:contain}.qr{width:42mm;height:42mm}.table{font-size:24pt;font-weight:bold;margin:6mm}h1{font-size:14pt}footer{text-align:center;font-size:8pt;padding:2mm}</style></head><body>${sheets.join('')}</body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:12mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.sheet{height:273mm;page-break-after:always}.sheet:last-child{page-break-after:auto}article{height:100%;border:1px dashed #aaa;display:flex;flex-direction:column;align-items:center;justify-content:center}.logo{max-width:65mm;max-height:28mm;object-fit:contain}.qr{width:85mm;height:85mm}.table{font-size:32pt;font-weight:bold;margin:10mm}h1{font-size:20pt}</style></head><body>${sheets.join('')}</body></html>`;
     this.browser ??= await puppeteer.launch({ headless: true });
     const page = await this.browser.newPage();
     try {
