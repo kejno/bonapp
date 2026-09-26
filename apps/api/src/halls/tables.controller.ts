@@ -16,6 +16,7 @@ import {
 import type { Response } from 'express';
 import { TableStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
+import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import type { TenantRequest } from '../auth/tenant-context.guard';
 import { HallsService } from './halls.service';
@@ -105,7 +106,7 @@ function isValidStatusUpdate(body: unknown): body is StatusUpdateBody {
   return typeof b['status'] === 'string' && ALLOWED_STATUSES.has(b['status']);
 }
 
-@Controller('api/v1/admin/tables')
+@Controller('admin/tables')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TablesController {
   constructor(
@@ -114,6 +115,7 @@ export class TablesController {
   ) {}
 
   @Post('generate-qr-pdf')
+  @UseGuards(AdminRoleGuard)
   @HttpCode(200)
   async generateQrPdf(@Req() req: TenantRequest, @Body() body: unknown, @Res() res: Response) {
     if (body !== undefined && (typeof body !== 'object' || body === null ||

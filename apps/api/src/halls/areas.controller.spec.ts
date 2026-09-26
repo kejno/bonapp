@@ -44,6 +44,17 @@ describe('AreasController', () => {
       );
     });
 
+    it('accepts sort_order from the Admin API payload', async () => {
+      service.createArea.mockResolvedValue({ id: 'a1', name: 'VIP', sortOrder: 3 });
+
+      await controller.create(req, { name: 'VIP', sort_order: 3 });
+
+      expect(service.createArea).toHaveBeenCalledWith('tenant-1', {
+        name: 'VIP',
+        sortOrder: 3,
+      });
+    });
+
     it('ignores tenantId in the body and uses the authenticated tenant only', async () => {
       service.createArea.mockResolvedValue({ id: 'a1' });
 
@@ -58,6 +69,7 @@ describe('AreasController', () => {
       [{ name: '   ' }],
       [{ name: 123 }],
       [{ name: 'Hall', sortOrder: 1.5 }],
+      [{ name: 'Hall', sort_order: 1.5 }],
       [null],
     ])('throws BadRequestException for invalid payload %p', (body) => {
       expect(() => controller.create(req, body)).toThrow(BadRequestException);
