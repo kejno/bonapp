@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  BrowserRouter as Router,
+  Routes,
+} from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
@@ -8,6 +13,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import OnboardingStep3Page from './pages/OnboardingStep3Page';
 
 const queryClient = new QueryClient();
 
@@ -32,8 +38,30 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
-          <Route path="/menu/editor" element={<ProtectedRoute><MenuEditorPage /></ProtectedRoute>} />
+          <Route
+            path="/onboarding/step-3"
+            element={
+              <ProtectedRoute>
+                <OnboardingStep3Page />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/menu"
+            element={
+              <ProtectedRoute>
+                <MenuPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/menu/editor"
+            element={
+              <ProtectedRoute>
+                <MenuEditorPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/tables"
             element={
