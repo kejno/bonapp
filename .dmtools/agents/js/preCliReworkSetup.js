@@ -1,6 +1,8 @@
 /**
  * Pre-CLI Rework Setup Action (preCliJSAction for pr_rework agent)
- * 1. Finds the existing PR for the ticket
+ * 1. Finds the existing PR for the ticket — if none is open but one already
+ *    merged, quietly skips the CLI call instead of failing (see the merged-PR
+ *    branch of Step 2 below)
  * 2. Checks out the PR branch
  * 3. Merges origin/{baseBranch} into the PR branch (auto-update, before setup commands run —
  *    see the comment above the detectMergeConflicts() call for why the order matters)
@@ -65,6 +67,23 @@ function syncBaseBranchIfConfigured(baseBranch, customParams, config) {
 // swallowed, leaving the ticket with no visible failure reason at all.
 var truncateForComment = setupCommands.truncateSetupError;
 
+// Tells the CI workflow's "Validate Codex/Claude execution" gate that the
+// missing provider transcript is expected, not a crash — same contract
+// prepareTestPRForReview.js uses (markCliIntentionallySkipped there). Without
+// this, a preCliJSAction that skips the CLI call still shows up as
+// "No Codex transcript was produced" -> job failure, indistinguishable from a
+// real broken invocation.
+function markCliIntentionallySkipped(reason) {
+    try {
+        file_write({
+            path: 'outputs/agent_cli_intentionally_skipped.json',
+            content: JSON.stringify({ reason: reason })
+        });
+    } catch (e) {
+        console.warn('Failed to write agent_cli_intentionally_skipped.json:', e);
+    }
+}
+
 function failSetup(ticketKey, inputFolder, message) {
     try {
         file_write({
@@ -120,6 +139,40 @@ function action(params) {
         var prSearchOptions = config.prSearchFn ? { prSearchFn: config.prSearchFn } : {};
         const pr = gh.findPRForTicket(scm, ticketKey, prSearchOptions);
         if (!pr) {
+            // No OPEN dev PR does not necessarily mean rework has nothing to act
+            // on — the ticket's "In Rework" status can be stale relative to a dev
+            // PR that already merged (e.g. the ticket is actually mid test-
+            // automation cycle and "In Rework" refers to that separate PR, not
+            // this agent's dev PR). recover_merged_pr.json is supposed to catch
+            // this earlier in the same SM pass, but a same-pass status change can
+            // race it (observed on BNP-150: dev PR #114 had merged the day
+            // before, the ticket re-entered "In Rework" via the test-automation
+            // cycle, and pr_rework still fired and threw here instead of
+            // recognizing there was nothing left for IT to rework).
+            //
+            // Distinguish "PR was merged, nothing to do" (quietly succeed, let
+            // recovery/test-automation rules handle the ticket on the next SM
+            // pass) from "no PR ever existed" (a real setup failure — surface it).
+            var mergedPr = null;
+            try {
+                mergedPr = gh.findMergedPRForTicket(scm, ticketKey);
+            } catch (e) {
+                console.warn('Could not check for an already-merged PR:', e && e.toString ? e.toString() : String(e));
+            }
+            if (mergedPr) {
+                console.log('No open PR for ' + ticketKey + ', but PR #' + mergedPr.number + ' already merged — nothing for pr_rework to do, skipping.');
+                try { jira_remove_label({ key: ticketKey, label: 'sm_story_rework_triggered' }); } catch (e) {}
+                try {
+                    jira_post_comment({
+                        key: ticketKey,
+                        comment: 'h3. ℹ️ Rework Skipped — Dev PR Already Merged\n\n' +
+                            'PR [#' + mergedPr.number + '|' + (mergedPr.html_url || '') + '] for this ticket is already merged. ' +
+                            'The current status likely belongs to a later stage (e.g. test automation) — leaving it for the appropriate agent on the next cycle.'
+                    });
+                } catch (e) {}
+                markCliIntentionallySkipped('dev_pr_already_merged');
+                return { success: true, action: 'dev_pr_already_merged', prNumber: mergedPr.number };
+            }
             failSetup(
                 ticketKey,
                 inputFolder,
