@@ -23,7 +23,7 @@ describe('BNP-359: создание и сортировка зон обслуж�
     const firstResponse = await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/areas')
       .set('Authorization', `Bearer ${fixture.token()}`)
-      .send({ name: 'Основной зал', sortOrder: 10 })
+      .send({ name: 'Основной зал', sort_order: 10 })
       .expect(201);
     const first = firstResponse.body as AreaResponse;
 
