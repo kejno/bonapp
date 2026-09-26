@@ -7,6 +7,7 @@ import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 describe('BNP-154: administrator orders and status delivery', () => {
   const fixture = new MenuCacheTestFixture();
   let guestSocket: Socket | undefined;
+  let otherGuestSocket: Socket | undefined;
   let kitchenSocket: Socket | undefined;
 
   beforeAll(async () => {
@@ -15,8 +16,10 @@ describe('BNP-154: administrator orders and status delivery', () => {
 
   afterEach(() => {
     guestSocket?.disconnect();
+    otherGuestSocket?.disconnect();
     kitchenSocket?.disconnect();
     guestSocket = undefined;
+    otherGuestSocket = undefined;
     kitchenSocket = undefined;
   });
 
@@ -36,6 +39,14 @@ describe('BNP-154: administrator orders and status delivery', () => {
         qrToken: `qr-${fixture.tenantId}`,
       },
     });
+    const otherTable = await fixture.prisma.table.create({
+      data: {
+        tenantId: fixture.tenantId,
+        areaId: area.id,
+        tableNumber: 2,
+        qrToken: `qr-other-${fixture.tenantId}`,
+      },
+    });
     const kitchenUser = await fixture.prisma.user.create({
       data: {
         tenantId: fixture.tenantId,
@@ -51,17 +62,22 @@ describe('BNP-154: administrator orders and status delivery', () => {
     const address = (fixture.app.getHttpServer() as HttpServer).address();
     if (!address || typeof address === 'string') throw new Error('HTTP server did not start');
     const serverUrl = `http://127.0.0.1:${address.port}`;
-    guestSocket = io(serverUrl, {
-      auth: { qrToken: table.qrToken },
-      forceNew: true,
-      transports: ['websocket'],
-    });
     kitchenSocket = io(serverUrl, {
       auth: { accessToken: accessToken(fixture.tenantId, kitchenUser.id) },
       forceNew: true,
       transports: ['websocket'],
     });
-    await Promise.all([waitForConnect(guestSocket), waitForConnect(kitchenSocket)]);
+    await waitForConnect(kitchenSocket);
+    await joinTenantRoom(kitchenSocket, 'kitchen');
+
+    const guestSession = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/session/${table.qrToken}`)
+      .expect(200);
+    const otherGuestSession = await request(fixture.app.getHttpServer())
+      .get(`/api/v1/guest/session/${otherTable.qrToken}`)
+      .expect(200);
+    const guestToken = (guestSession.body as { tableSessionToken: string }).tableSessionToken;
+    const otherGuestToken = (otherGuestSession.body as { tableSessionToken: string }).tableSessionToken;
 
     const created = await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/orders')
@@ -69,6 +85,28 @@ describe('BNP-154: administrator orders and status delivery', () => {
       .send({ tableId: table.id, phone: '29 123 45 67' })
       .expect(201);
     const orderId = (created.body as { id: string }).id;
+    const otherCreated = await request(fixture.app.getHttpServer())
+      .post('/api/v1/admin/orders')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({ tableId: otherTable.id, phone: '29 765 43 21' })
+      .expect(201);
+    const otherOrderId = (otherCreated.body as { id: string }).id;
+
+    guestSocket = io(serverUrl, {
+      auth: { tableSessionToken: guestToken },
+      forceNew: true,
+      transports: ['websocket'],
+    });
+    otherGuestSocket = io(serverUrl, {
+      auth: { tableSessionToken: otherGuestToken },
+      forceNew: true,
+      transports: ['websocket'],
+    });
+    await Promise.all([waitForConnect(guestSocket), waitForConnect(otherGuestSocket)]);
+    await Promise.all([
+      joinOrderRoom(guestSocket, orderId),
+      joinOrderRoom(otherGuestSocket, otherOrderId),
+    ]);
 
     await fixture.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${fixture.tenantId}, true)`;
@@ -94,6 +132,7 @@ describe('BNP-154: administrator orders and status delivery', () => {
     ]);
 
     const guestEvent = waitForStatus(guestSocket);
+    const otherGuestEvent = waitForNoStatus(otherGuestSocket);
     const kitchenEvent = waitForStatus(kitchenSocket);
     await request(fixture.app.getHttpServer())
       .patch(`/api/v1/admin/orders/${orderId}/status`)
@@ -104,6 +143,7 @@ describe('BNP-154: administrator orders and status delivery', () => {
       { orderId, status: 'COOKING' },
       { orderId, status: 'COOKING' },
     ]);
+    await expect(otherGuestEvent).resolves.toBeUndefined();
   }, 30_000);
 });
 
@@ -136,5 +176,37 @@ function waitForConnect(socket: Socket): Promise<void> {
 function waitForStatus(socket: Socket): Promise<{ orderId: string; status: string }> {
   return new Promise((resolve) => {
     socket.once('order:status_changed', resolve);
+  });
+}
+
+function joinOrderRoom(socket: Socket, orderId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.emit('join_order_room', { orderId }, (result: { ok: boolean }) => {
+      if (result.ok) resolve();
+      else reject(new Error('Guest was not authorized for its order room'));
+    });
+  });
+}
+
+function joinTenantRoom(socket: Socket, room: 'kitchen' | 'hall'): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.emit('join_tenant_room', { room }, (result: { ok: boolean }) => {
+      if (result.ok) resolve();
+      else reject(new Error(`Staff client could not join the ${room} room`));
+    });
+  });
+}
+
+function waitForNoStatus(socket: Socket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onStatus = () => {
+      clearTimeout(timer);
+      reject(new Error('Guest from another table received the order status'));
+    };
+    const timer = setTimeout(() => {
+      socket.off('order:status_changed', onStatus);
+      resolve();
+    }, 250);
+    socket.once('order:status_changed', onStatus);
   });
 }

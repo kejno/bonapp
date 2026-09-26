@@ -2,33 +2,30 @@
 
 ## Issues/Notes
 
-- Исправлены оба открытых блокирующих замечания: статусные события теперь доходят до подключённых гостевых и кухонных клиентов, а активные заказы агрегируют одинаковые позиции по цеху и блюду.
-- В `input/BNP-154` не предоставлены `ci_failures.md`, `ci_failures_full.log` и `merge_conflicts.md`; отдельных CI-ошибок и списка конфликтующих фрагментов в контексте нет.
-- Первый запуск typecheck/lint обнаружил устаревший сгенерированный Prisma Client без модели `Guest`. После `npx prisma generate --schema prisma/schema.prisma` проверки прошли.
+- Исправлена утечка `orderId` и статуса между QR-гостями одного tenant: гостевой клиент должен подтвердить действующую сессию стола и принадлежность заказа этому столу, прежде чем войти в комнату заказа.
+- В подготовленных материалах отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и `instruction.md` в корне репозитория; CI-ошибки отдельно не описаны.
+- Разрешены все конфликтные файлы. Сохранены изменения основной ветки по сессиям столов и изменения PR по API заказов.
 
 ## Approach
 
-- `MenuGateway` отправляет `order:status_changed` в комнаты QR-гостей `tenant:<tenantId>` и авторизованной кухни `tenant_kitchen:<tenantId>`. Оставлен один экземпляр gateway через `MenuModule`.
-- `GET /admin/orders/active` группирует строки каждого заказа по `kitchenDepartment` и `itemId`, суммируя количество.
-- Сквозной тест создаёт заказ через HTTP, проверяет агрегацию нескольких строк в двух цехах и подтверждает доставку события обоим подключённым Socket.io-клиентам.
+- Статус отправляется только в комнату конкретного заказа для гостя и в подходящую комнату авторизованного персонала для KDS/зала. Общая tenant-комната для QR-гостей не используется.
+- E2E-тест подключает гостей двух столов с разными сессиями и проверяет получение события только владельцем заказа, а также доставку в KDS.
+- Исправлена циклическая инъекция `OrdersService`/`MenuGateway`; сохранена поддержка `accessToken` в handshake клиента персонала.
 
 ## Files Modified
 
-- `apps/api/src/menu/menu.gateway.ts`, `apps/api/test/admin-orders.e2e-spec.ts` — доставка статусов и интеграционное покрытие обоих открытых замечаний.
-- `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.service.spec.ts`, `apps/api/src/orders/kds-orders.service.spec.ts`, `apps/api/src/menu/menu.gateway.spec.ts`, `apps/api/src/tenant/tenant.module.ts` — API заказов, агрегация, проверка маршрутизации и единая регистрация gateway.
-- `apps/api/src/orders/admin-orders.controller.ts`, `apps/api/src/orders/admin-orders.controller.spec.ts`, `apps/api/src/orders/phone-number.ts`, `apps/api/src/orders/phone-number.spec.ts`, `apps/api/src/orders/orders.module.ts` — административное создание заказа и проверка телефона.
-- `apps/api/prisma/schema.prisma`, `apps/api/prisma/migrations/20260926220000_admin_order_guests/migration.sql` — модель гостя и tenant-scoped связь с заказом.
-- `apps/api/package.json`, `package-lock.json` — клиент Socket.io для интеграционного теста.
-- `outputs/review_replies.json`, `outputs/review_replies/thread_1.md`, `outputs/review_replies/thread_2.md` — ответы на оба открытых inline-треда.
+- `apps/api/src/menu/menu.gateway.ts`, `apps/api/src/menu/menu.gateway.spec.ts`, `apps/api/test/admin-orders.e2e-spec.ts` — авторизация комнат и регрессионная проверка изоляции гостевых событий.
+- `apps/api/src/orders/orders.module.ts`, `apps/api/src/orders/orders.service.ts` — доступность сервиса через циклический импорт.
+- `apps/api/src/orders/*`, `apps/api/src/guest-session/guest-session.service.ts`, `apps/api/src/prisma/*`, `apps/api/prisma/schema.prisma`, `apps/api/prisma/migrations/20260926180001_add_table_sessions/migration.sql` — административное создание/чтение заказов, гостевые сессии, снимки и агрегация KDS из текущей реализации PR.
+- `apps/api/package.json`, `package-lock.json` — клиент Socket.io для интеграционной проверки.
+- `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — ответ на единственный открытый inline-тред; ответы на уже закрытые треды удалены.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — проверен список файлов PR.
-- `git status --short` — рабочее дерево было чистым до обновления этого отчёта.
-- `npx prisma generate --schema prisma/schema.prisma` — успешно; обновлён локальный клиент для схемы проекта.
-- `npx eslint` для всех изменённых TypeScript-файлов API — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и состояния рабочего дерева.
+- `npx eslint` по всем изменённым TypeScript-файлам — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 58 наборов / 531 тест; admin-web — 28 файлов / 76 тестов; guest-web — 1 файл / 3 теста. Сборка и проверка design tokens также прошли.
-- `npm --workspace @bonapp/api run test:e2e -- --runInBand --detectOpenHandles --forceExit admin-orders.e2e-spec.ts` — успешно; проверены POST, агрегация и доставка события обоим подключённым клиентам.
-- `git diff origin/main...HEAD --name-status -- '*/migrations/*'` — добавлена только новая миграция `20260926220000_admin_order_guests`; существующие миграции не изменены. Поиск по `apps/api/src` и `apps/api/test` проверил использования `Guest`/`guestId`.
+- `npm test` — успешно: API — 58 наборов / 531 тест; admin-web — 28 файлов / 76 тестов; guest-web — 1 файл / 3 теста. Сборка и проверка design tokens также завершились успешно.
+- `npm --workspace @bonapp/api run test:e2e -- --runInBand --detectOpenHandles --forceExit admin-orders.e2e-spec.ts` — успешно; проверены создание заказов, агрегация позиций, доставка в KDS и изоляция гостей двух столов.
+- Blast-radius для схемы и миграций проверен командами `git diff --name-status origin/main...HEAD -- '*/migrations/*'`, `git diff --cached origin/main --name-status -- '*/migrations/*'` и поиском `rg` по `tableSession`, `table_sessions`, `guestId` в `apps/api/src` и `apps/api/test`. Добавлена только миграция `20260926220000_admin_order_guests`; её timestamp позже последней миграции `origin/main` (`20260926180001_add_table_sessions`). Существующие миграции не изменялись. CodeGraph недоступен, потребители проверены поиском по исходникам.
 - `git diff --check` и `git diff --cached --check` — успешно.

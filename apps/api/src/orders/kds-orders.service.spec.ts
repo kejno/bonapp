@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { OrderStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
@@ -80,7 +80,7 @@ describe('OrdersService KDS', () => {
         work(transaction),
     ),
   };
-  const tenantContext = { getTenantId: () => 'tenant-1' };
+  const tenantContext = { getTenantId: () => 'tenant-1', run: (_tenantId: string, work: () => unknown) => work() };
   const service = new OrdersService(
     prisma as unknown as PrismaService,
     tenantContext as unknown as TenantContextService,
@@ -106,6 +106,23 @@ describe('OrdersService KDS', () => {
       where: { id: { in: ['hot-1'] }, orderId: 'order-1' },
       data: { status: OrderStatus.COOKING },
     });
+    expect(orderUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects moving a paid order back to cooking through the tenant-scoped status entry point', async () => {
+    transaction.order.findFirst.mockResolvedValueOnce({
+      ...orders[1],
+      status: OrderStatus.PAID,
+      isPaid: true,
+      items: [],
+    });
+
+    await expect(
+      service.updateKitchenStatusForTenant(
+        'tenant-1', 'served-order', OrderStatus.COOKING, 'HOT',
+        'chef-1', UserRole.CHEF,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(orderUpdate).not.toHaveBeenCalled();
   });
 

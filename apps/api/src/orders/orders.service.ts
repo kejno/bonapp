@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   Optional,
@@ -17,7 +19,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
-    @Optional() private readonly menuGateway?: MenuGateway,
+    @Optional() @Inject(forwardRef(() => MenuGateway)) private readonly menuGateway?: MenuGateway,
   ) {}
 
   async findAll() {
@@ -88,6 +90,19 @@ export class OrdersService {
       orders: visible,
       departments: departments ?? ['HOT', 'COLD', 'BAR'],
     };
+  }
+
+  updateKitchenStatusForTenant(
+    tenantId: string,
+    id: string,
+    status: string,
+    department: string | undefined,
+    userId: string,
+    role: UserRole,
+  ) {
+    return this.tenantContext.run(tenantId, () =>
+      this.updateKitchenStatus(id, status, department, userId, role),
+    );
   }
 
   async updateKitchenStatus(
@@ -307,9 +322,6 @@ export class OrdersService {
         data: { tenantId, tableId, dailyOrderNumber, ...(guest && { guestId: guest.id }) },
       });
       return order;
-    });
-    this.menuGateway?.emitKitchenOrder(tenantId, 'order:created', {
-      id: order.id,
     });
     return order;
   }

@@ -8,6 +8,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Tenant',
   'DiningArea',
   'Table',
+  'TableSession',
   'Order',
   'OrderItem',
   'Payment',
