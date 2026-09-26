@@ -7,7 +7,8 @@ describe('OrdersController', () => {
     findAll: jest.fn(),
     findOne: jest.fn(),
   };
-  const controller = new OrdersController(ordersService as unknown as OrdersService);
+  const welcomeService = { simulateTestOrder: jest.fn() };
+  const controller = new OrdersController(ordersService as unknown as OrdersService, welcomeService as never);
 
   beforeEach(() => jest.clearAllMocks());
 

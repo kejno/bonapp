@@ -2,24 +2,37 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import type { TenantRequest } from '../auth/tenant-context.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
+import { WelcomeService } from '../welcome/welcome.service';
+import { UserRole } from '@prisma/client';
 
 @Controller('orders')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly welcomeService: WelcomeService,
+  ) {}
 
   @Post()
-  create(@Body() body: unknown) {
+  create(@Body() body: unknown, @Req() req: TenantRequest) {
+    if (typeof body === 'object' && body !== null && (body as Record<string, unknown>)['isTest'] === true) {
+      const allowedRoles = new Set<UserRole>([UserRole.OWNER, UserRole.MANAGER]);
+      if (!req.user?.role || !allowedRoles.has(req.user.role)) throw new ForbiddenException();
+      return this.welcomeService.simulateTestOrder(req.user.tenantId!);
+    }
     if (
       typeof body !== 'object' ||
       body === null ||
