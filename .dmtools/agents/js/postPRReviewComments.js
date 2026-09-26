@@ -751,6 +751,22 @@ function action(params) {
 
         console.log('=== Processing PR review results for', ticketKey, '===');
 
+        // If preparePRForReview.js (preCliJSAction) already determined there is
+        // no PR to review at all, pr_review.json was never going to be written —
+        // resuming the CLI session or clearing the SM label to retry would just
+        // repeat the identical no-op next cycle (see markNoPrToReview's docblock
+        // in preparePRForReview.js; observed on BNP-401 looping 2+ hours). Stop
+        // here without touching the SM trigger label.
+        try {
+            var noPrMarker = file_read({ path: 'outputs/pr_review_no_pr_found.json' });
+            if (noPrMarker && noPrMarker.trim()) {
+                console.log('No PR was found for this ticket (see pr_review_no_pr_found.json) — nothing to post, leaving SM label in place.');
+                return { success: true, action: 'no_pr_to_review' };
+            }
+        } catch (e) {
+            // File doesn't exist — normal case, proceed as usual.
+        }
+
         // Step 1: Read structured review data
         let reviewData = readReviewJson(ticketKey, workingDir);
         if (!reviewData) {
