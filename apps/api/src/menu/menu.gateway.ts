@@ -162,7 +162,9 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
-    this.io.to(`tenant:${tenantId}`).emit('tenant:service_mode_changed', { serviceMode });
+    const event = { serviceMode };
+    this.io.to(`tenant_${tenantId}_kitchen`).emit('tenant:service_mode_changed', event);
+    this.io.to(`tenant_${tenantId}_hall`).emit('tenant:service_mode_changed', event);
   }
 
   emitStopListChanged(tenantId: string, itemId: string, isInStopList: boolean): void {

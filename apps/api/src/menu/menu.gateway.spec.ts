@@ -93,4 +93,15 @@ describe('MenuGateway event routing', () => {
     ]);
     expect(emissions[0]).toMatchObject({ event: 'menu:stop_list_changed', payload: { itemId: 'item-42', isInStopList: false } });
   });
+
+  it('routes service mode changes to both staff rooms', () => {
+    const { gateway, emissions } = makeGateway();
+
+    gateway.emitServiceModeChanged('tenant-1', 'ORDER_AND_PAY');
+
+    expect(emissions).toEqual([
+      { room: 'tenant_tenant-1_kitchen', event: 'tenant:service_mode_changed', payload: { serviceMode: 'ORDER_AND_PAY' } },
+      { room: 'tenant_tenant-1_hall', event: 'tenant:service_mode_changed', payload: { serviceMode: 'ORDER_AND_PAY' } },
+    ]);
+  });
 });
