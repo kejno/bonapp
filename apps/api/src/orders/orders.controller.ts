@@ -12,11 +12,15 @@ import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 @Controller('orders')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly menuGateway: MenuGateway,
+  ) {}
 
   @Post()
   create(@Body() body: unknown) {
@@ -28,14 +32,20 @@ export class OrdersController {
     ) {
       throw new BadRequestException('tableId is required');
     }
-    return this.ordersService.create((body as { tableId: string }).tableId.trim());
+    return this.ordersService.create((body as { tableId: string }).tableId.trim()).then((order) => {
+      this.menuGateway.emitOrderCreated(order.tenantId, order);
+      return order;
+    });
   }
 
   @Post(':id/pay')
   @UseGuards(AdminRoleGuard)
   @HttpCode(200)
-  pay(@Param('id') id: string) {
-    return this.ordersService.pay(id);
+  async pay(@Param('id') id: string) {
+    const order = await this.ordersService.pay(id);
+    this.menuGateway.emitOrderStatusChanged(order.tenantId, order.id, order.status);
+    await this.menuGateway.closeOrderSession(order.tenantId, order.tableId, order.id);
+    return order;
   }
 
   @Get()

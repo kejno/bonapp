@@ -20,6 +20,7 @@ describe('PrismaService tenant query scope', () => {
         'Tenant',
         'DiningArea',
         'Table',
+        'TableSession',
         'Order',
         'OrderItem',
         'Payment',

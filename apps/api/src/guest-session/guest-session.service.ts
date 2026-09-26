@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -13,6 +14,16 @@ export class GuestSessionService {
     }
 
     const { tenant, area, id, tableNumber, tenantId } = tableRow;
+    const tableSessionToken = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+    await this.prisma.unscopedClient.tableSession.create({
+      data: {
+        tenantId,
+        tableId: id,
+        tokenHash: createHash('sha256').update(tableSessionToken).digest('hex'),
+        expiresAt,
+      },
+    });
     const scopedDb = this.prisma.forTenant(tenantId);
 
     const activeOrder = await scopedDb.order.findFirst({
@@ -38,6 +49,8 @@ export class GuestSessionService {
         tableNumber,
         areaName: area.name,
       },
+      tableSessionToken,
+      tableSessionExpiresAt: expiresAt,
       activeOrder: activeOrder
         ? {
             id: activeOrder.id,

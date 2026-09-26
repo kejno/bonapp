@@ -113,6 +113,7 @@ model Table {
   createdAt   DateTime    @default(now()) @map("created_at")
 
   orders      Order[]
+  sessions    TableSession[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, tableNumber])
@@ -120,6 +121,20 @@ model Table {
   @@index([tenantId])
   @@index([areaId])
   @@map("tables")
+}
+
+model TableSession {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  tableId   String    @map("table_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  table     Table     @relation(fields: [tableId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId, tableId, expiresAt])
+  @@map("table_sessions")
 }
 
 enum OrderStatus {
