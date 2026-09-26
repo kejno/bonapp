@@ -33,4 +33,26 @@ describe('WaiterCallNotifications', () => {
     unmount();
     expect(disconnect).toHaveBeenCalledOnce();
   });
+
+  it('clears calls when the signed-in staff token changes', () => {
+    const { rerender } = render(<WaiterCallNotifications />);
+    act(() => handlers.get('waiter:called')?.({ tableId: '1', tableNumber: 4, reason: 'NEED_BILL' } as never));
+    expect(screen.getByText('Стол №4 просит счёт')).toBeInTheDocument();
+
+    act(() => useAuthStore.setState({ accessToken: 'another-staff-token' }));
+    rerender(<WaiterCallNotifications />);
+
+    expect(screen.queryByText('Стол №4 просит счёт')).not.toBeInTheDocument();
+  });
+
+  it('clears calls when the staff token is removed', () => {
+    const { rerender } = render(<WaiterCallNotifications />);
+    act(() => handlers.get('waiter:called')?.({ tableId: '1', tableNumber: 4, reason: 'NEED_BILL' } as never));
+    expect(screen.getByText('Стол №4 просит счёт')).toBeInTheDocument();
+
+    act(() => useAuthStore.setState({ accessToken: null }));
+    rerender(<WaiterCallNotifications />);
+
+    expect(screen.queryByText('Стол №4 просит счёт')).not.toBeInTheDocument();
+  });
 });

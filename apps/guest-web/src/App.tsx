@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { io } from 'socket.io-client'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -13,6 +14,7 @@ type GuestMenu = Array<{
   name: string
   items: Array<{ id: string; name: string; description: string | null; price: string | number }>
 }>
+type TenantConfig = { logoUrl: string | null; brandColor: string; serviceMode: 'ORDER_AND_PAY' | 'VIEW_ONLY' | 'TAKEAWAY' }
 
 export default function App() {
   const qrToken = new URLSearchParams(window.location.search).get('qr_token')
@@ -23,20 +25,25 @@ export default function App() {
   const [menuError, setMenuError] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')
+  const [tenantConfig, setTenantConfig] = useState<TenantConfig | null>(null)
 
   async function callWaiter(reason: 'NEED_BILL' | 'CALL_STAFF') {
     if (!qrToken) return
-    const response = await fetch(`${API_BASE}/guest/call-waiter`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken },
-      body: JSON.stringify({ tableId: session?.table.id, reason }),
-    })
-    if (!response.ok) {
+    try {
+      const response = await fetch(`${API_BASE}/guest/call-waiter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken },
+        body: JSON.stringify({ tableId: session?.table.id, reason }),
+      })
+      if (!response.ok) {
+        setCallStatus('Не удалось отправить вызов')
+        return
+      }
+      setCallModalOpen(false)
+      setCallStatus('Официант уже идёт')
+    } catch {
       setCallStatus('Не удалось отправить вызов')
-      return
     }
-    setCallModalOpen(false)
-    setCallStatus('Официант уже идёт')
   }
 
   useEffect(() => {
@@ -52,6 +59,12 @@ export default function App() {
       .then(async (resolvedSession) => {
         sessionResolved = true
         setSession(resolvedSession)
+        const configResponse = await fetch(
+          `${API_BASE}/guest/tenant/config?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
+          { signal: controller.signal },
+        )
+        if (!configResponse.ok) throw new Error('Unable to load tenant config')
+        setTenantConfig(await configResponse.json() as TenantConfig)
         const response = await fetch(
           `${API_BASE}/guest/menu?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
           { signal: controller.signal },
@@ -69,13 +82,23 @@ export default function App() {
     return () => controller.abort()
   }, [qrToken])
 
+  useEffect(() => {
+    if (!qrToken) return
+    const socketOrigin = API_BASE.replace(/\/api\/v1\/?$/, '')
+    const socket = io(socketOrigin, { auth: { qrToken }, transports: ['websocket', 'polling'] })
+    socket.on('tenant:service_mode_changed', (payload: { serviceMode: TenantConfig['serviceMode'] }) => {
+      setTenantConfig((current) => current ? { ...current, serviceMode: payload.serviceMode } : current)
+    })
+    return () => { socket.disconnect() }
+  }, [qrToken])
+
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background">
+    <main className="flex min-h-svh items-center justify-center bg-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as React.CSSProperties}>
       <section className="text-center">
         <h1 className="text-2xl font-semibold text-primary">Bonapp — Guest</h1>
         {qrToken && !session && !error && <p>Открываем стол…</p>}
-        {session && <>
-          <h2>{session.tenant.name}</h2>
+        {session && tenantConfig && <>
+          <div className="flex items-center justify-center gap-2">{tenantConfig?.logoUrl && <img src={tenantConfig.logoUrl} alt="Логотип заведения" className="h-10 w-10 object-contain" />}<h2>{session.tenant.name}</h2></div>
           <p>Стол {session.table.tableNumber} · {session.table.areaName}</p>
           <button onClick={() => setCallModalOpen(true)}>Вызвать официанта</button>
           {callStatus && <p role="status">{callStatus}</p>}
@@ -86,6 +109,8 @@ export default function App() {
             <button onClick={() => setCallModalOpen(false)}>Закрыть</button>
           </section>}
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
+          {tenantConfig?.serviceMode === 'VIEW_ONLY' && <p>Заказы временно недоступны</p>}
+          {tenantConfig?.serviceMode === 'TAKEAWAY' && <p>Доступен самовывоз</p>}
           <section aria-label="Меню">
             <h3>Меню</h3>
             {menuError && <p role="alert">Не удалось загрузить меню</p>}

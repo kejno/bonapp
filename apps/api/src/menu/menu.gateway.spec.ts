@@ -1,131 +1,107 @@
 import type { HttpAdapterHost } from '@nestjs/core';
 import type { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserRole } from '@prisma/client';
+import { buildTokenPair } from '../staff-auth/staff-jwt.util';
 import { MenuGateway } from './menu.gateway';
 
-describe('MenuGateway', () => {
+type TestSocket = { handshake: { auth: Record<string, unknown>; headers: Record<string, unknown>; query: Record<string, unknown> }; join: jest.Mock; data: Record<string, unknown> };
+
+describe('MenuGateway event routing', () => {
   function makeGateway() {
-    const prisma = { findTableByQrToken: jest.fn() };
+    const emissions: Array<{ room: string; event: string; payload: unknown }> = [];
+    const gateway = new MenuGateway(
+      {} as HttpAdapterHost,
+      {} as PrismaService,
+      {} as ConfigService,
+      { updateKitchenStatusForTenant: jest.fn() } as never,
+    );
+    const to = jest.fn((room: string) => ({
+      emit: (event: string, payload: unknown) => emissions.push({ room, event, payload }),
+    }));
+    (gateway as unknown as { io: { to: typeof to } }).io = { to };
+    return { gateway, emissions, to };
+  }
+
+  it('accepts a staff bearer token from the handshake query', async () => {
+    const secret = 'gateway-test-secret';
+    const { accessToken } = buildTokenPair('staff-1', 'tenant-1', UserRole.CHEF, secret);
+    const join = jest.fn();
+    const prisma = {
+      forTenant: () => ({
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'staff-1', tenantId: 'tenant-1', role: UserRole.CHEF }) },
+      }),
+    };
     const gateway = new MenuGateway(
       {} as HttpAdapterHost,
       prisma as unknown as PrismaService,
-      { get: jest.fn() } as unknown as ConfigService,
-      { getTenantIdForSocketToken: jest.fn() } as never,
+      { getOrThrow: () => secret } as unknown as ConfigService,
+      { updateKitchenStatusForTenant: jest.fn() } as never,
     );
-    const emitFn = jest.fn();
-    const toFn = jest.fn().mockReturnValue({ emit: emitFn });
-    (gateway as unknown as Record<string, unknown>)['io'] = { to: toFn };
-    return { gateway, prisma, toFn, emitFn };
-  }
-
-  it('joins only the tenant resolved from the authenticated QR token', async () => {
-    const { gateway, prisma } = makeGateway();
-    const join = jest.fn();
-    const disconnect = jest.fn();
-    prisma.findTableByQrToken.mockResolvedValue({ tenantId: 'tenant-1' });
-
-    await (
-      gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }
-    ).joinTenantRoom({ handshake: { auth: { qrToken: 'valid-qr-token' } }, join, disconnect });
-
-    expect(prisma.findTableByQrToken).toHaveBeenCalledWith('valid-qr-token');
-    expect(join).toHaveBeenCalledWith('tenant:tenant-1');
-    expect(disconnect).not.toHaveBeenCalled();
-  });
-
-  it('joins a verified staff connection to the tenant hall room', async () => {
-    const authGuard = { getTenantIdForSocketToken: jest.fn().mockResolvedValue('tenant-1') };
-    const gateway = new MenuGateway(
-      {} as HttpAdapterHost,
-      { findTableByQrToken: jest.fn() } as unknown as PrismaService,
-      { get: jest.fn() } as unknown as ConfigService,
-      authGuard as never,
-    );
-    const join = jest.fn();
-    const disconnect = jest.fn();
-    await (gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }).joinTenantRoom({
-      handshake: { auth: { accessToken: 'staff-token' } }, join, disconnect,
-    });
-    expect(authGuard.getTenantIdForSocketToken).toHaveBeenCalledWith('staff-token');
-    expect(join).toHaveBeenCalledWith('tenant_tenant-1_hall');
-    expect(disconnect).not.toHaveBeenCalled();
-  });
-
-  it('disconnects a socket without a valid QR token instead of trusting a tenant query', async () => {
-    const { gateway, prisma } = makeGateway();
-    const join = jest.fn();
-    const disconnect = jest.fn();
-
-    await (
-      gateway as unknown as { joinTenantRoom(socket: unknown): Promise<void> }
-    ).joinTenantRoom({
-      handshake: { auth: {}, query: { tenantId: 'another-tenant' } },
+    const socket: TestSocket = {
+      handshake: { auth: {}, headers: {}, query: { token: accessToken } },
       join,
-      disconnect,
-    });
+      data: {},
+    };
 
-    expect(prisma.findTableByQrToken).not.toHaveBeenCalled();
-    expect(join).not.toHaveBeenCalled();
-    expect(disconnect).toHaveBeenCalledWith(true);
+    await (gateway as unknown as { joinTenantRoom(socket: TestSocket, payload: unknown): Promise<string> })
+      .joinTenantRoom(socket, { room: 'kitchen' });
+
+    expect(join).toHaveBeenCalledWith('tenant_tenant-1_kitchen');
   });
 
-  it('logs a QR lookup failure before disconnecting the socket', () => {
-    const { gateway } = makeGateway();
-    const disconnect = jest.fn();
-    const error = new Error('database timeout');
-    const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  it('sends a new order to kitchen and hall rooms', () => {
+    const { gateway, emissions } = makeGateway();
+    const order = { id: 'order-1' };
 
-    (gateway as unknown as {
-      handleJoinTenantRoomError(socket: unknown, error: unknown): void;
-    }).handleJoinTenantRoomError({ disconnect }, error);
+    gateway.emitOrderCreated('tenant-1', order);
 
-    expect(loggerError).toHaveBeenCalledWith(
-      'Unable to join menu WebSocket tenant room',
-      error,
-    );
-    expect(disconnect).toHaveBeenCalledWith(true);
+    expect(emissions).toEqual([
+      { room: 'tenant_tenant-1_kitchen', event: 'order:created', payload: order },
+      { room: 'tenant_tenant-1_hall', event: 'order:created', payload: order },
+    ]);
   });
 
-  it('emits menu:stop_list_changed to the correct tenant room', () => {
-    const { gateway, toFn, emitFn } = makeGateway();
+  it('always sends status changes to the order room and routes cooking to kitchen', () => {
+    const { gateway, emissions } = makeGateway();
 
-    gateway.emitStopListChanged('tenant-1', 'item-42', true);
+    gateway.emitOrderStatusChanged('tenant-1', 'order-1', 'COOKING');
 
-    expect(toFn).toHaveBeenCalledWith('tenant:tenant-1');
-    expect(emitFn).toHaveBeenCalledWith('menu:stop_list_changed', {
-      itemId: 'item-42',
-      isInStopList: true,
-    });
+    expect(emissions).toEqual([
+      { room: 'order_order-1', event: 'order:status_changed', payload: { orderId: 'order-1', status: 'COOKING' } },
+      { room: 'tenant_tenant-1_kitchen', event: 'order:status_changed', payload: { orderId: 'order-1', status: 'COOKING' } },
+    ]);
   });
 
-  it('emits isInStopList false when the item is removed from the stop list', () => {
-    const { gateway, emitFn } = makeGateway();
+  it('routes ready status to the hall and waiter calls only to the hall', () => {
+    const { gateway, emissions } = makeGateway();
+    gateway.emitOrderStatusChanged('tenant-1', 'order-2', 'READY');
+    gateway.emitWaiterCalled('tenant-1', { tableId: 'table-1', tableNumber: 4, reason: 'NEED_BILL' });
 
+    expect(emissions.map(({ room }) => room)).toEqual([
+      'order_order-2', 'tenant_tenant-1_hall', 'tenant_tenant-1_hall',
+    ]);
+    expect(emissions[2]).toMatchObject({ event: 'waiter:called', payload: { tableId: 'table-1' } });
+  });
+
+  it('routes stop list changes to both staff rooms', () => {
+    const { gateway, emissions } = makeGateway();
     gateway.emitStopListChanged('tenant-1', 'item-42', false);
 
-    expect(emitFn).toHaveBeenCalledWith('menu:stop_list_changed', {
-      itemId: 'item-42',
-      isInStopList: false,
-    });
+    expect(emissions.map(({ room }) => room)).toEqual([
+      'tenant_tenant-1_kitchen', 'tenant_tenant-1_hall',
+    ]);
+    expect(emissions[0]).toMatchObject({ event: 'menu:stop_list_changed', payload: { itemId: 'item-42', isInStopList: false } });
   });
 
-  it('emits waiter calls to the tenant hall room', () => {
-    const { gateway, toFn, emitFn } = makeGateway();
-    const payload = { tableId: 'table-1', tableNumber: 4, reason: 'NEED_BILL' as const };
-    gateway.emitWaiterCalled('tenant-1', payload);
-    expect(toFn).toHaveBeenCalledWith('tenant_tenant-1_hall');
-    expect(emitFn).toHaveBeenCalledWith('waiter:called', payload);
-  });
+  it('routes service mode changes to both staff rooms', () => {
+    const { gateway, emissions } = makeGateway();
 
-  it('routes events to separate rooms for different tenants', () => {
-    const { gateway, toFn } = makeGateway();
+    gateway.emitServiceModeChanged('tenant-1', 'ORDER_AND_PAY');
 
-    gateway.emitStopListChanged('tenant-a', 'item-1', true);
-    gateway.emitStopListChanged('tenant-b', 'item-2', false);
-
-    expect(toFn).toHaveBeenCalledWith('tenant:tenant-a');
-    expect(toFn).toHaveBeenCalledWith('tenant:tenant-b');
-    expect(toFn).toHaveBeenCalledTimes(2);
+    expect(emissions).toEqual([
+      { room: 'tenant_tenant-1_kitchen', event: 'tenant:service_mode_changed', payload: { serviceMode: 'ORDER_AND_PAY' } },
+      { room: 'tenant_tenant-1_hall', event: 'tenant:service_mode_changed', payload: { serviceMode: 'ORDER_AND_PAY' } },
+    ]);
   });
 });

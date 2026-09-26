@@ -9,6 +9,10 @@ const SOCKET_URL = API_BASE.replace(/\/api\/v1\/?$/, '');
 
 export default function WaiterCallNotifications() {
   const token = useAuthStore((state) => state.accessToken);
+  return <WaiterCallNotificationsForToken key={token ?? 'anonymous'} token={token} />;
+}
+
+function WaiterCallNotificationsForToken({ token }: { token: string | null }) {
   const [notices, setNotices] = useState<Notice[]>([]);
 
   useEffect(() => {
