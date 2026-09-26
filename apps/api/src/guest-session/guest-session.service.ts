@@ -77,4 +77,35 @@ export class GuestSessionService {
         : null,
     };
   }
+
+  async addOrderItem(orderId: string, itemId: string, quantity: number, tenantId: string, tableId: string) {
+    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tableId, status: { in: [OrderStatus.NEW, OrderStatus.COOKING] }, isPaid: false },
+        select: { id: true },
+      });
+      if (!order) throw new ForbiddenException('Active order does not belong to this table');
+      const item = await tx.menuItem.findFirst({
+        where: { id: itemId, isActive: true, isInStopList: false },
+        select: { id: true, priceByn: true, kitchenDepartment: true, stopListItem: { select: { isStopped: true } } },
+      });
+      if (!item || item.stopListItem?.isStopped) throw new NotFoundException('Menu item is unavailable');
+      const created = await tx.orderItem.create({
+        data: {
+          orderId,
+          itemId,
+          quantity,
+          unitPriceByn: item.priceByn,
+          selectedModifiers: [],
+          status: OrderStatus.NEW,
+          kitchenDepartment: item.kitchenDepartment ?? 'HOT',
+        },
+      });
+      await tx.order.update({
+        where: { id_tenantId: { id: orderId, tenantId } },
+        data: { totalAmountByn: { increment: Number(item.priceByn) * quantity } },
+      });
+      return created;
+    });
+  }
 }
