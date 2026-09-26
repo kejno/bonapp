@@ -1,16 +1,24 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { OrdersService } from './orders.service';
 
 const mockPrismaService = {
+  transactionForTenant: jest.fn(),
   db: {
     order: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
     },
   },
+};
+
+const transaction = {
+  table: { findFirst: jest.fn(), updateMany: jest.fn() },
+  tenant: { findUnique: jest.fn() },
+  order: { count: jest.fn(), create: jest.fn() },
+  $executeRaw: jest.fn(),
 };
 
 const mockTenantContextService = {
@@ -22,6 +30,10 @@ describe('OrdersService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPrismaService.transactionForTenant.mockImplementation(
+      (_tenantId: string, operation: (tx: typeof transaction) => unknown) =>
+        operation(transaction),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -97,6 +109,17 @@ describe('OrdersService', () => {
       await expect(service.findOne('missing-id')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
+    });
+  });
+
+  describe('create()', () => {
+    it('rejects when another request has already reserved the table', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.table.findFirst.mockResolvedValue({ id: 'table-1', status: 'AVAILABLE' });
+      transaction.table.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.create('table-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.order.create).not.toHaveBeenCalled();
     });
   });
 });

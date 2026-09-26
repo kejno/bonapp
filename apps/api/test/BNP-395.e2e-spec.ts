@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
+import { AuthGuard } from '../src/auth/auth.guard';
 import { TenantContextGuard } from '../src/auth/tenant-context.guard';
+import { AdminRoleGuard } from '../src/auth/admin-role.guard';
 import { HallsService } from '../src/halls/halls.service';
 import { TableQrPdfService } from '../src/halls/table-qr-pdf.service';
 import { TablesController } from '../src/halls/tables.controller';
@@ -21,6 +23,8 @@ describe('BNP-395: unauthorized PDF generation', () => {
         { provide: HallsService, useValue: {} },
         { provide: TableQrPdfService, useValue: { generate } },
         { provide: ConfigService, useValue: { getOrThrow: () => jwtSecret } },
+        AuthGuard,
+        AdminRoleGuard,
         {
           provide: PrismaService,
           useValue: {
@@ -44,6 +48,7 @@ describe('BNP-395: unauthorized PDF generation', () => {
       .useValue({ canActivate: () => true })
       .compile();
     app = module.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     await app.init();
   });
 

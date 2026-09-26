@@ -1,43 +1,123 @@
+import { TableStatus } from '@prisma/client';
 import request from 'supertest';
-import { AuthTestFixture, loginRequest } from './auth-test.fixture';
+import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
-describe('BNP-362: статус стола и активный заказ сохраняются', () => {
-  const fixture = new AuthTestFixture();
-  let areaId = '';
-  let accessToken = '';
+describe('BNP-362: изменение статуса стола', () => {
+  const fixture = new MenuCacheTestFixture();
 
   beforeAll(async () => {
     await fixture.start();
-    const area = await fixture.prisma.diningArea.create({ data: { tenantId: fixture.tenantId, name: 'Основной зал' } });
-    areaId = area.id;
-    const login = await loginRequest(fixture.app.getHttpServer())
-      .send({ tenantId: fixture.tenantId, email: fixture.userEmail, password: fixture.userPassword })
-      .expect(200);
-    accessToken = (login.body as { accessToken: string }).accessToken;
   }, 120_000);
-  afterAll(async () => fixture.stop());
 
-  it('сохраняет статус занятого стола в БД и возвращает связанный активный заказ', async () => {
+  afterAll(async () => {
+    await fixture.stop();
+  });
+
+  it('сохраняет допустимые статусы стола через API', async () => {
+    const area = await fixture.prisma.diningArea.create({
+      data: { tenantId: fixture.tenantId, name: 'Основной зал' },
+    });
     const table = await fixture.prisma.table.create({
-      data: { tenantId: fixture.tenantId, areaId, tableNumber: 21, seatsCount: 2, qrToken: 'qr-bnp-362-test' },
+      data: {
+        tenantId: fixture.tenantId,
+        areaId: area.id,
+        tableNumber: 41,
+        qrToken: `bnp362-${fixture.tenantId}`,
+        status: TableStatus.AVAILABLE,
+      },
     });
     const order = await fixture.prisma.order.create({
-      data: { tenantId: fixture.tenantId, tableId: table.id, dailyOrderNumber: 1, status: 'COOKING', totalAmountByn: 25 },
+      data: {
+        tenantId: fixture.tenantId,
+        tableId: table.id,
+        dailyOrderNumber: 1,
+        status: 'COOKING',
+        totalAmountByn: 25,
+      },
     });
 
-    await request(fixture.app.getHttpServer()).patch(`/api/v1/admin/tables/${table.id}/status`)
-      .set('Authorization', `Bearer ${accessToken}`).send({ status: 'OCCUPIED' }).expect(200);
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.AVAILABLE });
 
-    expect(await fixture.prisma.table.findUnique({ where: { id: table.id } })).toMatchObject({ status: 'OCCUPIED' });
-    const listing = await request(fixture.app.getHttpServer()).get('/api/v1/admin/tables')
-      .set('Authorization', `Bearer ${accessToken}`).expect(200);
-    expect(listing.body).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: table.id,
-        status: 'OCCUPIED',
-        orders: [expect.objectContaining({ id: order.id, status: 'COOKING' })],
-      }),
-    ]));
-    expect(await fixture.prisma.order.findUnique({ where: { id: order.id } })).toMatchObject({ tableId: table.id, status: 'COOKING' });
+    for (const status of [TableStatus.OCCUPIED, TableStatus.BILL_REQUESTED]) {
+      const response = await request(fixture.app.getHttpServer())
+        .patch(`/api/v1/admin/tables/${table.id}/status`)
+        .set('Authorization', `Bearer ${fixture.token()}`)
+        .send({ status })
+        .expect(200);
+
+      expect(response.body).toMatchObject({ id: table.id, status });
+      await expect(
+        fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+      ).resolves.toMatchObject({ status });
+    }
+
+    const listing = await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    expect(listing.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: table.id,
+          status: TableStatus.BILL_REQUESTED,
+          orders: [expect.objectContaining({ id: order.id, status: 'COOKING' })],
+        }),
+      ]),
+    );
+    await expect(
+      fixture.prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+    ).resolves.toMatchObject({ tableId: table.id, status: 'COOKING' });
+  });
+
+  it('меняет статус стола при создании заказа и освобождает его после оплаты', async () => {
+    const area = await fixture.prisma.diningArea.create({
+      data: { tenantId: fixture.tenantId, name: 'Зона заказа' },
+    });
+    const table = await fixture.prisma.table.create({
+      data: {
+        tenantId: fixture.tenantId,
+        areaId: area.id,
+        tableNumber: 42,
+        qrToken: `bnp362-order-${fixture.tenantId}`,
+        status: TableStatus.AVAILABLE,
+      },
+    });
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.AVAILABLE });
+
+    const orderResponse = await request(fixture.app.getHttpServer())
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({ tableId: table.id })
+      .expect(201);
+    const orderId = (orderResponse.body as { id: string }).id;
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.OCCUPIED });
+
+    const listing = await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    expect(listing.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: table.id, status: TableStatus.OCCUPIED }),
+      ]),
+    );
+
+    await request(fixture.app.getHttpServer())
+      .post(`/api/v1/orders/${orderId}/pay`)
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .send({})
+      .expect(200);
+
+    await expect(
+      fixture.prisma.table.findUniqueOrThrow({ where: { id: table.id } }),
+    ).resolves.toMatchObject({ status: TableStatus.AVAILABLE });
   });
 });

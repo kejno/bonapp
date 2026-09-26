@@ -142,7 +142,13 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.sheet{height:281mm;page-break-after:always;display:flex;flex-direction:column}.grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}.grid article{border:1px dashed #888;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}.grid article:after{content:'';position:absolute;top:50%;left:0;right:0;border-top:1px dotted #aaa}.logo{max-width:42mm;max-height:18mm;object-fit:contain}.qr{width:42mm;height:42mm}.table{font-size:24pt;font-weight:bold;margin:6mm}h1{font-size:14pt}footer{text-align:center;font-size:8pt;padding:2mm}</style></head><body>${sheets.join('')}</body></html>`;
     this.browser ??= await puppeteer.launch({ headless: true });
     const page = await this.browser.newPage();
-    try { await page.setContent(html, { waitUntil: 'load' }); return Buffer.from(await page.pdf({ format: 'A4', printBackground: true })); }
+    try {
+      await page.setContent(html, { waitUntil: 'load' });
+      await page.evaluate(async () => {
+        await Promise.all(Array.from(document.images, (image) => image.decode()));
+      });
+      return Buffer.from(await page.pdf({ format: 'A4', printBackground: true }));
+    }
     finally { await page.close(); }
   }
 
