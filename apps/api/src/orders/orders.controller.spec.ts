@@ -1,13 +1,18 @@
 import { ForbiddenException } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 describe('OrdersController', () => {
   const ordersService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
   };
-  const controller = new OrdersController(ordersService as unknown as OrdersService);
+  const menuGateway = { emitOrderCreated: jest.fn(), emitOrderStatusChanged: jest.fn() };
+  const controller = new OrdersController(
+    ordersService as unknown as OrdersService,
+    menuGateway as unknown as MenuGateway,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
