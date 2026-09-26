@@ -1,29 +1,29 @@
-# Исправления PR BNP-154
+# Проверка PR BNP-154
 
 ## Issues/Notes
 
-- Открытый inline-тред указывал на утечку статуса заказа и его ID гостям других столов. В текущем diff PR уже есть проверка гостевой сессии и принадлежности активного заказа тому же столу; отдельные изменения исходного кода в этой итерации не потребовались.
-- `instruction.md`, `pr_files.txt`, файлы CI, сведения о конфликтах и `ticket.md` в `input/BNP-154` отсутствуют. Прочитаны проектный `CLAUDE.md` и инструкции `.dmtools/agents/instructions/pr_rework/`.
-- В `pr_discussions_raw.json` только один открытый inline-тред имеет `threadId` и `rootCommentId`; на него подготовлен адресный ответ. Старые сводные отзывы лишены этих идентификаторов, а два предыдущих inline-треда уже закрыты.
+- Открытый inline-тред указывал на утечку статуса и ID заказа гостям других столов. Исправление уже присутствует в HEAD: `join_order_room` принимает действующую table session и проверяет активный заказ для того же стола до подключения к `order_<id>`. Гостевые сокеты не входят в общую комнату tenant.
+- В `pr_discussions_raw.json` обнаружен один открытый inline-тред с `threadId` и `rootCommentId`; для него подготовлен ответ. Остальные открытые записи — сводные отзывы без идентификаторов треда, предыдущие inline-треды закрыты.
+- `instruction.md`, `pr_files.txt`, файлы CI, `merge_conflicts.md` и `ticket.md` в `input/BNP-154` отсутствуют. Прочитаны `CLAUDE.md`, PR-контекст и инструкции `.dmtools/agents/instructions/pr_rework/`.
+- При первой проверке типов обнаружен устаревший сгенерированный Prisma Client. После `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma` ошибка `TransactionClient.guest` исчезла.
 
 ## Approach
 
-- Проверил обработчик `join_order_room`: он проверяет действующую table session и наличие незавершённого заказа за тем же столом, после чего подключает гостя к `order_<id>`. Сокет гостя не добавляется в общую комнату tenant.
-- Статус заказа отправляется в комнату заказа, а персонал кухни/зала получает его только в соответствующей авторизованной комнате.
-- E2E сценарий создает заказы на двух столах, подключает двух гостей к своим комнатам и проверяет, что статус заказа получает его гость и кухня, а гость второго стола события не получает.
-- Проверка blast radius выполнена поиском `rg` по использованию `tableSession`, `guestId`, комнат Socket.io и вызовам отправки статуса в `apps/api/src` и `apps/api/test`. CodeGraph недоступен.
-- Проверка миграций показала только новую миграцию `20260926220000_admin_order_guests/migration.sql`; существующие миграции не изменены.
+- Сверил Socket.io авторизацию гостя, комнаты доставки и потребителей статуса в API. Кухонная комната доступна через авторизацию персонала; гостевое событие отправляется только в комнату конкретного заказа.
+- E2E сценарий создаёт заказы для двух столов, подключает гостей к соответствующим заказам и подтверждает получение события гостем нужного заказа и кухней, при этом второй гость события не получает.
+- Blast radius проверен поиском `rg` по `tableSession`, `join_order_room` и вызовам `emitOrderStatusChanged` в API и целевом E2E. CodeGraph недоступен.
+- Проверка миграций: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только новую миграцию `20260926220000_admin_order_guests/migration.sql`; существующие миграции не изменены.
 
 ## Files Modified
 
-- `outputs/response.md` — отчет о проверке этой итерации.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — адресный ответ на открытый inline-тред.
+- `outputs/response.md` — результаты проверки.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево было чистым.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
 - `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
-- Первая попытка `npm run typecheck` обнаружила неактуальный сгенерированный Prisma Client (`TransactionClient` не содержал поле `guest`). Выполнил `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma`, затем повторный `npm run typecheck` прошел во всех четырех workspace.
-- `npm test` — успешно: API — 60 наборов / 538 тестов, admin-web — 29 файлов / 80 тестов, guest-web — 1 файл / 5 тестов; также прошли сборки и проверка design tokens.
-- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест. Проверены доставка статуса гостю заказа и кухне, а также изоляция от гостя другого стола.
-- Проверка миграций: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — только новая миграция. Существующие миграции не редактировались.
+- `npm run typecheck` — успешно после генерации Prisma Client по текущей схеме; проверены все 4 workspace.
+- `npm test` — успешно: API 60 наборов / 538 тестов, admin-web 29 файлов / 80 тестов, guest-web 1 файл / 5 тестов; сборки и проверка design tokens также прошли.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест.
+- `git diff --check` — успешно. Проверка миграций подтвердила, что существующие файлы миграций не менялись.
