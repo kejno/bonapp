@@ -35,6 +35,7 @@ model Tenant {
   currency         String       @default("BYN")
   logoUrl          String?      @map("logo_url")
   brandColor       String?      @map("brand_color")
+  integrationSettings Json?     @map("integration_settings")
   dineIn           Boolean      @default(true) @map("dine_in")
   takeaway         Boolean      @default(false)
   delivery         Boolean      @default(false)
