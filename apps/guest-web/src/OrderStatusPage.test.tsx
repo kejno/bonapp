@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import OrderStatusPage from './OrderStatusPage'
 
@@ -39,26 +39,28 @@ describe('OrderStatusPage', () => {
     expect(screen.queryByRole('link', { name: 'Добавить ещё' })).not.toBeInTheDocument()
   })
 
-  it('refreshes the snapshot only after the order room subscription is acknowledged', async () => {
+  it('refreshes the order after joining the room to cover status changes during subscription', async () => {
     window.sessionStorage.setItem('qrToken', 'table-token')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'order-1', dailyOrderNumber: 48, status: 'NEW', estimatedReadyAt: null, updatedAt: '2026-09-26T12:00:00.000Z' }),
-    } as Response)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'order-1', dailyOrderNumber: 48, status: 'COOKING', estimatedReadyAt: null, updatedAt: '2026-09-26T12:00:00.000Z' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'order-1', dailyOrderNumber: 48, status: 'READY', estimatedReadyAt: null, updatedAt: '2026-09-26T12:01:00.000Z' }),
+      } as Response)
     socket.on.mockImplementation((event: string, handler: (payload?: unknown) => void) => {
       socket.handlers.set(event, handler)
       return socket
     })
     render(<OrderStatusPage orderId="order-1" />)
 
-    await screen.findByText('Заказ #048')
-    const initialFetches = fetchSpy.mock.calls.length
+    expect(await screen.findByText('Готовится на кухне')).toBeInTheDocument()
     socket.handlers.get('connect')?.()
     const ack = socket.emit.mock.calls.at(-1)?.[2] as (result: { ok: boolean }) => void
-    expect(fetchSpy).toHaveBeenCalledTimes(initialFetches)
-    await act(async () => {
-      ack({ ok: true })
-      await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(initialFetches + 1))
-    })
+    ack({ ok: true })
+    expect(await screen.findByText('Готово — зовите официанта')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 })
