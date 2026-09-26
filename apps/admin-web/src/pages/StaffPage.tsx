@@ -38,9 +38,17 @@ export default function StaffPage() {
     try { await api(editing?.id ? `/admin/staff/${editing.id}` : '/admin/staff', token, { method: editing?.id ? 'PATCH' : 'POST', body: JSON.stringify(values) }); setEditing(null); await load(); }
     catch { setError('Не удалось сохранить сотрудника'); }
   };
-  const deactivate = async (id: string) => { if (token) { await api(`/admin/staff/${id}/deactivate`, token, { method: 'PATCH' }); await load(); } };
-  const openShift = async () => { if (token) { await api('/admin/shifts/open', token, { method: 'POST' }); await load(); } };
-  const closeShift = async () => { if (token) { await api('/admin/shifts/close', token, { method: 'POST' }); setClosing(false); await load(); } };
+  const runAction = async (action: () => Promise<unknown>, message: string) => {
+    try { await action(); setError(''); await load(); }
+    catch { setError(message); }
+  };
+  const deactivate = async (id: string) => { if (token) await runAction(() => api(`/admin/staff/${id}/deactivate`, token, { method: 'PATCH' }), 'Не удалось деактивировать сотрудника'); };
+  const openShift = async () => { if (token) await runAction(() => api('/admin/shifts/open', token, { method: 'POST' }), 'Не удалось открыть смену'); };
+  const closeShift = async () => {
+    if (!token) return;
+    try { await api('/admin/shifts/close', token, { method: 'POST' }); setClosing(false); setError(''); await load(); }
+    catch { setError('Не удалось закрыть смену'); }
+  };
   return <main className="mx-auto max-w-6xl space-y-8 p-8 text-stone-900"><header className="flex items-center justify-between"><div><h1 className="text-3xl font-bold">Сотрудники и смены</h1><p className="mt-1 text-stone-500">Управление доступом команды ресторана</p></div><button className="rounded-xl bg-orange-600 px-4 py-2 text-white" onClick={() => setEditing({ id: '', fullName: '', email: '', phone: '', role: 'WAITER', isActive: true, lastLoginAt: null })}>Добавить сотрудника</button></header>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     <section className="rounded-2xl border bg-white p-6"><h2 className="mb-4 text-xl font-semibold">Текущая смена</h2>{shift ? <div className="flex items-center justify-between"><div><p>Открыта: {new Date(shift.openedAt).toLocaleString('ru-RU')}</p><p>Кассир: {shift.cashier.fullName}</p><p>Заказов: {shift.ordersCount}</p></div><button className="rounded-xl bg-stone-900 px-4 py-2 text-white" onClick={() => setClosing(true)}>Закрыть смену</button></div> : <button onClick={() => void openShift()} className="rounded-xl bg-orange-600 px-4 py-2 text-white">Открыть смену</button>}</section>

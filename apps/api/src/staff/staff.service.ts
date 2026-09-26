@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -41,9 +41,15 @@ export class StaffService {
   }
 
   async openShift(cashierId: string) {
-    if (await this.prisma.db.staffShift.findFirst({ where: { closedAt: null } })) throw new ConflictException('A shift is already open');
     const tenantId = this.tenant.getTenantId()!;
-    return this.prisma.transactionForTenant(tenantId, (tx) => tx.staffShift.create({ data: { tenantId, cashierId }, include: { cashier: { select: { fullName: true } } } }));
+    try {
+      return await this.prisma.transactionForTenant(tenantId, (tx) => tx.staffShift.create({ data: { tenantId, cashierId }, include: { cashier: { select: { fullName: true } } } }));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A shift is already open');
+      }
+      throw error;
+    }
   }
 
   async closeShift() {

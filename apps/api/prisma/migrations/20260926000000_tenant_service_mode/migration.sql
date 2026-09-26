@@ -1,0 +1,4 @@
+CREATE TYPE "ServiceMode" AS ENUM ('ORDER_AND_PAY', 'VIEW_ONLY', 'TAKEAWAY');
+
+ALTER TABLE "tenants"
+ADD COLUMN "service_mode" "ServiceMode" NOT NULL DEFAULT 'ORDER_AND_PAY';
