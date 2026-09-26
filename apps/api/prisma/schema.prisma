@@ -14,6 +14,7 @@ enum UserRole {
   WAITER
   CHEF
   CASHIER
+  ADMIN
 }
 
 enum TableStatus {
@@ -61,6 +62,7 @@ model Tenant {
   modifierGroups   ModifierGroup[]
   modifiers        Modifier[]
   stopListItems    StopListItem[]
+  shifts           StaffShift[]
 
   @@map("tenants")
 }
@@ -84,11 +86,25 @@ model User {
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   assignedOrders Order[]   @relation("AssignedWaiterOrders")
+  openedShifts   StaffShift[]
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("users")
+}
+
+model StaffShift {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  cashierId String    @map("cashier_id")
+  cashier   User      @relation(fields: [cashierId], references: [id])
+  openedAt  DateTime  @default(now()) @map("opened_at")
+  closedAt  DateTime? @map("closed_at")
+
+  @@index([tenantId, closedAt])
+  @@map("staff_shifts")
 }
 
 model DiningArea {
