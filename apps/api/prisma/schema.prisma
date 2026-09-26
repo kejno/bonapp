@@ -53,6 +53,7 @@ model Tenant {
   modifierGroups   ModifierGroup[]
   modifiers        Modifier[]
   stopListItems    StopListItem[]
+  shifts           Shift[]
 
   @@map("tenants")
 }
@@ -76,6 +77,7 @@ model User {
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   assignedOrders Order[]   @relation("AssignedWaiterOrders")
+  openedShifts   Shift[]   @relation("OpenedShifts")
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
@@ -161,6 +163,7 @@ model Order {
   tipsAmountByn    Decimal        @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   paymentMethod    PaymentMethod? @map("payment_method")
   isPaid           Boolean        @default(false) @map("is_paid")
+  isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
   comment          String?
@@ -173,6 +176,19 @@ model Order {
   @@index([tenantId, status], map: "idx_orders_tenant_status")
   @@index([tableId], map: "idx_orders_table_id")
   @@map("orders")
+}
+
+model Shift {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  openedById String    @map("opened_by_id")
+  openedBy   User      @relation("OpenedShifts", fields: [openedById, tenantId], references: [id, tenantId])
+  openedAt   DateTime  @default(now()) @map("opened_at")
+  closedAt   DateTime? @map("closed_at")
+
+  @@index([tenantId, closedAt])
+  @@map("shifts")
 }
 
 model OrderItem {

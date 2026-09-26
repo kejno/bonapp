@@ -8,6 +8,8 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import WelcomePage from './pages/WelcomePage';
+import KdsPage from './pages/KdsPage';
 
 const queryClient = new QueryClient();
 
@@ -24,6 +26,11 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route
+            path="/welcome"
+            element={<ProtectedRoute><WelcomePage /></ProtectedRoute>}
+          />
+          <Route path="/kds" element={<ProtectedRoute><KdsPage /></ProtectedRoute>} />
           <Route
             path="/dashboard"
             element={

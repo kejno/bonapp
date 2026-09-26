@@ -20,6 +20,7 @@ import { StaffAuthModule } from './staff-auth/staff-auth.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
+import { WelcomeModule } from './welcome/welcome.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TenantModule } from './tenant/tenant.module';
     OrdersModule,
     TenantModule,
     StaffAuthModule,
+    WelcomeModule,
     GuestSessionModule,
   ],
   controllers: [AppController],
