@@ -19,6 +19,7 @@ describe('App', () => {
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3')
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -37,6 +38,7 @@ describe('App', () => {
     expect(await screen.findByText('Стол 5 · Main Hall')).toBeInTheDocument()
     expect(screen.getByText('Test Restaurant')).toBeInTheDocument()
     expect(await screen.findByText('Капучино')).toBeInTheDocument()
+    expect(localStorage.getItem('guest_session_id')).toBe('3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3')
     expect(screen.getByText('8.5 BYN')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/stable-qr-token$/),

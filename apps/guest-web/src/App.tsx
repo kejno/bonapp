@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getGuestSessionId } from './guest-session'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -34,6 +35,7 @@ export default function App() {
       })
       .then(async (resolvedSession) => {
         sessionResolved = true
+        getGuestSessionId()
         setSession(resolvedSession)
         const response = await fetch(
           `${API_BASE}/guest/menu?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
