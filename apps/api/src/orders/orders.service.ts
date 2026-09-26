@@ -80,6 +80,17 @@ export class OrdersService {
       return paidOrder;
     });
   }
+
+  async updateStatus(id: string, status: OrderStatus) {
+    const tenantId = this.tenantContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException();
+    const order = await this.prisma.db.order.findFirst({ where: { id, tenantId } });
+    if (!order) throw new NotFoundException(`Order ${id} not found`);
+    return this.prisma.db.order.update({
+      where: { id_tenantId: { id, tenantId } },
+      data: { status },
+    });
+  }
 }
 
 function businessDayBounds(now: Date, timeZone: string): [Date, Date, string] {

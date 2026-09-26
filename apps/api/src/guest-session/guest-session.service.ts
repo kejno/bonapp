@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -44,6 +44,22 @@ export class GuestSessionService {
             status: activeOrder.status,
             createdAt: activeOrder.createdAt,
           }
+        : null,
+    };
+  }
+
+  async getOrderStatus(orderId: string, tenantId: string, tableId: string) {
+    const order = await this.prisma.forTenant(tenantId).order.findFirst({
+      where: { id: orderId, tableId },
+      select: { id: true, dailyOrderNumber: true, status: true, updatedAt: true },
+    });
+    if (!order) throw new ForbiddenException('Order does not belong to this table');
+    return {
+      id: order.id,
+      dailyOrderNumber: order.dailyOrderNumber,
+      status: order.status,
+      estimatedReadyAt: order.status === OrderStatus.COOKING
+        ? new Date(order.updatedAt.getTime() + 12 * 60_000).toISOString()
         : null,
     };
   }

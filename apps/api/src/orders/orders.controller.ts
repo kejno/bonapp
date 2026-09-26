@@ -6,17 +6,20 @@ import {
   HttpCode,
   Param,
   Post,
+  Patch,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
+import { OrderStatus } from '@prisma/client';
+import { MenuGateway } from '../menu/menu.gateway';
 
 @Controller('orders')
 @UseGuards(AuthGuard, TenantContextGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService, private readonly menuGateway: MenuGateway) {}
 
   @Post()
   create(@Body() body: unknown) {
@@ -46,5 +49,17 @@ export class OrdersController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(AdminRoleGuard)
+  async updateStatus(@Param('id') id: string, @Body() body: unknown) {
+    const status = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['status'] : undefined;
+    if (typeof status !== 'string' || !Object.values(OrderStatus).includes(status as OrderStatus)) {
+      throw new BadRequestException('Valid order status is required');
+    }
+    const order = await this.ordersService.updateStatus(id, status as OrderStatus);
+    this.menuGateway.emitOrderStatusChanged(order);
+    return order;
   }
 }

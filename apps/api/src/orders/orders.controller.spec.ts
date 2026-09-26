@@ -6,8 +6,10 @@ describe('OrdersController', () => {
   const ordersService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    updateStatus: jest.fn(),
   };
-  const controller = new OrdersController(ordersService as unknown as OrdersService);
+  const menuGateway = { emitOrderStatusChanged: jest.fn() };
+  const controller = new OrdersController(ordersService as unknown as OrdersService, menuGateway as never);
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -41,5 +43,20 @@ describe('OrdersController', () => {
         controller.findOne('other-tenant-order-id'),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+  });
+
+  it('emits the updated order status for connected guests', async () => {
+    const order = { id: 'order-1', dailyOrderNumber: 48, status: 'COOKING', updatedAt: new Date() };
+    ordersService.updateStatus.mockResolvedValue(order);
+
+    await expect(controller.updateStatus('order-1', { status: 'COOKING' })).resolves.toEqual(order);
+
+    expect(ordersService.updateStatus).toHaveBeenCalledWith('order-1', 'COOKING');
+    expect(menuGateway.emitOrderStatusChanged).toHaveBeenCalledWith(order);
+  });
+
+  it('rejects unsupported order statuses before updating the order', async () => {
+    await expect(controller.updateStatus('order-1', { status: 'INVALID' })).rejects.toThrow('Valid order status is required');
+    expect(ordersService.updateStatus).not.toHaveBeenCalled();
   });
 });
