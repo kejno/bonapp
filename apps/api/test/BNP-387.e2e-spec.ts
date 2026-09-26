@@ -142,7 +142,9 @@ describe('BNP-387: PDF for selected tables', () => {
           } else {
             await new Promise((resolve) => setTimeout(resolve, 500));
           }
-          const screenshot = PNG.sync.read(await pdfPage.screenshot());
+          const screenshot = PNG.sync.read(
+            Buffer.from(await pdfPage.screenshot()),
+          );
           const decodedQrCodes = new Set<string>();
           const regionSize = 320;
           const step = 160;
