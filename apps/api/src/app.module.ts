@@ -15,6 +15,7 @@ import { GuestSessionModule } from './guest-session/guest-session.module';
 import { HallsModule } from './halls/halls.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StaffAuthModule } from './staff-auth/staff-auth.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
@@ -31,6 +32,7 @@ import { TenantModule } from './tenant/tenant.module';
     HallsModule,
     MenuModule,
     OrdersModule,
+    OnboardingModule,
     TenantModule,
     StaffAuthModule,
     GuestSessionModule,
