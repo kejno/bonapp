@@ -22,8 +22,9 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и рабочей копии.
-- `npx eslint` по изменённым TypeScript-файлам API — успешно после `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma`. Первая попытка до генерации клиента выявила только устаревшие типы Prisma Client.
-- `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 60 наборов / 538 тестов, admin-web — 29 файлов / 80 тестов, guest-web — 1 файл / 5 тестов. Сборка трёх приложений и проверка design tokens также прошли.
+- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
+- `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma` — успешно; обновлён сгенерированный клиент. Первая попытка typecheck до генерации показала устаревший Prisma Client.
+- `npm run typecheck` — успешно во всех четырёх workspace после генерации клиента.
+- `npm test` — успешно: API — 60 наборов / 538 тестов, admin-web — 29 файлов / 80 тестов, guest-web — 1 файл / 5 тестов. Сборки приложений и проверка design tokens также прошли.
 - `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест; проверены доставка статуса гостю заказа и кухне, а также отсутствие события у гостя другого стола.
 - `git diff --check` — успешно. Проверка blast radius Socket.io выполнена поиском `rg`; проверка миграций подтвердила, что существующие миграции не изменены и новая миграция новее миграций базовой ветки.
