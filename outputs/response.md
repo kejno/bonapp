@@ -21,7 +21,7 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check` — выполнены.
-- `npx eslint apps/api/src/integrations/integrations.service.ts apps/api/src/integrations/integrations.service.spec.ts` — пройдено.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/IntegrationsPage.tsx apps/api/src/app.module.ts apps/api/src/integrations/integrations.controller.ts apps/api/src/integrations/integrations.module.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.service.ts` — пройдено.
 - `npm run typecheck` — первый запуск сообщил о несоответствии сгенерированного Prisma Client текущей схеме; `npm test` выполнил штатный `prisma generate`, после чего повторный `npm run typecheck` прошёл во всех четырёх workspace.
 - `npm test` — пройдено: 56 Jest-наборов (524 теста), 28 Vitest-файлов (76 тестов), сборки workspace и проверка design tokens.
 - Проверка влияния выполнена поиском по коду; затронутых потребителей публичных API и изменений миграций в этой итерации нет.
