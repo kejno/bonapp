@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { Server as HttpServer } from 'node:http';
@@ -8,7 +8,7 @@ import { verifyToken } from '../staff-auth/staff-jwt.util';
 import { ServiceMode, UserRole } from '@prisma/client';
 
 @Injectable()
-export class MenuGateway implements OnModuleInit {
+export class MenuGateway implements OnModuleInit, OnModuleDestroy {
   private io!: Server;
   private readonly logger = new Logger(MenuGateway.name);
 
@@ -34,6 +34,10 @@ export class MenuGateway implements OnModuleInit {
         this.handleJoinTenantRoomError(socket, error),
       );
     });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.io?.close();
   }
 
   private handleJoinTenantRoomError(socket: Socket, error: unknown): void {

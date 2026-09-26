@@ -7,19 +7,18 @@ import { TenantController } from './tenant.controller';
 import { TenantGuard } from './tenant.guard';
 import { TenantService } from './tenant.service';
 import { GuestTenantController } from './guest-tenant.controller';
-import { MenuGateway } from '../menu/menu.gateway';
+import { MenuModule } from '../menu/menu.module';
 
 @Global()
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [AuthModule, StorageModule, MenuModule],
   controllers: [TenantController, GuestTenantController],
   providers: [
     TenantContextService,
     TenantContextMiddleware,
     TenantGuard,
     TenantService,
-    MenuGateway,
   ],
-  exports: [TenantContextService, TenantContextMiddleware, TenantGuard, MenuGateway],
+  exports: [TenantContextService, TenantContextMiddleware, TenantGuard, MenuModule],
 })
 export class TenantModule {}
