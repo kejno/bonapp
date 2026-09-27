@@ -13,14 +13,12 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the guest heading and an empty cart when no table QR token is provided', () => {
+  it('asks the guest to scan a QR code without requesting a session when no token is provided', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     render(<App />)
-    const heading = screen.getByText('Bonapp')
 
-    expect(heading).toBeInTheDocument()
-    expect(heading).toHaveClass('text-primary')
-    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
-    expect(screen.getByRole('main')).toHaveClass('bg-background')
+    expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {

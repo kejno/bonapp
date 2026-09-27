@@ -155,6 +155,7 @@ export default function App() {
     <main className="flex min-h-svh items-center justify-center bg-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as React.CSSProperties}>
       <section className="w-full max-w-2xl px-4 text-center">
         <header className="flex items-center justify-between"><h1 className="text-2xl font-semibold text-primary">Bonapp</h1><span aria-label="Количество товаров в корзине">Корзина · {cartCount}</span></header>
+        {!qrToken && <p>Сканируйте QR-код</p>}
         {qrToken && !session && !error && <p>Открываем стол…</p>}
         {session && tenantConfig && <>
           <div className="flex items-center justify-center gap-2">{tenantConfig?.logoUrl && <img src={tenantConfig.logoUrl} alt="Логотип заведения" className="h-10 w-10 object-contain" />}<h2>{session.tenant.name}</h2></div>
