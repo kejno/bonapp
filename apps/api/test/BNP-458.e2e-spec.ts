@@ -66,11 +66,14 @@ describe('BNP-458: payment gateway authorization', () => {
   it('rejects an unauthenticated credential write without saving credentials', async () => {
     const credentials = { gateway: 'oplati', merchantId: 'anonymous-test-merchant', secret: 'anonymous-test-secret' };
 
-    await request(app.getHttpServer() as never)
+    const response = await request(app.getHttpServer() as never)
       .put('/api/v1/admin/tenant/onboarding/step3/payments')
       .send(credentials)
       .expect(401);
 
+    const responseBody = JSON.stringify(response.body);
+    expect(responseBody).not.toContain(credentials.merchantId);
+    expect(responseBody).not.toContain(credentials.secret);
     expect(saveCredentials).not.toHaveBeenCalled();
   });
 
