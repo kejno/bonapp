@@ -10,7 +10,7 @@ type Employee = { id: string; fullName: string; email: string; phone: string | n
 type Shift = { id: string; openedAt: string; cashier: { fullName: string }; ordersCount: number; revenue: string } | null;
 type KitchenStaff = { id: string; fullName: string; kitchenDepartments: string[] };
 const KITCHEN_DEPARTMENTS = [{ id: 'HOT', label: 'Горячий цех' }, { id: 'COLD', label: 'Холодный цех' }, { id: 'BAR', label: 'Бар' }];
-const employeeSchema = z.object({ fullName: z.string().trim().min(1, 'Укажите имя'), email: z.email('Укажите корректный email'), phone: z.string().regex(/^\+375\d{9}$/, 'Введите телефон в формате +375XXXXXXXXX'), role: z.enum(['WAITER', 'CASHIER', 'MANAGER', 'ADMIN']), temporaryPassword: z.string().optional() });
+const employeeSchema = z.object({ fullName: z.string().trim().min(1, 'Укажите имя'), email: z.email('Укажите корректный email'), phone: z.string().regex(/^\+375\d{9}$/, 'Введите телефон в формате +375XXXXXXXXX'), role: z.enum(['WAITER', 'CASHIER', 'MANAGER']), temporaryPassword: z.string().optional() });
 type EmployeeForm = z.infer<typeof employeeSchema>;
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
@@ -38,7 +38,7 @@ export default function StaffPage() {
   const save = async (values: EmployeeForm) => {
     if (!token) return;
     if (!editing?.id && (!values.temporaryPassword || values.temporaryPassword.length < 8)) { form.setError('temporaryPassword', { message: 'Введите пароль длиной не менее 8 символов' }); return; }
-    try { await api(editing?.id ? `/admin/staff/${editing.id}` : '/admin/staff', token, { method: editing?.id ? 'PATCH' : 'POST', body: JSON.stringify(values) }); setEditing(null); await load(); }
+    try { await api(editing?.id ? `/admin/staff/${editing.id}` : '/admin/staff', token, { method: editing?.id ? 'PUT' : 'POST', body: JSON.stringify(editing?.id ? { full_name: values.fullName, email: values.email, phone: values.phone, role: values.role } : values) }); setEditing(null); await load(); }
     catch { setError('Не удалось сохранить сотрудника'); }
   };
   const runAction = async (action: () => Promise<unknown>, message: string) => {
@@ -52,7 +52,7 @@ export default function StaffPage() {
       : [...chef.kitchenDepartments, department];
     await runAction(() => api(`/admin/staff/${chef.id}/kitchen-departments`, token, { method: 'PUT', body: JSON.stringify({ kitchenDepartments }) }), 'Не удалось сохранить цеха повара');
   };
-  const deactivate = async (id: string) => { if (token) await runAction(() => api(`/admin/staff/${id}/deactivate`, token, { method: 'PATCH' }), 'Не удалось деактивировать сотрудника'); };
+  const deactivate = async (id: string) => { if (token) await runAction(() => api(`/admin/staff/${id}`, token, { method: 'DELETE' }), 'Не удалось деактивировать сотрудника'); };
   const openShift = async () => { if (token) await runAction(() => api('/admin/shifts/open', token, { method: 'POST' }), 'Не удалось открыть смену'); };
   const closeShift = async () => {
     if (!token) return;
