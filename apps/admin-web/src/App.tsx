@@ -14,6 +14,7 @@ import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import OnboardingStep2Page from './onboarding/OnboardingStep2Page';
+import OnboardingStep1Page from './pages/OnboardingStep1Page';
 import OnboardingStep3Page from './pages/OnboardingStep3Page';
 import OnboardingStep4Page from './pages/OnboardingStep4Page';
 import WaiterCallNotifications from './components/WaiterCallNotifications';
@@ -42,6 +43,7 @@ function App() {
       <Router>
         <WaiterCallNotifications />
         <Routes>
+          <Route path="/onboarding/step-1" element={<ProtectedRoute><OnboardingStep1Page /></ProtectedRoute>} />
           <Route
             path="/login"
             element={
