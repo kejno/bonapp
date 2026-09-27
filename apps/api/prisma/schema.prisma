@@ -32,41 +32,42 @@ enum ServiceMode {
 }
 
 model Tenant {
-  id               String          @id @default(uuid())
-  slug             String          @unique
-  name             String
-  legalName        String?         @map("legal_name")
-  unp              String?
-  address          String?
-  timezone         String          @default("Europe/Minsk")
-  currency         String          @default("BYN")
-  logoUrl          String?         @map("logo_url")
-  brandColor       String?         @map("brand_color")
-  serviceMode      ServiceMode     @default(ORDER_AND_PAY) @map("service_mode")
-  dineIn           Boolean         @default(true) @map("dine_in")
-  takeaway         Boolean         @default(false)
-  delivery         Boolean         @default(false)
-  isActive         Boolean         @default(true) @map("is_active")
-  trialEndsAt      DateTime?       @map("trial_ends_at")
-  subscriptionPlan String          @default("free") @map("subscription_plan")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  users            User[]
-  diningAreas      DiningArea[]
-  tables           Table[]
-  orders           Order[]
-  guests           Guest[]
-  payments         Payment[]
-  menuCategories   MenuCategory[]
-  menuItems        MenuItem[]
-  modifierGroups   ModifierGroup[]
-  modifiers        Modifier[]
-  stopListItems    StopListItem[]
-  shifts           Shift[]
-  shiftReports     ShiftReport[]
-  staffShifts      StaffShift[]
-  dailyOrderNumber Int          @default(0) @map("daily_order_number")
-  dailyOrderNumberDate String?  @map("daily_order_number_date")
+  id                     String          @id @default(uuid())
+  slug                   String          @unique
+  name                   String
+  legalName              String?         @map("legal_name")
+  unp                    String?
+  address                String?
+  timezone               String          @default("Europe/Minsk")
+  currency               String          @default("BYN")
+  logoUrl                String?         @map("logo_url")
+  brandColor             String?         @map("brand_color")
+  paymentCredentials     Json?           @map("payment_credentials")
+  serviceMode            ServiceMode     @default(ORDER_AND_PAY) @map("service_mode")
+  dineIn                 Boolean         @default(true) @map("dine_in")
+  takeaway               Boolean         @default(false)
+  delivery               Boolean         @default(false)
+  isActive               Boolean         @default(true) @map("is_active")
+  trialEndsAt            DateTime?       @map("trial_ends_at")
+  subscriptionPlan       String          @default("free") @map("subscription_plan")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  users                  User[]
+  diningAreas            DiningArea[]
+  tables                 Table[]
+  orders                 Order[]
+  guests                 Guest[]
+  payments               Payment[]
+  menuCategories         MenuCategory[]
+  menuItems              MenuItem[]
+  modifierGroups         ModifierGroup[]
+  modifiers              Modifier[]
+  stopListItems          StopListItem[]
+  shifts                 Shift[]
+  shiftReports           ShiftReport[]
+  staffShifts            StaffShift[]
+  dailyOrderNumber       Int             @default(0) @map("daily_order_number")
+  dailyOrderNumberDate   String?         @map("daily_order_number_date")
 
   @@map("tenants")
 }
@@ -155,8 +156,8 @@ model Table {
   status      TableStatus @default(AVAILABLE)
   createdAt   DateTime    @default(now()) @map("created_at")
 
-  orders      Order[]
-  sessions    TableSession[]
+  orders   Order[]
+  sessions TableSession[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, tableNumber])
@@ -221,6 +222,7 @@ model Order {
   tipsAmountByn    Decimal        @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   paymentMethod    PaymentMethod? @map("payment_method")
   isPaid           Boolean        @default(false) @map("is_paid")
+  isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
   comment          String?

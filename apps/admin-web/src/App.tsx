@@ -13,12 +13,14 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import OnboardingStep3Page from './pages/OnboardingStep3Page';
 import OnboardingStep4Page from './pages/OnboardingStep4Page';
 import WaiterCallNotifications from './components/WaiterCallNotifications';
 import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
 import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
+import WelcomePage from './pages/WelcomePage';
 
 const queryClient = new QueryClient();
 
@@ -47,15 +49,28 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/welcome" element={<ProtectedRoute><WelcomePage /></ProtectedRoute>} />
           <Route
             path="/onboarding/step-4"
-            element={<ProtectedRoute><OnboardingStep4Page /></ProtectedRoute>}
+            element={
+              <ProtectedRoute>
+                <OnboardingStep4Page />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding/step-3"
+            element={
+              <ProtectedRoute>
+                <OnboardingStep3Page />
               </ProtectedRoute>
             }
           />
@@ -76,8 +91,22 @@ function App() {
             }
           />
           <Route path="/kds" element={<KdsRoute />} />
-          <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route
+            path="/staff"
+            element={
+              <ProtectedRoute>
+                <StaffPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/tables"
             element={

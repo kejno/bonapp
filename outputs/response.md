@@ -1,32 +1,31 @@
-# Повторная проверка PR #151 — BNP-143
+# Повторная доработка PR #151 — BNP-143
 
 ## Issues/Notes
 
-- Разрешены конфликты в `apps/guest-web/src/App.tsx`, `apps/guest-web/src/App.test.tsx` и файлах отчёта. Для файлов приложения сохранена версия PR BNP-143, включая передачу `X-QR-Token` при загрузке меню и проверку этого заголовка в тесте.
-- В `input/BNP-143/pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; `outputs/review_replies.json` содержит пустой список.
-- Файлы `pr_files.txt`, `ci_failures.md` и `ci_failures_full.log` отсутствуют. Требования сверены с `request.md` и обсуждением PR.
+- Разрешён конфликт `apps/api/prisma/schema.prisma`: сохранены `dailyOrderNumber` и `dailyOrderNumberDate` из BNP-143 вместе с `paymentCredentials` из `main`.
+- Полный прогон выявил совпадающий timestamp у миграции BNP-143 и миграции credentials из `main`. Две миграции BNP-143 перенесены на `20260927010001` и `20260927010002`, после `20260927010000_welcome_dashboard`.
+- В `input/BNP-143/pr_discussions_raw.json` все пять inline-тредов помечены как resolved; более поздние записи — обзоры без идентификаторов тредов. Открытых тредов для ответа нет.
+- В `input/BNP-143` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt` и `ticket.md`. Требования сверены с `request.md` и локальной историей обсуждений.
 
 ## Approach
 
-- Сверил конфликтующие версии и оставил реализацию checkout и меню из PR BNP-143.
-- Удалил конфликтующий ответ на замечание из другой задачи; для BNP-143 открытых inline-тредов нет.
-- Проверил исходные тесты, типы и сборку всего монорепозитория.
+- Объединил поля Tenant из конфликтующих версий схемы, сохранив обе функции.
+- Исправил порядок новых миграций после выявления тестом дублирующихся timestamp-ов; существующие миграции не редактировались.
+- Сохранил пустой список ответов, поскольку открытых inline-тредов нет.
 
 ## Files Modified
 
-- `apps/guest-web/src/App.tsx` — разрешён конфликт с сохранением реализации PR и заголовка QR-токена в запросе меню.
-- `apps/guest-web/src/App.test.tsx` — разрешён конфликт с сохранением тестов PR, включая проверку заголовка QR-токена.
-- `outputs/response.md` — результаты rework и проверок.
-- `outputs/review_replies.json` — пустой список открытых inline-тредов.
-- `outputs/review_replies/thread_1.md` — удалён конфликтующий ответ из другой задачи.
+- `apps/api/prisma/schema.prisma` — разрешён конфликт схемы Tenant.
+- `apps/api/prisma/migrations/20260927010001_daily_order_number_date/migration.sql` — миграция поля ежедневного номера заказа с уникальным timestamp после миграций `main`.
+- `apps/api/prisma/migrations/20260927010002_backfill_daily_order_number_date/migration.sql` — перенос существующих значений ежедневного номера на уникальный timestamp после миграций `main`.
+- `outputs/response.md` — результаты доработки и проверок.
+- `outputs/review_replies.json` — пустой список ответов для закрытых/отсутствующих тредов.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено для сверки файлов PR.
-- `git status --short` — выполнено; после разрешения конфликтов все изменения перечислены и конфликтующих записей нет.
-- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
+- `npx eslint` по изменённым TS/TSX-файлам — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 62 набора / 545 тестов, guest-web 8 файлов / 26 тестов, admin-web 30 файлов / 81 тест; сборки и проверка design tokens прошли.
-- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — выполнено: обе миграции BNP-143 имеют статус `A`, существующие миграции не изменены.
-- `git diff --check` — успешно после разрешения конфликтов.
-- Blast-radius проверка: использован grep по миграциям; публичные сигнатуры и глобальные провайдеры при разрешении конфликтов не менялись. Изменения схемы/миграций PR проверены: добавлены только две новые миграции.
+- `npm test` — успешно: API 64 набора / 551 тест, guest-web 8 файлов / 26 тестов, admin-web 32 файла / 83 теста; production build и проверка design tokens также завершились успешно.
+- `git diff --check` — успешно; конфликтующих файлов не осталось.
+- Blast-radius: grep по `dailyOrderNumber`/`dailyOrderNumberDate` во всех `apps/*` и `packages/*` выполнен; все найденные обращения проверены. Проверка миграций показала, что миграции BNP-143 добавлены с timestamp-ами после миграций `main`, существующие миграции не изменены.
