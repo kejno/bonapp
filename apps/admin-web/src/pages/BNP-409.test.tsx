@@ -60,5 +60,19 @@ describe('BNP-409 назначение роли', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Мои столы' }));
     expect(await screen.findByRole('button', { name: 'Стол 4, Свободен' })).toBeInTheDocument();
     expect.soft(screen.queryByRole('button', { name: 'Стол 5, Свободен' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Распечатать QR' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Добавить стол' })).not.toBeInTheDocument();
+  });
+
+  it('перенаправляет WAITER с административных маршрутов на панель', async () => {
+    useAuthStore.getState().setAuth('waiter-token', {
+      id: 'staff-1', email: 'anna@example.com', role: 'WAITER', tenantId: 'tenant-1', fullName: 'Анна',
+    });
+    window.history.pushState({}, '', '/staff');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Добро пожаловать, Анна' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Сотрудники и смены' })).not.toBeInTheDocument();
   });
 });

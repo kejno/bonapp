@@ -29,6 +29,7 @@ export default function TablesPage() {
   const areas = areasQuery.data ?? [];
   const activeAreaId = areas.some((area) => area.id === areaId) ? areaId : areas[0]?.id ?? '';
   const tables = tablesQuery.data ?? [];
+  const waiterTables = useMemo(() => tables.filter((table) => table.assignedWaiterId === user?.id), [tables, user?.id]);
   const visibleTables = useMemo(() => tables.filter((table) =>
     table.areaId === activeAreaId && (user?.role !== 'WAITER' || table.assignedWaiterId === user.id),
   ), [tables, activeAreaId, user?.id, user?.role]);
@@ -94,8 +95,8 @@ export default function TablesPage() {
             <p className="mt-1 text-sm text-on-background/60">Столы и их текущие статусы</p>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => { setPrintOpen(true); setError(''); }} className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-semibold hover:bg-surface-card">Распечатать QR</button>
-            <button onClick={openCreate} className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">+ Добавить стол</button>
+            {user?.role !== 'WAITER' && <button onClick={() => { setPrintOpen(true); setError(''); }} className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-semibold hover:bg-surface-card">Распечатать QR</button>}
+            {user?.role !== 'WAITER' && <button onClick={openCreate} className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">+ Добавить стол</button>}
           </div>
         </header>
 
@@ -149,7 +150,7 @@ export default function TablesPage() {
             <div><dt className="text-on-background/60">ID сессии гостя</dt><dd>{selectedTable.orders?.[0]?.guestSessionId ?? 'Не указана'}</dd></div>
             <div><dt className="text-on-background/60">Текущий заказ</dt><dd>{selectedTable.orders?.[0] ? `Заказ ${selectedTable.orders[0].id} · ${selectedTable.orders[0].status} · ${selectedTable.orders[0].totalAmountByn} BYN` : 'Нет активного заказа'}</dd></div>
           </dl>
-          <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button>{selectedTable.orders?.[0] && <Link to={`/orders/${encodeURIComponent(selectedTable.orders[0].id)}`} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Открыть заказ</Link>}<button onClick={() => startEdit(selectedTable)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Изменить стол</button></div>
+          <div className="mt-6 flex flex-wrap justify-end gap-3"><button onClick={() => setSelectedTable(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Закрыть</button>{selectedTable.orders?.[0] && user?.role !== 'WAITER' && <Link to={`/orders/${encodeURIComponent(selectedTable.orders[0].id)}`} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary">Открыть заказ</Link>}{user?.role !== 'WAITER' && <button onClick={() => startEdit(selectedTable)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Изменить стол</button>}</div>
         </section>
       </div>}
 
@@ -170,7 +171,7 @@ export default function TablesPage() {
         <section role="dialog" aria-modal="true" aria-labelledby="qr-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-surface-card p-6 shadow-xl">
           <h2 id="qr-title" className="text-xl font-semibold">Печать QR-кодов</h2>
           <p className="mt-1 text-sm text-on-background/60">Выберите столы для PDF. QR ведёт на постоянный адрес стола.</p>
-          <div className="mt-4 max-h-64 space-y-2 overflow-auto">{tables.map((table) => <label key={table.id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-surface"><input type="checkbox" checked={selectedIds.includes(table.id)} onChange={() => toggleTable(table.id)} />Стол {table.tableNumber} · {areas.find((area) => area.id === table.areaId)?.name ?? 'Зона'}</label>)}</div>
+          <div className="mt-4 max-h-64 space-y-2 overflow-auto">{(user?.role === 'WAITER' ? waiterTables : tables).map((table) => <label key={table.id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-surface"><input type="checkbox" checked={selectedIds.includes(table.id)} onChange={() => toggleTable(table.id)} />Стол {table.tableNumber} · {areas.find((area) => area.id === table.areaId)?.name ?? 'Зона'}</label>)}</div>
           <div className="mt-6 flex justify-end gap-3"><button onClick={() => setPrintOpen(false)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Отмена</button><button disabled={selectedIds.length === 0 || printMutation.isPending} onClick={() => printMutation.mutate(selectedIds)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary disabled:opacity-50">{printMutation.isPending ? 'Готовим PDF…' : 'Скачать PDF'}</button></div>
         </section>
       </div>}

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/auth.store';
 import StaffPage from './StaffPage';
+import { createGuestOrder } from '../../../guest-web/src/guest-session';
 
 describe('BNP-410 открытие и закрытие смены', () => {
   beforeEach(() => {
@@ -17,11 +18,12 @@ describe('BNP-410 открытие и закрытие смены', () => {
       if (url.endsWith('/admin/kitchen-staff')) return Promise.resolve({ ok: true, json: async () => [] });
       if (url.endsWith('/admin/shifts/current')) return Promise.resolve({ ok: true, json: async () => shiftOpen ? { id: 'shift-1', openedAt: '2026-09-27T10:00:00Z', cashier: { fullName: 'Иван Петров' }, ordersCount, revenue: revenue.toFixed(2) } : null });
       if (url.endsWith('/admin/shifts/open') && init?.method === 'POST') { shiftOpen = true; return Promise.resolve({ ok: true, json: async () => ({ id: 'shift-1' }) }); }
-      if (url.endsWith('/admin/orders') && init?.method === 'POST') {
-        const order = JSON.parse(String(init.body)) as { tableId: string; phone: string };
+      if (url.endsWith('/guest/orders') && init?.method === 'POST') {
+        const order = JSON.parse(String(init.body)) as { items: Array<{ menuItemId: string }> };
         ordersCount += 1;
-        revenue += order.tableId === 'table-1' ? 40 : order.tableId === 'table-2' ? 35.5 : 50;
-        return Promise.resolve({ ok: true, json: async () => ({ id: `order-${ordersCount}` }) });
+        const totalAmountByn = order.items[0]?.menuItemId === 'dish-1' ? 40 : order.items[0]?.menuItemId === 'dish-2' ? 35.5 : 50;
+        revenue += totalAmountByn;
+        return Promise.resolve({ ok: true, json: async () => ({ orderId: `order-${ordersCount}`, totalAmountByn }) });
       }
       if (url.endsWith('/admin/shifts/close') && init?.method === 'POST') { shiftOpen = false; return Promise.resolve({ ok: true, json: async () => ({}) }); }
       return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -36,14 +38,15 @@ describe('BNP-410 открытие и закрытие смены', () => {
     expect(screen.getByText('Заказов: 0')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/admin/shifts/open'), expect.objectContaining({ method: 'POST' }));
 
-    for (const tableId of ['table-1', 'table-2', 'table-3']) {
-      await fetch('http://localhost:3000/api/v1/admin/orders', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer token', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableId, phone: '+375291234567' }),
-      });
+    const createdOrders = [];
+    for (const menuItemId of ['dish-1', 'dish-2', 'dish-3']) {
+      createdOrders.push(await createGuestOrder('table-qr-token', {
+        items: [{ menuItemId, quantity: 1, selectedModifiers: [] }],
+        comment: '',
+      }));
     }
-    await waitFor(() => expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/admin/orders') && init?.method === 'POST')).toHaveLength(3));
+    expect(createdOrders).toHaveLength(3);
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/guest/orders') && init?.method === 'POST')).toHaveLength(3);
     expect(ordersCount).toBe(3);
     expect(revenue).toBe(125.5);
 

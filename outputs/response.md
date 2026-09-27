@@ -1,27 +1,35 @@
-# Повторная проверка PR #160 — BNP-136
+# Результат доработки PR #163
 
 ## Issues/Notes
 
-- Последний отзыв после `9c6a80e` не содержит новых замечаний к реализации; рекомендация — COMMENT. Четыре адресуемых inline-треда в `input/BNP-136/pr_discussions_raw.json` помечены закрытыми, открытых тредов для ответа нет.
-- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `pr_files.txt` и отдельный `ticket.md`. Требования сверены с `request.md`.
-- Производственный код в этой итерации не менялся. ESLint завершился без ошибок; остались два предупреждения `no-unsafe-argument` в `apps/api/src/onboarding/onboarding.service.ts:151`.
+- Закрыт блокирующий обход ограничений WAITER: роль перенаправляется с маршрутов меню, редактирования меню, сотрудников, настроек и заказов.
+- На странице столов WAITER видит только назначенные ему столы; действия создания/редактирования и печати QR скрыты. Выбор столов в QR-диалоге также ограничен назначенными столами.
+- BNP-410 теперь создаёт три заказа через клиент `createGuestOrder`, которым пользуется пользовательский поток оформления заказа, вместо прямого вызова замоканного `fetch` из теста.
+- Открытые inline-треды 4 и 5 обработаны; для каждого подготовлен отдельный ответ.
+- В `input/BNP-163/` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и `merge_conflicts.md`; использованы доступные данные PR и описание задачи в `request.md`.
 
 ## Approach
 
-- Проверил текущую ветку и diff относительно `origin/main`; повторный отзыв подтверждает отсутствие изменений реализации после проверенной ревизии.
-- Повторно подтвердил закрытие четырёх адресуемых inline-тредов. `CodeGraph` недоступен; проверил потребителей POS-полей, `posItemId` и `dailyOrderNumberDate` поиском `rg` в `apps/` и `packages/`.
-- Миграционный diff содержит только новую append-only миграцию `20260927000001_add_pos_onboarding`; существующие миграции не изменены.
-- Регрессионные тесты не менялись: новых замечаний и исправлений кода в этой итерации нет.
+- Добавлен `NonWaiterRoute` и применён к административным страницам, включая прямые URL.
+- Экран столов ограничивает данные WAITER его назначенными столами и скрывает управляющие действия. Добавлены проверки перенаправления с `/staff` и недоступности действий управления.
+- Заказы в BNP-410 отправляются через публичный клиент гостевого приложения; UI итогов смены проверяется по ответам модели текущей смены и после закрытия.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты повторной проверки и обязательных команд.
-- `outputs/review_replies.json` — пустой список, так как открытых inline-тредов нет.
+- `apps/admin-web/src/App.tsx` — ограничение маршрутов для WAITER.
+- `apps/admin-web/src/pages/TablesPage.tsx` — ограничение столов и управляющих действий.
+- `apps/admin-web/src/pages/BNP-409.test.tsx` — регрессия для прямого маршрута и доступных действий.
+- `apps/admin-web/src/pages/BNP-410.test.tsx` — создание заказов через клиент приложения.
+- `outputs/review_replies/` — ответы на открытые review-треды.
+- `outputs/review_replies.json` — ссылки на ответы в тредах.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short`, `git diff --check` и проверка миграционного diff — выполнены; исходное рабочее дерево было чистым, форматирование diff корректно.
-- `npx eslint` по изменённым в PR TypeScript/TSX-файлам — выполнен успешно: 0 ошибок, 2 предупреждения `no-unsafe-argument` в `onboarding.service.ts:151`.
-- `npm run typecheck` — успешно во всех четырёх workspace; Prisma Client сгенерирован.
-- `npm test` — успешно: API 67 наборов / 576 тестов, admin-web 35 файлов / 89 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также завершились успешно.
-- Blast radius схемы и полей проверен поиском `rg` в `apps/` и `packages/`; проверены потребители `posItemId` и `dailyOrderNumberDate`. Миграции сверены с `origin/main`; изменена только новая миграция POS.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов проверен.
+- `git status --short` — выполнено; незакоммиченные изменения ограничены четырьмя файлами кода и файлами отчёта.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/TablesPage.tsx apps/admin-web/src/pages/BNP-409.test.tsx apps/admin-web/src/pages/BNP-410.test.tsx` — пройдено.
+- `npm run test -w apps/admin-web -- BNP-409 BNP-410` — пройдено (4 теста).
+- `npm run typecheck` — пройдено для всех четырёх пакетов.
+- `npm test` — пройдено: 68 API suites / 577 тестов, 57 admin-web suites / 116 тестов, 8 guest-web suites / 26 тестов; сборка и проверка дизайн-токенов также завершились успешно.
+- `git diff --check` — пройдено.
+- Blast-radius: затронуты общая маршрутизация admin-web и экран столов; выполнен полный `npm test`. Схема БД, миграции и публичные серверные API не менялись.

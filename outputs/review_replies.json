@@ -1,1 +1,14 @@
-{ "replies": [] }
+{
+  "replies": [
+    {
+      "inReplyToId": 4116419337,
+      "threadId": "PRRT_kwDOUUbUMs6mdHtW",
+      "reply": "outputs/review_replies/thread_4.md"
+    },
+    {
+      "inReplyToId": 4116419411,
+      "threadId": "PRRT_kwDOUUbUMs6mdHt_",
+      "reply": "outputs/review_replies/thread_5.md"
+    }
+  ]
+}
