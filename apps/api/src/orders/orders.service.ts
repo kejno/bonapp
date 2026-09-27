@@ -12,6 +12,7 @@ import { OrderStatus, PaymentStatus, ServiceMode, TableStatus, UserRole } from '
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
+import { nextDailyOrderNumber, tenantLocalDate } from './daily-order-number';
 import { normalizeBelarusPhone } from './phone-number';
 
 @Injectable()
@@ -294,6 +295,7 @@ export class OrdersService {
     const order = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) throw new NotFoundException('Tenant not found');
       if (tenant?.serviceMode === ServiceMode.VIEW_ONLY) {
         throw new ConflictException('Ordering is disabled for this tenant');
       }
@@ -306,12 +308,12 @@ export class OrdersService {
       if (reservation.count !== 1) {
         throw new ConflictException('Table is not available');
       }
-      const updatedTenant = await tx.tenant.update({
+      const today = tenantLocalDate(tenant.timezone);
+      const dailyOrderNumber = nextDailyOrderNumber(tenant.dailyOrderNumber, tenant.dailyOrderNumberDate, today);
+      await tx.tenant.update({
         where: { id: tenantId },
-        data: { dailyOrderNumber: { increment: 1 } },
-        select: { dailyOrderNumber: true },
+        data: { dailyOrderNumber, dailyOrderNumberDate: today },
       });
-      const dailyOrderNumber = updatedTenant.dailyOrderNumber;
       const guest = phone === undefined ? undefined : await tx.guest.upsert({
         where: { tenantId_phone: { tenantId, phone } },
         create: { tenantId, phone },

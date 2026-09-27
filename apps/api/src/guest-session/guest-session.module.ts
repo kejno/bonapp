@@ -3,8 +3,10 @@ import { GuestSessionController } from './guest-session.controller';
 import { GuestOrdersController } from './guest-orders.controller';
 import { GuestSessionGuard } from './guest-session.guard';
 import { GuestSessionService } from './guest-session.service';
+import { MenuModule } from '../menu/menu.module';
 
 @Module({
+  imports: [MenuModule],
   controllers: [GuestSessionController, GuestOrdersController],
   providers: [GuestSessionService, GuestSessionGuard],
   exports: [GuestSessionGuard],
