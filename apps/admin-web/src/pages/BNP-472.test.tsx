@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/auth.store';
 import StaffPage from './StaffPage';
@@ -28,21 +28,39 @@ describe('BNP-472 валидация обязательных данных со�
 
   it('не сохраняет сотрудника с пустым именем и показывает ошибку поля', async () => {
     await openForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    });
 
-    expect(await screen.findByText('Укажите имя')).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST' })));
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST' }));
     expect(screen.getByRole('heading', { name: 'Новый сотрудник' })).toBeInTheDocument();
+    expect(await screen.findByText('Укажите имя')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Новый сотрудник' })).toBeInTheDocument();
+  });
+
+  it('не отправляет форму с пробельным именем', async () => {
+    render(<StaffPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить сотрудника' }));
+    fireEvent.change(screen.getByPlaceholderText('Имя'), { target: { value: '   ' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    });
+
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST' }));
+    expect(screen.getByRole('heading', { name: 'Новый сотрудник' })).toBeInTheDocument();
+    expect(await screen.findByText('Укажите имя')).toBeInTheDocument();
   });
 
   it('не сохраняет сотрудника с телефоном в неверном формате', async () => {
     await openForm();
     fireEvent.change(screen.getByPlaceholderText('Имя'), { target: { value: 'Иван Петров' } });
     fireEvent.change(screen.getByPlaceholderText('Телефон'), { target: { value: 'abc' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    });
 
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST' }));
     expect(await screen.findByText('Введите телефон в формате +375XXXXXXXXX')).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST' })));
     expect(screen.getByRole('heading', { name: 'Новый сотрудник' })).toBeInTheDocument();
   });
 });
