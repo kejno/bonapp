@@ -1,27 +1,23 @@
-# Повторная проверка PR #160 — BNP-136
-
 ## Issues/Notes
 
-- Последний отзыв после `9c6a80e` не содержит новых замечаний к реализации; рекомендация — COMMENT. Четыре адресуемых inline-треда в `input/BNP-136/pr_discussions_raw.json` помечены закрытыми, открытых тредов для ответа нет.
-- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `pr_files.txt` и отдельный `ticket.md`. Требования сверены с `request.md`.
-- Производственный код в этой итерации не менялся. ESLint завершился без ошибок; остались два предупреждения `no-unsafe-argument` в `apps/api/src/onboarding/onboarding.service.ts:151`.
+- Закрыто единственное открытое адресуемое inline-замечание (thread 6): BNP-406 проверял сохранение цвета только в админке. Входные материалы не содержат CI failure-логов.
+- Разрешён конфликт `outputs/response.md`; итоговый файл содержит сводку этой переработки.
 
 ## Approach
 
-- Проверил текущую ветку и diff относительно `origin/main`; повторный отзыв подтверждает отсутствие изменений реализации после проверенной ревизии.
-- Повторно подтвердил закрытие четырёх адресуемых inline-тредов. `CodeGraph` недоступен; проверил потребителей POS-полей, `posItemId` и `dailyOrderNumberDate` поиском `rg` в `apps/` и `packages/`.
-- Миграционный diff содержит только новую append-only миграцию `20260927000001_add_pos_onboarding`; существующие миграции не изменены.
-- Регрессионные тесты не менялись: новых замечаний и исправлений кода в этой итерации нет.
+- Добавлен отдельный тест гостевого приложения: при повторном открытии меню повторно загружает сохранённую конфигурацию заведения и применяет цвет `#123456` в CSS-переменной `--color-primary`.
+- Существующие проверки BNP-405 и админской части BNP-406 оставлены без изменений.
+- Подготовлен адресный ответ для открытого inline-треда.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты повторной проверки и обязательных команд.
-- `outputs/review_replies.json` — пустой список, так как открытых inline-тредов нет.
+- `apps/guest-web/src/BNP-406.test.tsx` — повторное открытие гостевого меню, загрузка сохранённой конфигурации и проверка применённого цвета.
+- `outputs/response.md`, `outputs/pr_body.md`, `outputs/jira_comment.md`, `outputs/test_automation_result.json` — результаты переработки.
+- `outputs/review_replies.json`, `outputs/review_replies/thread_6.md` — ответ на открытое замечание.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short`, `git diff --check` и проверка миграционного diff — выполнены; исходное рабочее дерево было чистым, форматирование diff корректно.
-- `npx eslint` по изменённым в PR TypeScript/TSX-файлам — выполнен успешно: 0 ошибок, 2 предупреждения `no-unsafe-argument` в `onboarding.service.ts:151`.
-- `npm run typecheck` — успешно во всех четырёх workspace; Prisma Client сгенерирован.
-- `npm test` — успешно: API 67 наборов / 576 тестов, admin-web 35 файлов / 89 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также завершились успешно.
-- Blast radius схемы и полей проверен поиском `rg` в `apps/` и `packages/`; проверены потребители `posItemId` и `dailyOrderNumberDate`. Миграции сверены с `origin/main`; изменена только новая миграция POS.
+- `npm run test -w apps/admin-web -- BNP-405 BNP-406` — 2 файла и 2 теста пройдены.
+- `npm run test -w apps/guest-web -- BNP-406` — 1 файл и 1 тест пройден.
+- ESLint для трёх затронутых тестовых файлов завершился успешно.
+- CI failure-логи не были приложены, поэтому состояние CI по входным материалам не подтверждено.
