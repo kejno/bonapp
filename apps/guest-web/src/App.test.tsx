@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { activateCartForQrToken, useCartStore } from './orders/cart.store'
 
 vi.mock('socket.io-client', () => ({ io: () => ({ on: vi.fn(), disconnect: vi.fn() }) }))
 
@@ -57,6 +58,36 @@ describe('App', () => {
       expect.stringMatching(/\/guest\/menu\?tenantId=tenant-1$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('renders and enforces required modifier groups in the API response shape', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: null, priceByn: 8.5, modifierGroups: [{ sortOrder: 0, modifierGroup: { id: 'milk', name: 'Молоко', isRequired: true, minSelection: 1, maxSelection: 1, modifiers: [{ id: 'oat', name: 'Овсяное', price: 1.5 }] } }] }] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+
+    render(<App />)
+
+    expect(await screen.findByText('Молоко *')).toBeInTheDocument()
+    const addButton = screen.getByRole('button', { name: 'В корзину: Капучино' })
+    expect(addButton).toBeDisabled()
+    fireEvent.click(screen.getByLabelText(/Овсяное/))
+    expect(addButton).toBeEnabled()
+    fireEvent.click(addButton)
+    expect(screen.getByRole('link', { name: 'Оформить заказ (1)' })).toBeInTheDocument()
+  })
+
+  it('clears the previous table cart when checkout opens with another QR token', () => {
+    activateCartForQrToken('qr-table-a')
+    useCartStore.getState().addItem({ id: 'dish-1', name: 'Борщ', priceByn: 8.5, quantity: 1, selectedModifiers: [] })
+    window.sessionStorage.setItem('qrToken', 'qr-table-a')
+    window.history.pushState({}, '', '/order/checkout?qr_token=qr-table-b')
+
+    render(<App />)
+
+    expect(screen.getByText('Корзина пуста')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '← Вернуться в меню' })).toHaveAttribute('href', '/?qr_token=qr-table-b')
   })
 
   it('adds a menu item to the order id carried back from the status screen', async () => {

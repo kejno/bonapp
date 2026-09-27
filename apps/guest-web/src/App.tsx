@@ -3,7 +3,7 @@ import { getGuestSessionId } from './guest-session'
 import { io } from 'socket.io-client'
 import OrderStatusPage from './OrderStatusPage'
 import CheckoutPage from './CheckoutPage'
-import { useCartStore } from './orders/cart.store'
+import { activateCartForQrToken, useCartStore } from './orders/cart.store'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -16,15 +16,20 @@ type GuestSession = {
 type GuestMenu = Array<{
   id: string
   name: string
-  items: Array<{ id: string; name: string; description: string | null; priceByn: string | number; modifierGroups?: Array<{ id: string; name: string; isRequired: boolean; minSelection: number; maxSelection: number | null; modifiers: Array<{ id: string; name: string; price: string | number }> }> }>
+  items: Array<{ id: string; name: string; description: string | null; priceByn: string | number; modifierGroups?: Array<{ sortOrder: number; modifierGroup: { id: string; name: string; isRequired: boolean; minSelection: number; maxSelection: number | null; modifiers: Array<{ id: string; name: string; price: string | number }> } }> }>
 }>
 type TenantConfig = { logoUrl: string | null; brandColor: string; serviceMode: 'ORDER_AND_PAY' | 'VIEW_ONLY' | 'TAKEAWAY' }
 
 export default function App() {
-  if (window.location.pathname === '/order/checkout') return <CheckoutPage />
+  if (window.location.pathname === '/order/checkout') {
+    const qrToken = new URLSearchParams(window.location.search).get('qr_token') ?? window.sessionStorage.getItem('qrToken') ?? ''
+    if (qrToken) activateCartForQrToken(qrToken)
+    return <CheckoutPage />
+  }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
   const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+  if (qrToken) activateCartForQrToken(qrToken)
   const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
@@ -156,7 +161,7 @@ export default function App() {
                 {item.description && <p>{item.description}</p>}
                 <span>{item.priceByn} {session.tenant.currency}</span>
                 {canAddToOrder && <button onClick={() => void addToOrder(item.id)}>Добавить {item.name}</button>}
-                {!canAddToOrder && tenantConfig?.serviceMode !== 'VIEW_ONLY' && <>{item.modifierGroups?.map((group) => <fieldset key={group.id}><legend>{group.name}{group.isRequired ? ' *' : ''}</legend>{group.modifiers.map((modifier) => <label key={modifier.id} className="mr-3"><input type="checkbox" checked={(selectedModifiers[item.id] ?? []).includes(modifier.id)} onChange={(event) => setSelectedModifiers((current) => { const chosen = current[item.id] ?? []; return { ...current, [item.id]: event.target.checked ? [...chosen, modifier.id] : chosen.filter((id) => id !== modifier.id) } })} /> {modifier.name} (+{modifier.price} BYN)</label>)}</fieldset>)}<button disabled={(item.modifierGroups ?? []).some((group) => (group.isRequired || group.minSelection > 0) && (selectedModifiers[item.id] ?? []).filter((id) => group.modifiers.some((modifier) => modifier.id === id)).length < Math.max(group.isRequired ? 1 : 0, group.minSelection))} onClick={() => { const chosen = selectedModifiers[item.id] ?? []; const extra = (item.modifierGroups ?? []).flatMap((group) => group.modifiers).filter((modifier) => chosen.includes(modifier.id)).reduce((sum, modifier) => sum + Number(modifier.price), 0); addToCart({ id: item.id, name: item.name, priceByn: Number(item.priceByn) + extra, quantity: 1, selectedModifiers: chosen }) }}>В корзину: {item.name}</button></>}
+                {!canAddToOrder && tenantConfig?.serviceMode !== 'VIEW_ONLY' && <>{item.modifierGroups?.map(({ modifierGroup: group }) => <fieldset key={group.id}><legend>{group.name}{group.isRequired ? ' *' : ''}</legend>{group.modifiers.map((modifier) => <label key={modifier.id} className="mr-3"><input type="checkbox" checked={(selectedModifiers[item.id] ?? []).includes(modifier.id)} onChange={(event) => setSelectedModifiers((current) => { const chosen = current[item.id] ?? []; return { ...current, [item.id]: event.target.checked ? [...chosen, modifier.id] : chosen.filter((id) => id !== modifier.id) } })} /> {modifier.name} (+{modifier.price} BYN)</label>)}</fieldset>)}<button disabled={(item.modifierGroups ?? []).some(({ modifierGroup: group }) => (group.isRequired || group.minSelection > 0) && (selectedModifiers[item.id] ?? []).filter((id) => group.modifiers.some((modifier) => modifier.id === id)).length < Math.max(group.isRequired ? 1 : 0, group.minSelection))} onClick={() => { const chosen = selectedModifiers[item.id] ?? []; const extra = (item.modifierGroups ?? []).flatMap(({ modifierGroup: group }) => group.modifiers).filter((modifier) => chosen.includes(modifier.id)).reduce((sum, modifier) => sum + Number(modifier.price), 0); addToCart({ id: item.id, name: item.name, priceByn: Number(item.priceByn) + extra, quantity: 1, selectedModifiers: chosen }) }}>В корзину: {item.name}</button></>}
               </li>)}</ul>
             </section>)}
           </section>

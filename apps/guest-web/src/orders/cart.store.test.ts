@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { useCartStore } from './cart.store'
+import { activateCartForQrToken, useCartStore } from './cart.store'
 
 afterEach(() => {
   useCartStore.getState().clear()
@@ -35,5 +35,17 @@ describe('guest cart', () => {
 
     useCartStore.getState().setQuantity(lineId, 0)
     expect(useCartStore.getState().items).toEqual([])
+  })
+
+  it('clears persisted items and comment when the guest switches to another QR table', () => {
+    activateCartForQrToken('qr-table-a')
+    useCartStore.getState().addItem({ id: 'dish-1', name: 'Борщ', priceByn: 8.5, quantity: 1, selectedModifiers: [] })
+    useCartStore.getState().setComment('Без лука')
+
+    activateCartForQrToken('qr-table-b')
+
+    expect(useCartStore.getState().items).toEqual([])
+    expect(useCartStore.getState().comment).toBe('')
+    expect(localStorage.getItem('guest-cart')).toContain('qr-table-b')
   })
 })

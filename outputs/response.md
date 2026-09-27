@@ -1,36 +1,29 @@
-# Исправления PR #151
+# Исправления по итогам ревью PR #151
 
 ## Issues/Notes
 
-- Учтены оба открытых inline-замечания: добавлены экран оформления и серверный сценарий создания заказа; `qrToken` передаётся в JSON и в заголовке `X-QR-Token`.
-- В `input/BNP-143` отсутствуют CI-логи, `pr_files.txt`, отдельный `ticket.md` и связанные спецификации. Требования сверены по `request.md` и комментариям PR.
-- Первый `npm run typecheck` обнаружил локальный Prisma Client, не соответствующий схеме. После генерации клиента typecheck прошёл.
-- Для целевого E2E сначала применены миграции к локальной тестовой БД; после этого все сценарии прошли.
-- ESLint завершился без ошибок; выдал два предупреждения `no-unsafe-argument` в `guest-session.service.ts` и `orders.service.ts`. Prisma schema проигнорирована ESLint, так как для неё нет конфигурации.
+- Исправлены оба открытых inline-замечания: отображение групп модификаторов из ответа API и сохранение корзины между разными QR-столами.
+- В подготовленном `input/BNP-143` нет файлов с CI-ошибками и отдельного `ticket.md`; контекст требований взят из `request.md` и обсуждений PR.
 
 ## Approach
 
-- Экран `/order/checkout` позволяет менять количество и удалять позиции, редактировать комментарий длиной до 255 символов, видеть сумму и подтверждать заказ. После успешного ответа API корзина очищается и открывается экран статуса; при возврате корзина и комментарий сохраняются.
-- `POST /api/v1/guest/orders` проверяет непустую корзину, количество, комментарий, доступность блюд и выбранные/обязательные модификаторы. Цены рассчитываются сервером по актуальному меню. Транзакция создаёт заказ и присваивает ежедневный номер, затем событие `order:created` публикуется для кухни.
-- Проверены потребители `dailyOrderNumber` поиском по `apps/` и `packages/` (CodeGraph недоступен). Миграционный diff содержит только две новые миграции; существующие миграции не изменялись.
+- Клиент меню теперь читает фактическую структуру групп `{ sortOrder, modifierGroup }`. Обязательные группы учитываются при доступности кнопки добавления блюда.
+- Корзина сохраняет QR-контекст. При переходе к меню или checkout с другим QR удаляются прежние позиции и комментарий; для того же QR корзина сохраняется. QR из адреса checkout имеет приоритет над старым токеном вкладки.
+- Сначала добавлены регрессионные тесты: до исправления тест меню падал на `group.modifiers.map`, а тест смены QR — из-за отсутствовавшего механизма привязки. После изменений оба сценария проходят.
 
 ## Files Modified
 
-- `apps/guest-web/src/App.tsx`, `CheckoutPage.tsx`, `guest-session.ts`, `orders/cart.store.ts` — пользовательский путь checkout, отправка запроса и сохранение корзины.
-- `apps/guest-web/src/App.test.tsx`, `guest-session.test.ts`, `orders/cart.store.test.ts` — проверки QR-контракта, меню и корзины.
-- `apps/api/src/guest-session/guest-orders.controller.ts`, `guest-session.module.ts`, `guest-session.service.ts` — API создания заказа и серверная валидация.
-- `apps/api/src/orders/daily-order-number.ts`, `daily-order-number.spec.ts`, `orders.service.ts`, `orders.service.spec.ts`, `apps/api/src/staff/shift.service.ts` — ежедневная нумерация заказов.
-- `apps/api/prisma/schema.prisma` и две миграции `20260927000000_daily_order_number_date`, `20260927000001_backfill_daily_order_number_date` — дата счётчика и заполнение существующих значений.
-- `apps/api/test/guest-orders.e2e-spec.ts` — интеграционные проверки создания заказа, валидации и события кухни.
-- `outputs/review_replies.json` и два файла в `outputs/review_replies/` — ответы на открытые review-треды.
+- `apps/guest-web/src/App.tsx` — чтение вложенной структуры групп и активация контекста корзины для текущего QR.
+- `apps/guest-web/src/App.test.tsx` — покрытие отображения и выбора обязательного модификатора.
+- `apps/guest-web/src/CheckoutPage.tsx` — приоритет QR из URL над токеном предыдущего стола в session storage.
+- `apps/guest-web/src/orders/cart.store.ts` — привязка persisted-корзины к QR и очистка при смене QR.
+- `apps/guest-web/src/orders/cart.store.test.ts` — проверка сброса позиций и комментария при смене стола.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md`, `thread_2.md` — ответы на оба открытых review-треда.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint` для затронутых TypeScript-файлов — завершился успешно, без ошибок; есть два предупреждения `no-unsafe-argument`. `apps/api/prisma/schema.prisma` ESLint пропускает без конфигурации.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — выполнен для синхронизации Prisma Client со схемой.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и локальных изменений.
+- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/CheckoutPage.tsx apps/guest-web/src/orders/cart.store.ts apps/guest-web/src/orders/cart.store.test.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 62 набора/547 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/16 тестов; сборка и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены 36 миграций, включая две новые миграции PR.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5/5 сценариев. Проверены ответ `201` с `orderId`, сумма с модификаторами, публикация `order:created`, ежедневный номер, стоп-лист и ошибки валидации.
-- `rg -n "dailyOrderNumber" apps packages` — проверены потребители поля по всему монорепозиторию; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
+- `npm test` — успешно: API 62 набора/547 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/19 тестов; сборка и проверка design tokens также завершились успешно.
+- Миграционный blast-radius check: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции PR, существующие миграции не изменены.

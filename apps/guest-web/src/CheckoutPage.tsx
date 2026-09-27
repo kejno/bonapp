@@ -19,7 +19,7 @@ export default function CheckoutPage() {
   const setComment = useCartStore((state) => state.setComment)
   const clear = useCartStore((state) => state.clear)
   const setOrder = useOrdersStore((state) => state.setOrder)
-  const qrToken = window.sessionStorage.getItem('qrToken') ?? new URLSearchParams(window.location.search).get('qr_token') ?? ''
+  const qrToken = new URLSearchParams(window.location.search).get('qr_token') ?? window.sessionStorage.getItem('qrToken') ?? ''
   const total = items.reduce((sum, item) => sum + item.priceByn * item.quantity, 0)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)

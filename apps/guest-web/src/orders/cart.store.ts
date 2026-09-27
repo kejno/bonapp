@@ -13,6 +13,7 @@ export interface CartItem {
 interface CartState {
   items: CartItem[]
   comment: string
+  qrToken: string | null
   addItem: (item: Omit<CartItem, 'lineId'>) => void
   setQuantity: (lineId: string, quantity: number) => void
   removeItem: (lineId: string) => void
@@ -23,6 +24,7 @@ interface CartState {
 export const useCartStore = create<CartState>()(persist((set) => ({
   items: [],
   comment: '',
+  qrToken: null,
   addItem: (item) => set((state) => {
     const lineId = `${item.id}:${[...item.selectedModifiers].sort().join(',')}`
     const existing = state.items.find((candidate) => candidate.lineId === lineId)
@@ -37,3 +39,9 @@ export const useCartStore = create<CartState>()(persist((set) => ({
   setComment: (comment) => set({ comment }),
   clear: () => set({ items: [], comment: '' }),
 }), { name: 'guest-cart', storage: createJSONStorage(() => localStorage) }))
+
+export function activateCartForQrToken(qrToken: string): void {
+  const cart = useCartStore.getState()
+  if (cart.qrToken === qrToken) return
+  useCartStore.setState({ items: [], comment: '', qrToken })
+}
