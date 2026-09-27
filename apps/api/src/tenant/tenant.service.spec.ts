@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantContextService } from './tenant-context.service';
 
 const mockStorageService = {
   upload: jest.fn(),
@@ -10,6 +11,7 @@ const mockStorageService = {
 };
 
 const mockPrismaService = {
+  transactionForTenant: jest.fn(),
   db: {
     tenant: {
       findUnique: jest.fn(),
@@ -29,6 +31,10 @@ describe('TenantService', () => {
         TenantService,
         { provide: StorageService, useValue: mockStorageService },
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: TenantContextService,
+          useValue: { getTenantId: () => 'tenant-uuid' },
+        },
       ],
     }).compile();
 
@@ -48,7 +54,10 @@ describe('TenantService', () => {
     } as Express.Multer.File;
 
     beforeEach(() => {
-      mockPrismaService.db.tenant.findUnique.mockResolvedValue({ id: tenantId, name: 'Test Tenant' });
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({
+        id: tenantId,
+        name: 'Test Tenant',
+      });
     });
 
     it('should upload file to storage with correct key', async () => {
@@ -69,9 +78,21 @@ describe('TenantService', () => {
       mockStorageService.upload.mockResolvedValue('url');
 
       await service.uploadLogo(tenantId, file);
-      const firstKey = (mockStorageService.upload.mock.calls as unknown as [string, Buffer, string][])[0][0];
+      const firstKey = (
+        mockStorageService.upload.mock.calls as unknown as [
+          string,
+          Buffer,
+          string,
+        ][]
+      )[0][0];
       await service.uploadLogo(tenantId, file);
-      const secondKey = (mockStorageService.upload.mock.calls as unknown as [string, Buffer, string][])[1][0];
+      const secondKey = (
+        mockStorageService.upload.mock.calls as unknown as [
+          string,
+          Buffer,
+          string,
+        ][]
+      )[1][0];
 
       expect(firstKey).not.toBe(secondKey);
     });
@@ -87,7 +108,9 @@ describe('TenantService', () => {
       await service.uploadLogo('untrusted-tenant-id', file);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        expect.stringMatching(/^tenants\/tenant-from-context\/logos\/[0-9a-f-]+\.png$/),
+        expect.stringMatching(
+          /^tenants\/tenant-from-context\/logos\/[0-9a-f-]+\.png$/,
+        ),
         file.buffer,
         'image/png',
       );
@@ -120,7 +143,9 @@ describe('TenantService', () => {
       await service.uploadLogo(tenantId, webpFile);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        expect.stringMatching(/^tenants\/tenant-uuid\/logos\/[0-9a-f-]+\.webp$/),
+        expect.stringMatching(
+          /^tenants\/tenant-uuid\/logos\/[0-9a-f-]+\.webp$/,
+        ),
         expect.any(Buffer),
         'image/webp',
       );
@@ -155,24 +180,95 @@ describe('TenantService', () => {
     });
   });
 
+  describe('payment credentials', () => {
+    it('preserves credentials from concurrent saves to different gateways', async () => {
+      process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
+      const credentials: Record<string, unknown> = {};
+      mockPrismaService.db.tenant.findUnique.mockImplementation(() => ({
+        paymentCredentials: { ...credentials },
+      }));
+      mockPrismaService.transactionForTenant.mockImplementation(
+        (_tenantId: string, operation: (tx: unknown) => Promise<void>) =>
+          operation({
+            $executeRaw: (
+              parts: TemplateStringsArray,
+              ...values: unknown[]
+            ) => {
+              expect(parts.join('?')).toContain('jsonb_set');
+              credentials[String(values[0])] = JSON.parse(String(values[1]));
+              return Promise.resolve(1);
+            },
+          }),
+      );
+
+      const [oplati, erip] = await Promise.all([
+        service.savePaymentCredentials({
+          gateway: 'oplati',
+          merchantId: 'merchant-1',
+        }),
+        service.savePaymentCredentials({
+          gateway: 'erip',
+          serviceId: 'service-1',
+          secret: 'secret-1',
+        }),
+      ]);
+
+      expect(oplati).toEqual({
+        oplati: true,
+        erip: true,
+        bepaid: false,
+        skno: false,
+      });
+      expect(erip).toEqual({
+        oplati: true,
+        erip: true,
+        bepaid: false,
+        skno: false,
+      });
+      expect(mockPrismaService.transactionForTenant).toHaveBeenCalledTimes(2);
+      delete process.env.PAYMENT_CREDENTIALS_SECRET;
+    });
+  });
+
   describe('updateSettings', () => {
     it('rejects a logo URL outside the current tenant storage namespace', async () => {
       mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(false);
-      await expect(service.updateSettings('tenant-uuid', {
-        name: 'Cafe', address: null, unp: null, legalName: null,
-        brandColor: '#123456', logoUrl: 'https://attacker.example/logo.png', serviceMode: 'VIEW_ONLY',
-      })).rejects.toThrow('Invalid logo URL');
+      await expect(
+        service.updateSettings('tenant-uuid', {
+          name: 'Cafe',
+          address: null,
+          unp: null,
+          legalName: null,
+          brandColor: '#123456',
+          logoUrl: 'https://attacker.example/logo.png',
+          serviceMode: 'VIEW_ONLY',
+        }),
+      ).rejects.toThrow('Invalid logo URL');
       expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
     });
 
     it('persists only a URL for a versioned logo belonging to the current tenant', async () => {
       mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
-      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe', name: 'Cafe', logoUrl: 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png', brandColor: '#123456', serviceMode: 'VIEW_ONLY' });
-      const logoUrl = 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png';
+      mockPrismaService.db.tenant.update.mockResolvedValue({
+        id: 'tenant-uuid',
+        slug: 'cafe',
+        name: 'Cafe',
+        logoUrl:
+          'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png',
+        brandColor: '#123456',
+        serviceMode: 'VIEW_ONLY',
+      });
+      const logoUrl =
+        'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png';
 
       const result = await service.updateSettings('tenant-uuid', {
-        name: 'Cafe', address: null, unp: null, legalName: null,
-        brandColor: '#123456', logoUrl, serviceMode: 'VIEW_ONLY',
+        name: 'Cafe',
+        address: null,
+        unp: null,
+        legalName: null,
+        brandColor: '#123456',
+        logoUrl,
+        serviceMode: 'VIEW_ONLY',
       });
 
       expect(mockStorageService.isPublicUrlForKeyPrefix).toHaveBeenCalledWith(
@@ -184,18 +280,38 @@ describe('TenantService', () => {
 
     it('updates only editable profile, branding, legal and service mode fields for the current tenant', async () => {
       const settings = {
-        name: 'Cafe', address: 'Minsk', unp: '123456789', legalName: 'Cafe LLC',
-        brandColor: '#123456', logoUrl: 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png', serviceMode: 'VIEW_ONLY' as const,
+        name: 'Cafe',
+        address: 'Minsk',
+        unp: '123456789',
+        legalName: 'Cafe LLC',
+        brandColor: '#123456',
+        logoUrl:
+          'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png',
+        serviceMode: 'VIEW_ONLY' as const,
       };
       mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
-      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe', ...settings });
+      mockPrismaService.db.tenant.update.mockResolvedValue({
+        id: 'tenant-uuid',
+        slug: 'cafe',
+        ...settings,
+      });
 
       await service.updateSettings('tenant-uuid', settings);
 
       expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
         where: { id: 'tenant-uuid' },
         data: settings,
-        select: { id: true, name: true, slug: true, address: true, unp: true, legalName: true, logoUrl: true, brandColor: true, serviceMode: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          address: true,
+          unp: true,
+          legalName: true,
+          logoUrl: true,
+          brandColor: true,
+          serviceMode: true,
+        },
       });
     });
   });
