@@ -10,7 +10,7 @@ type Employee = { id: string; fullName: string; email: string; phone: string | n
 type Shift = { id: string; openedAt: string; cashier: { fullName: string }; ordersCount: number; revenue: string } | null;
 type KitchenStaff = { id: string; fullName: string; kitchenDepartments: string[] };
 const KITCHEN_DEPARTMENTS = [{ id: 'HOT', label: 'Горячий цех' }, { id: 'COLD', label: 'Холодный цех' }, { id: 'BAR', label: 'Бар' }];
-const employeeSchema = z.object({ fullName: z.string().trim().min(1, 'Укажите имя'), email: z.email('Укажите корректный email'), phone: z.string().regex(/^\+375\d{9}$/, 'Введите телефон в формате +375XXXXXXXXX'), role: z.enum(['WAITER', 'CASHIER', 'MANAGER', 'ADMIN']), temporaryPassword: z.string().optional() });
+const employeeSchema = z.object({ fullName: z.string().trim().min(1, 'Укажите имя'), email: z.email('Укажите корректный email'), phone: z.string().regex(/^\+375\d{9}$/, 'Введите телефон в формате +375XXXXXXXXX'), role: z.enum(['WAITER', 'CASHIER', 'MANAGER']), temporaryPassword: z.string().optional() });
 type EmployeeForm = z.infer<typeof employeeSchema>;
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {

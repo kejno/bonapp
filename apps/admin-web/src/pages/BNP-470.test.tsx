@@ -21,6 +21,7 @@ describe('BNP-470 изменение и деактивация сотрудни�
 
     render(<StaffPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
+    expect(screen.queryByRole('option', { name: /Администратор/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText('Имя'), { target: { value: 'Ольга Иванова' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
     expect(await screen.findByText('Ольга Иванова')).toBeInTheDocument();
