@@ -5,7 +5,7 @@
 - Открытый inline-тред указывал на утечку статуса и ID заказа гостям других столов. Исправление уже присутствует в HEAD: `join_order_room` принимает действующую table session и проверяет активный заказ для того же стола до подключения к `order_<id>`. Гостевые сокеты не входят в общую комнату tenant.
 - В `pr_discussions_raw.json` обнаружен один открытый inline-тред с `threadId` и `rootCommentId`; для него подготовлен ответ. Остальные открытые записи — сводные отзывы без идентификаторов треда, предыдущие inline-треды закрыты.
 - `instruction.md`, `pr_files.txt`, файлы CI, `merge_conflicts.md` и `ticket.md` в `input/BNP-154` отсутствуют. Прочитаны `CLAUDE.md`, PR-контекст и инструкции `.dmtools/agents/instructions/pr_rework/`.
-- При первой проверке типов обнаружен устаревший сгенерированный Prisma Client. После `npm exec --workspace @bonapp/api prisma generate -- --schema prisma/schema.prisma` ошибка `TransactionClient.guest` исчезла.
+- Первая команда `npm run typecheck` выявила устаревший сгенерированный Prisma Client (`TransactionClient.guest`). После `npx prisma generate --schema prisma/schema.prisma` из `apps/api` повторный typecheck прошёл.
 
 ## Approach
 
@@ -21,9 +21,9 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево было чистым до обновления отчёта.
 - `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
 - `npm run typecheck` — успешно после генерации Prisma Client по текущей схеме; проверены все 4 workspace.
-- `npm test` — успешно: API 60 наборов / 538 тестов, admin-web 29 файлов / 80 тестов, guest-web 1 файл / 5 тестов; сборки и проверка design tokens также прошли.
+- `npm test` — успешно: API 60 наборов / 538 тестов, admin-web 29 файлов / 80 тестов, guest-web 1 файл / 5 тестов; сборки трёх приложений и проверка design tokens также прошли.
 - `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест.
 - `git diff --check` — успешно. Проверка миграций подтвердила, что существующие файлы миграций не менялись.
