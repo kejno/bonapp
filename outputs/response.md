@@ -1,17 +1,33 @@
-### Root Cause
-- `TableQrPdfService.render` создавал PDF сразу после события `load`, которое не гарантирует завершение декодирования встроенных QR-изображений.
-- Из-за гонки PDF мог содержать корректную структуру, но не отображённые QR-коды.
+# Доработка PR #161 — BNP-134
 
-### Previous Attempt
-- PR #138 добавил проверку QR-кодов в BNP-387, но не устранил гонку при рендеринге.
+## Issues/Notes
 
-### Fix
-- `table-qr-pdf.service.ts`: перед `page.pdf()` сервис ожидает завершения `decode()` всех изображений.
+- В `input/BNP-134` отсутствуют `ci_failures.md` и `ci_failures_full.log`; CI-сбои по локальным материалам не указаны.
+- Первый полный запуск `npm test` обнаружил совпадение timestamp миграции регистрации с миграцией из `main`. Миграцию регистрации перенёс на уникальный timestamp после всех миграций `main`; существующие миграции не изменялись.
+- В `pr_discussions_raw.json` найден один открытый inline-тред и один общий комментарий без `threadId`/`rootCommentId`. Ответ подготовлен для inline-треда.
 
-### Test Coverage
-- `BNP-387.e2e-spec.ts` — проверка RED без ожидания декодирования, GREEN после исправления; PDF содержит декодируемые QR двух выбранных столов.
-- Полный набор unit-тестов API: 508 пройдено.
-- Полный e2e-набор: заблокирован отсутствующими `DATABASE_URL` и Redis.
+## Approach
 
-### Notes
-- Полный e2e-прогон требует настроенных PostgreSQL и Redis.
+- Добавил отдельное ограничение `5` запросов в минуту для `POST /public/tenants/register` через Nest Throttler.
+- Добавил HTTP-регрессионный тест: первые пять регистрационных запросов проходят, шестой получает `429`. До исправления тест падал, получая `201`.
+- Разрешил конфликты с `main`, объединив маршруты admin-web, импорты модулей API и все поля Tenant из обеих версий схемы.
+- Перенёс миграцию регистрации на `20260927020000_tenant_registration`, после последней миграции `main` (`20260927010002`).
+
+## Files Modified
+
+- `apps/admin-web/src/App.tsx` — объединены маршруты регистрации/онбординга с маршрутами из `main`.
+- `apps/api/prisma/schema.prisma` — объединены конфликтующие поля Tenant.
+- `apps/api/src/app.module.ts` — сохранены модули регистрации, официантских вызовов и welcome-экрана.
+- `apps/api/src/public-registration/public-registration.controller.ts` — лимит регистрации 5 запросов в минуту.
+- `apps/api/src/public-registration/public-registration.controller.spec.ts` — регрессионная проверка ограничения через HTTP.
+- `apps/api/prisma/migrations/20260927020000_tenant_registration/migration.sql` — уникальный timestamp миграции регистрации.
+- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — отчёт и ответ в review-тред.
+
+## Test Coverage
+
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки исходных изменений и состояния рабочей копии.
+- `npx eslint apps/admin-web/src/App.tsx apps/api/src/app.module.ts apps/api/src/public-registration/public-registration.controller.ts apps/api/src/public-registration/public-registration.controller.spec.ts` — успешно.
+- `npm run typecheck` — успешно для всех четырёх workspace.
+- `npm test` — успешно для API, admin-web, guest-web и проверки design tokens; сборки workspace также выполнены.
+- `git diff --check` — успешно.
+- Проверка влияния миграций: сравнил миграции с `origin/main`; миграция регистрации добавлена с timestamp после существующих, существующие миграции не менялись. Проверка уникальности timestamp миграций проходит в полном наборе тестов.

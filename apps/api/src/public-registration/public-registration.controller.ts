@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { PublicRegistrationService, RegistrationInput } from './public-registration.service';
 
@@ -8,6 +9,7 @@ export class PublicRegistrationController {
   constructor(private readonly registrations: PublicRegistrationService) {}
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   register(@Body() body: unknown) {
     if (!body || typeof body !== 'object') throw new BadRequestException('Некорректные данные регистрации');
