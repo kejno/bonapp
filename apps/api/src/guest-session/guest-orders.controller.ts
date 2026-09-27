@@ -10,6 +10,21 @@ import { GuestSessionService } from './guest-session.service';
 export class GuestOrdersController {
   constructor(private readonly guestSessionService: GuestSessionService) {}
 
+  @Post()
+  createOrder(@Req() request: Request, @Body() body: unknown) {
+    const guestRequest = request as QrTokenRequest;
+    if (typeof body !== 'object' || body === null) throw new BadRequestException('Order body is required');
+    const input = body as Record<string, unknown>;
+    if (typeof input['qrToken'] !== 'string' || input['qrToken'] !== request.headers['x-qr-token'] || typeof input['comment'] !== 'string' || !Array.isArray(input['items'])) {
+      throw new BadRequestException('qrToken, items, and comment are required');
+    }
+    return this.guestSessionService.createGuestOrder(guestRequest.tenantId, guestRequest.tableId, {
+      comment: input['comment'],
+      guestSessionId: typeof input['guestSessionId'] === 'string' ? input['guestSessionId'] : null,
+      items: input['items'] as Array<{ menuItemId: string; quantity: number; selectedModifiers: string[] }>,
+    });
+  }
+
   @Get(':id')
   getOrderStatus(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;

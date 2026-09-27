@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { OrdersService } from './orders.service';
+import { tenantLocalDate } from './daily-order-number';
 
 const mockPrismaService = {
   transactionForTenant: jest.fn(),
@@ -18,7 +19,7 @@ const mockPrismaService = {
 
 const transaction = {
   table: { findFirst: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
-  tenant: { findUnique: jest.fn() },
+  tenant: { findUnique: jest.fn(), update: jest.fn() },
   order: { count: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
   payment: { findFirst: jest.fn() },
   $executeRaw: jest.fn(),
@@ -119,6 +120,42 @@ describe('OrdersService', () => {
   });
 
   describe('create()', () => {
+    it('assigns the next tenant-local daily order number before creating an order', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.tenant.findUnique.mockResolvedValue({ serviceMode: 'ORDER_AND_PAY', timezone: 'Europe/Minsk', dailyOrderNumber: 0, dailyOrderNumberDate: null });
+      transaction.table.findFirst.mockResolvedValue({
+        id: 'table-1',
+        status: 'AVAILABLE',
+      });
+      transaction.table.updateMany.mockResolvedValue({ count: 1 });
+      transaction.tenant.update.mockResolvedValue({ dailyOrderNumber: 1 });
+      transaction.order.create.mockResolvedValue({
+        id: 'order-1',
+        dailyOrderNumber: 1,
+      });
+
+      const result = await service.create('table-1');
+
+      expect(result).toEqual({ id: 'order-1', dailyOrderNumber: 1 });
+      expect(transaction.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-a' },
+        data: { dailyOrderNumber: 1, dailyOrderNumberDate: tenantLocalDate('Europe/Minsk') },
+      });
+      expect(transaction.order.create).toHaveBeenCalledWith({
+        data: { tenantId: 'tenant-a', tableId: 'table-1', dailyOrderNumber: 1 },
+      });
+      expect(transaction.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects creating an order in VIEW_ONLY mode', async () => {
+      mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
+      transaction.tenant.findUnique.mockResolvedValue({ serviceMode: 'VIEW_ONLY' });
+
+      await expect(service.create('table-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.order.create).not.toHaveBeenCalled();
+      expect(transaction.table.updateMany).not.toHaveBeenCalled();
+    });
+
     it('rejects when another request has already reserved the table', async () => {
       mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
       transaction.table.findFirst.mockResolvedValue({ id: 'table-1', status: 'AVAILABLE' });

@@ -45,10 +45,6 @@ export class ShiftService {
       });
       if (!cashier) throw new NotFoundException('Active cashier not found');
       const shift = await tx.shift.create({ data: { tenantId, cashierId } });
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { dailyOrderNumber: 0 },
-      });
       this.logger.log(`[СКНО STUB] shift open – tenantId: ${tenantId}`);
       return shift;
       });
@@ -90,10 +86,6 @@ export class ShiftService {
           totalAmount: totals._sum.totalAmountByn ?? 0,
           orderCount: totals._count._all,
         },
-      });
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { dailyOrderNumber: 0 },
       });
       this.logger.log(`[СКНО STUB] shift close – tenantId: ${tenantId}`);
       return { ...closed, report };

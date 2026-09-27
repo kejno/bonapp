@@ -1,8 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { OrderStatus, ServiceMode } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
+import { nextDailyOrderNumber, tenantLocalDate } from '../orders/daily-order-number';
 
 @Injectable()
 export class GuestSessionService {
@@ -10,6 +11,82 @@ export class GuestSessionService {
     private readonly prisma: PrismaService,
     private readonly menuGateway: MenuGateway,
   ) {}
+
+  async createGuestOrder(
+    tenantId: string,
+    tableId: string,
+    input: { items: Array<{ menuItemId: string; quantity: number; selectedModifiers: string[] }>; comment: string; guestSessionId?: string | null },
+  ) {
+    if (!Array.isArray(input.items) || input.items.length === 0) throw new BadRequestException('Cart cannot be empty');
+    if (typeof input.comment !== 'string' || input.comment.length > 255) throw new BadRequestException('Comment must be at most 255 characters');
+    for (const item of input.items) {
+      if (!item || typeof item.menuItemId !== 'string' || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 20 || !Array.isArray(item.selectedModifiers) || item.selectedModifiers.some((id) => typeof id !== 'string')) {
+        throw new BadRequestException('Invalid order item');
+      }
+    }
+
+    const order = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true, dailyOrderNumber: true, dailyOrderNumberDate: true, serviceMode: true } });
+      if (!tenant) throw new NotFoundException('Tenant not found');
+      if (tenant.serviceMode === ServiceMode.VIEW_ONLY) throw new ConflictException('Ordering is disabled for this tenant');
+      const today = tenantLocalDate(tenant.timezone);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+      const latestTenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { dailyOrderNumber: true, dailyOrderNumberDate: true } });
+      if (!latestTenant) throw new NotFoundException('Tenant not found');
+      const dailyOrderNumber = nextDailyOrderNumber(latestTenant.dailyOrderNumber, latestTenant.dailyOrderNumberDate, today);
+      await tx.tenant.update({ where: { id: tenantId }, data: { dailyOrderNumber, dailyOrderNumberDate: today } });
+
+      const pricedItems: Array<{ menuItemId: string; quantity: number; selectedModifiers: string[]; price: number; kitchenDepartment: string }> = [];
+      for (const requested of input.items) {
+        const menuItem = await tx.menuItem.findFirst({
+          where: { id: requested.menuItemId, tenantId, isActive: true, isInStopList: false },
+          include: {
+            menuItemModifierGroups: { include: { modifierGroup: { include: { modifiers: true, modifierOptions: true } } } },
+            modifierGroups: { include: { modifierOptions: true } },
+            stopListItem: { select: { isStopped: true } },
+          },
+        });
+        if (!menuItem || menuItem.stopListItem?.isStopped) throw new BadRequestException('One or more menu items are unavailable');
+        const legacyGroups = menuItem.menuItemModifierGroups.map(({ modifierGroup }) => modifierGroup);
+        const groups = [...legacyGroups, ...menuItem.modifierGroups]
+          .filter((group, index, all) => group.isActive && all.findIndex((entry) => entry.id === group.id) === index);
+        const allowed = [
+          ...legacyGroups.filter((group) => group.isActive).flatMap((group) => group.modifiers.map((option) => ({ id: option.id, groupId: group.id, price: Number(option.price) }))),
+          ...groups.flatMap((group) => group.modifierOptions.map((option) => ({ id: option.id, groupId: group.id, price: Number(option.extraPriceByn), active: option.isActive }))),
+        ].filter((option) => !('active' in option) || option.active);
+        const selected = new Set(requested.selectedModifiers);
+        if (selected.size !== requested.selectedModifiers.length || requested.selectedModifiers.some((id) => !allowed.some((option) => option.id === id))) {
+          throw new BadRequestException('Selected modifier is unavailable for this item');
+        }
+        for (const group of groups) {
+          const count = requested.selectedModifiers.filter((id) => allowed.some((option) => option.id === id && option.groupId === group.id)).length;
+          if (count < Math.max(group.isRequired ? 1 : 0, group.minSelection)) throw new BadRequestException(`Required modifiers are missing for ${menuItem.name}`);
+          if (group.maxSelection !== null && count > group.maxSelection) throw new BadRequestException(`Too many modifiers selected for ${menuItem.name}`);
+        }
+        const modifiersPrice = requested.selectedModifiers.reduce((sum, id) => sum + (allowed.find((option) => option.id === id)?.price ?? 0), 0);
+        pricedItems.push({ menuItemId: menuItem.id, quantity: requested.quantity, selectedModifiers: requested.selectedModifiers, price: Number((Number(menuItem.priceByn) + modifiersPrice).toFixed(2)), kitchenDepartment: menuItem.kitchenDepartment ?? 'HOT' });
+      }
+      const totalAmountByn = Number(pricedItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
+      const created = await tx.order.create({ data: {
+        tenantId, tableId, dailyOrderNumber, guestSessionId: input.guestSessionId ?? null, comment: input.comment,
+        totalAmountByn, status: OrderStatus.NEW,
+        items: { create: pricedItems.map((item) => ({
+          itemId: item.menuItemId, quantity: item.quantity, unitPriceByn: item.price,
+          selectedModifiers: item.selectedModifiers, status: OrderStatus.NEW,
+          kitchenDepartment: item.kitchenDepartment,
+        })) },
+      }, select: { id: true, dailyOrderNumber: true, status: true, totalAmountByn: true, createdAt: true } });
+      return created;
+    });
+    this.menuGateway.emitKitchenOrder(tenantId, 'order:created', order);
+    return {
+      orderId: order.id,
+      dailyOrderNumber: order.dailyOrderNumber,
+      status: order.status,
+      totalAmountByn: Number(order.totalAmountByn),
+      estimatedReadyTime: new Date(order.createdAt.getTime() + 12 * 60_000).toISOString(),
+    };
+  }
 
   async resolveByQrToken(qrToken: string) {
     const tableRow = await this.prisma.findTableByQrToken(qrToken);
