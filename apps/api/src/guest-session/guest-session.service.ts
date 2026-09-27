@@ -2,10 +2,14 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { OrderStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 @Injectable()
 export class GuestSessionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly menuGateway: MenuGateway,
+  ) {}
 
   async resolveByQrToken(qrToken: string) {
     const tableRow = await this.prisma.findTableByQrToken(qrToken);
@@ -79,10 +83,10 @@ export class GuestSessionService {
   }
 
   async addOrderItem(orderId: string, itemId: string, quantity: number, tenantId: string, tableId: string) {
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    const created = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const order = await tx.order.findFirst({
         where: { id: orderId, tableId, status: { in: [OrderStatus.NEW, OrderStatus.COOKING] }, isPaid: false },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!order) throw new ForbiddenException('Active order does not belong to this table');
       const item = await tx.menuItem.findFirst({
@@ -97,7 +101,7 @@ export class GuestSessionService {
           quantity,
           unitPriceByn: item.priceByn,
           selectedModifiers: [],
-          status: OrderStatus.NEW,
+          status: order.status,
           kitchenDepartment: item.kitchenDepartment ?? 'HOT',
         },
       });
@@ -107,5 +111,7 @@ export class GuestSessionService {
       });
       return created;
     });
+    this.menuGateway.emitKitchenOrder(tenantId, 'order:updated', { id: orderId });
+    return created;
   }
 }

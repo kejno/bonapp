@@ -8,7 +8,7 @@ describe('GuestSessionService order status', () => {
   const prisma = {
     forTenant,
   } as unknown as PrismaService;
-  const service = new GuestSessionService(prisma);
+  const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never);
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -32,5 +32,48 @@ describe('GuestSessionService order status', () => {
     findFirst.mockResolvedValue(null);
 
     await expect(service.getOrderStatus('order-1', 'tenant-1', 'table-2')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('GuestSessionService addOrderItem', () => {
+  const lifecycle: string[] = [];
+  const create = jest.fn();
+  const update = jest.fn();
+  const transaction = {
+    order: { findFirst: jest.fn(), update },
+    menuItem: { findFirst: jest.fn() },
+    orderItem: { create },
+  };
+  const prisma = {
+    transactionForTenant: jest.fn(async (_tenantId: string, work: (tx: typeof transaction) => unknown) => {
+      const result = await work(transaction);
+      lifecycle.push('commit');
+      return result;
+    }),
+  } as unknown as PrismaService;
+  const gateway = { emitKitchenOrder: jest.fn(() => lifecycle.push('emit')) };
+  const service = new GuestSessionService(prisma, gateway as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    lifecycle.length = 0;
+    transaction.order.findFirst.mockResolvedValue({ id: 'order-1', status: 'COOKING' });
+    transaction.menuItem.findFirst.mockResolvedValue({
+      id: 'item-1', priceByn: '5.00', kitchenDepartment: 'HOT', stopListItem: null,
+    });
+    create.mockResolvedValue({ id: 'order-item-1' });
+    update.mockResolvedValue({});
+  });
+
+  it('places additions at the cooking stage and publishes the KDS update after commit', async () => {
+    await service.addOrderItem('order-1', 'item-1', 2, 'tenant-1', 'table-1');
+
+    expect(create).toHaveBeenCalledWith({ data: {
+      orderId: 'order-1', itemId: 'item-1', quantity: 2,
+      unitPriceByn: '5.00', selectedModifiers: [], status: 'COOKING',
+      kitchenDepartment: 'HOT',
+    } });
+    expect(lifecycle).toEqual(['commit', 'emit']);
+    expect(gateway.emitKitchenOrder).toHaveBeenCalledWith('tenant-1', 'order:updated', { id: 'order-1' });
   });
 });
