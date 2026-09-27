@@ -2,11 +2,10 @@
 
 ## Issues/Notes
 
-- Учтены оба открытых inline-замечания: реализованы экран оформления и серверный сценарий создания заказа; `qrToken` передаётся и в JSON body, и в заголовке `X-QR-Token`.
-- Разрешены конфликты обновлённой `origin/main`: сохранены дата ежедневного номера BNP-143 и актуальная связь заказа с гостем.
-- В `input/BNP-143` отсутствуют CI-логи, `pr_files.txt`, отдельный `ticket.md` и связанные спецификации. Требования сверены по `request.md`, комментариям PR и `pr_discussions_raw.json`.
-- Начальный `npm run typecheck` завершился ошибками, потому что локальный Prisma Client не соответствовал схеме. После `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный typecheck прошёл.
-- Первый запуск e2e завершился ошибкой, так как `DATABASE_URL` не был задан. Для проверки запущен изолированный PostgreSQL на порту `55432`, после чего интеграционный набор прошёл.
+- Учтены оба открытых inline-замечания: добавлены экран оформления и серверный сценарий создания заказа; `qrToken` передаётся в JSON и в заголовке `X-QR-Token`.
+- В `input/BNP-143` отсутствуют CI-логи, `pr_files.txt`, отдельный `ticket.md` и связанные спецификации. Требования сверены по `request.md` и комментариям PR.
+- Первый `npm run typecheck` обнаружил локальный Prisma Client, не соответствующий схеме. После генерации клиента typecheck прошёл.
+- ESLint завершился без ошибок; выдал два предупреждения `no-unsafe-argument` в `guest-session.service.ts` и `orders.service.ts`. Prisma schema проигнорирована ESLint, так как для неё нет конфигурации.
 
 ## Approach
 
@@ -20,17 +19,17 @@
 - `apps/guest-web/src/App.test.tsx`, `guest-session.test.ts`, `orders/cart.store.test.ts` — проверки QR-контракта, меню и корзины.
 - `apps/api/src/guest-session/guest-orders.controller.ts`, `guest-session.module.ts`, `guest-session.service.ts` — API создания заказа и серверная валидация.
 - `apps/api/src/orders/daily-order-number.ts`, `daily-order-number.spec.ts`, `orders.service.ts`, `orders.service.spec.ts`, `apps/api/src/staff/shift.service.ts` — ежедневная нумерация заказов.
-- `apps/api/prisma/schema.prisma`, `apps/api/prisma/migrations/20260927000000_daily_order_number_date/migration.sql`, `apps/api/prisma/migrations/20260927000001_backfill_daily_order_number_date/migration.sql` — поле даты счётчика и его заполнение для существующих значений.
+- `apps/api/prisma/schema.prisma` и две миграции `20260927000000_daily_order_number_date`, `20260927000001_backfill_daily_order_number_date` — дата счётчика и заполнение существующих значений.
 - `apps/api/test/guest-orders.e2e-spec.ts` — интеграционные проверки создания заказа, валидации и события кухни.
-- `outputs/review_replies.json`, `outputs/review_replies/thread_1.md`, `outputs/review_replies/thread_2.md` — ответы на оба открытых review-треда.
+- `outputs/review_replies.json` и два файла в `outputs/review_replies/` — ответы на открытые review-треды.
 
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint` для всех затронутых TypeScript-файлов PR — успешно, без ошибок и предупреждений.
+- `npx eslint` для затронутых TypeScript-файлов — завершился успешно, без ошибок; есть два предупреждения `no-unsafe-argument`. `apps/api/prisma/schema.prisma` ESLint пропускает без конфигурации.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — выполнен для синхронизации Prisma Client со схемой.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 62 набора/547 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/16 тестов; сборка и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:55432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены все 36 миграций к изолированной тестовой БД, включая две новые миграции PR.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:55432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5/5 сценариев; для запуска использована изолированная PostgreSQL 15 на порту 55432. Проверены ответ `201` с `orderId`, сумма с модификаторами, публикация `order:created`, ежедневный номер, стоп-лист и ошибки валидации.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены 36 миграций, включая две новые миграции PR.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5/5 сценариев. Проверены ответ `201` с `orderId`, сумма с модификаторами, публикация `order:created`, ежедневный номер, стоп-лист и ошибки валидации.
 - `rg -n "dailyOrderNumber" apps packages` — проверены потребители поля по всему монорепозиторию; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
