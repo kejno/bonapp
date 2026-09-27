@@ -2,29 +2,31 @@
 
 ## Issues/Notes
 
-- Исправлено актуальное замечание из `input/BNP-143/pr_discussions.md`: запрос меню теперь передаёт `X-QR-Token`, требуемый `GuestSessionGuard`.
-- `input/BNP-143/pr_discussions_raw.json` не содержит идентификаторов этого замечания; в GitHub у PR сейчас нет открытых review-тредов, поэтому `outputs/review_replies.json` содержит пустой список.
-- Отдельный `ticket.md`, `pr_files.txt` и CI-логи в `input/BNP-143` отсутствуют; требования сверены с `request.md` и локальной историей обсуждения.
+- Разрешены конфликты в `apps/guest-web/src/App.tsx`, `apps/guest-web/src/App.test.tsx` и файлах отчёта. Для файлов приложения сохранена версия PR BNP-143, включая передачу `X-QR-Token` при загрузке меню и проверку этого заголовка в тесте.
+- В `input/BNP-143/pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; `outputs/review_replies.json` содержит пустой список.
+- Файлы `pr_files.txt`, `ci_failures.md` и `ci_failures_full.log` отсутствуют. Требования сверены с `request.md` и обсуждением PR.
 
 ## Approach
 
-- Добавлена проверка в тест загрузки меню: fetch должен содержать заголовок `X-QR-Token` со значением текущего QR-токена.
-- Проверка сначала завершилась ожидаемой ошибкой на прежнем коде без заголовка; после исправления стала проходить.
+- Сверил конфликтующие версии и оставил реализацию checkout и меню из PR BNP-143.
+- Удалил конфликтующий ответ на замечание из другой задачи; для BNP-143 открытых inline-тредов нет.
+- Проверил исходные тесты, типы и сборку всего монорепозитория.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты проверки.
-- `outputs/review_replies.json` — пустой список, поскольку открытых GitHub review-тредов нет.
-- `apps/guest-web/src/App.tsx` — передача `X-QR-Token` при запросе меню.
-- `apps/guest-web/src/App.test.tsx` — проверка заголовка QR-токена в запросе меню.
+- `apps/guest-web/src/App.tsx` — разрешён конфликт с сохранением реализации PR и заголовка QR-токена в запросе меню.
+- `apps/guest-web/src/App.test.tsx` — разрешён конфликт с сохранением тестов PR, включая проверку заголовка QR-токена.
+- `outputs/response.md` — результаты rework и проверок.
+- `outputs/review_replies.json` — пустой список открытых inline-тредов.
+- `outputs/review_replies/thread_1.md` — удалён конфликтующий ответ из другой задачи.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR проверен.
-- `git status --short` — проверено; изменены только `apps/guest-web/src/App.tsx`, `apps/guest-web/src/App.test.tsx` и файлы итогового отчёта.
-- `npx eslint apps/guest-web/src/App.test.tsx apps/guest-web/src/App.tsx` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено для сверки файлов PR.
+- `git status --short` — выполнено; после разрешения конфликтов все изменения перечислены и конфликтующих записей нет.
+- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно; прошли тесты всех workspace, сборка и проверка design tokens.
-- `git diff --check` — успешно.
-- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — проверено: обе миграции новые (`A`), существующие не изменены.
-- Изменён только публичный клиентский GET-запрос меню; глобальные провайдеры, схема БД и миграции этим исправлением не затронуты.
+- `npm test` — успешно: API 62 набора / 545 тестов, guest-web 8 файлов / 26 тестов, admin-web 30 файлов / 81 тест; сборки и проверка design tokens прошли.
+- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — выполнено: обе миграции BNP-143 имеют статус `A`, существующие миграции не изменены.
+- `git diff --check` — успешно после разрешения конфликтов.
+- Blast-radius проверка: использован grep по миграциям; публичные сигнатуры и глобальные провайдеры при разрешении конфликтов не менялись. Изменения схемы/миграций PR проверены: добавлены только две новые миграции.
