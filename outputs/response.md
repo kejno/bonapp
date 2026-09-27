@@ -1,34 +1,34 @@
-# Повторная работа над PR #157
+# Повторная доработка PR #156 — BNP-139
 
 ## Issues/Notes
 
-- Добавлен `AdminRoleGuard` на получение и сохранение платёжных реквизитов. Роли `WAITER`, `CASHIER` и `CHEF` не могут управлять настройками шлюзов.
-- Запись реквизитов теперь атомарно меняет только ключ выбранного шлюза в JSONB внутри tenant-транзакции. Параллельное сохранение разных шлюзов не затирает данные.
-- Разрешены все конфликты с `main`: сохранены настройки тенанта, режим обслуживания и маршруты `main`, а также шаг 3 и поле платёжных реквизитов из PR.
-- Исправлено совпадение timestamp новой миграции с миграцией `main`: `add_payment_credentials` перенесена на `20260927000000`, позже всех миграций базовой ветки.
+- В `input/BNP-139` отсутствуют `ci_failures.md` и `ci_failures_full.log`; отдельные ошибки CI не предоставлены.
+- Согласно `pr_discussions_raw.json`, все три inline-треда разрешены. Открытых review-тредов, требующих ответа, нет.
+- В текущей модели нет tenant-level конфигурации credentials платёжных провайдеров. Согласно решению BNP-267, `paymentsReady` остаётся `false` до появления источника конфигурации; BNP-270 требует проверять credentials после его появления. Новая модель или endpoint настройки платежей выходят за scope этой задачи.
+- Предложение вынести расчёт бизнес-дня не применяется: `OrdersService` не содержит копии `businessDayBounds`/`zonedMidnight`; обычная нумерация использует `Tenant.dailyOrderNumber`, сбрасываемый при открытии и закрытии смены.
+- Описание PR из `pr_info.md` относится к PDF/QR-гонке и не соответствует BNP-139; внешнее описание не изменялось.
 
 ## Approach
 
-- Добавлены регрессионные тесты для guard на обоих платёжных endpoints и конкурентного сохранения двух шлюзов.
-- Код прав доступа и сохранения обновлён после подготовки проверок. Для JSONB используется `jsonb_set` в транзакции с RLS-контекстом тенанта.
-- Проверил потребителей `paymentCredentials` поиском по API; CodeGraph недоступен. Схема, имена полей и публичные сигнатуры методов не менялись.
+- Разрешены четыре конфликта в выходных файлах; содержимое оставлено относящимся к BNP-139.
+- Исправлен выбор стола для тестового заказа: сначала минимальный `tableNumber`, затем `createdAt`. Добавлена регрессионная проверка.
+- Сохранена интеграция с актуальной моделью смен из базовой ветки. Welcome-миграция переименована в `20260927010000_welcome_dashboard`: timestamp уникален и следует за последней миграцией базовой ветки (`20260927000000_add_payment_credentials`).
+- Так как открытых inline-тредов нет, список ответов на review-треды пуст.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — сохранены маршруты PR и `main` при разрешении конфликта.
-- `apps/api/prisma/schema.prisma` — объединены поле реквизитов из PR и `serviceMode` из `main`.
-- `apps/api/src/tenant/tenant.controller.ts` — применён административный guard к платёжным endpoints; сохранены настройки тенанта и загрузка логотипа.
-- `apps/api/src/tenant/tenant.service.ts` — объединены функции настроек и платежей; JSONB-реквизиты записываются атомарно.
-- `apps/api/src/tenant/tenant.service.spec.ts` — проверено сохранение разных шлюзов при конкурентных запросах.
-- `apps/api/src/tenant/tenant.controller.spec.ts` — проверено ограничение обоих платёжных endpoints административным guard.
-- `apps/api/prisma/migrations/20260927000000_add_payment_credentials/migration.sql` — новая миграция с уникальным timestamp.
-- `outputs/review_replies.json` и `outputs/review_replies/*.md` — ответы на оба открытых inline-треда.
+- `outputs/response.md` — итог повторной доработки.
+- `outputs/review_replies.json` — отмечено отсутствие открытых тредов.
+- `outputs/review_replies/thread_1.md`, `thread_2.md`, `thread_3.md` — устаревшие ответы на уже разрешённые треды удалены.
+- `apps/api/prisma/migrations/20260927010000_welcome_dashboard/migration.sql` — уникальный timestamp новой миграции после миграций базовой ветки.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; новых неучтённых файлов от этой работы нет.
-- `npx eslint apps/admin-web/src/App.tsx apps/api/src/tenant/tenant.controller.ts apps/api/src/tenant/tenant.service.ts apps/api/src/tenant/tenant.service.spec.ts apps/api/src/tenant/tenant.controller.spec.ts` — пройден.
-- `npm run typecheck` — пройден для всех четырёх workspace.
-- `npm test` — пройден: API 62 набора / 545 тестов, admin-web 30 файлов / 81 тест, guest-web 6 файлов / 14 тестов; production build и проверка design tokens также прошли.
-- Проверка blast radius: поиском `rg` проверены все упоминания `paymentCredentials` в `apps/api`; CodeGraph недоступен. Изменённые миграции только добавляются, миграция `main` не редактировалась.
-- `git diff --check` — пройден; конфликтных маркеров в разрешённых файлах нет.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено.
+- `git status --short` — выполнено; конфликтные файлы разрешены и добавлены в индекс.
+- `npx eslint` для изменённых TypeScript-файлов — успешно.
+- `npm run typecheck` — успешно во всех четырёх workspace.
+- `npm test` — успешно: API 63 набора / 547 тестов, admin-web 32 файла / 83 теста, guest-web 6 файлов / 14 тестов; сборка и проверка design tokens также прошли.
+- `npx jest --config test/jest-e2e.json BNP-139.e2e-spec.ts --runInBand --forceExit` — успешно: 1 e2e-тест.
+- `git diff --check` — успешно.
+- Проверка миграций: timestamp Welcome следует за максимальным timestamp базовой ветки; существующие миграции не изменялись.

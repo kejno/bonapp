@@ -20,6 +20,7 @@ import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
 import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
+import WelcomePage from './pages/WelcomePage';
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/welcome" element={<ProtectedRoute><WelcomePage /></ProtectedRoute>} />
           <Route
             path="/onboarding/step-4"
             element={
