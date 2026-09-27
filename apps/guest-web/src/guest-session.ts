@@ -18,7 +18,7 @@ export async function createGuestOrder<T>(
   const response = await fetcher(`${API_BASE}/guest/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken },
-    body: JSON.stringify({ ...order, guestSessionId: getGuestSessionId() }),
+    body: JSON.stringify({ ...order, qrToken, guestSessionId: getGuestSessionId() }),
   })
   if (!response.ok) throw new Error('Unable to create guest order')
   return response.json()

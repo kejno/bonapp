@@ -1,6 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+
+vi.mock('socket.io-client', () => ({ io: () => ({ on: vi.fn(), disconnect: vi.fn() }) }))
 
 afterEach(() => {
   cleanup()
@@ -24,12 +26,15 @@ describe('App', () => {
       ok: true,
       json: async () => ({
         tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' },
-        table: { tableNumber: 5, areaName: 'Main Hall' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' },
         activeOrder: null,
       }),
     } as Response).mockResolvedValueOnce({
       ok: true,
-      json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', price: 8.5 }] }],
+      json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }),
+    } as Response).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', priceByn: 8.5 }] }],
     } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
@@ -45,9 +50,36 @@ describe('App', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/guest\/tenant\/config\?tenantId=tenant-1$/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/menu\?tenantId=tenant-1$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('adds a menu item to the order id carried back from the status screen', async () => {
+    window.sessionStorage.setItem('qrToken', 'stable-qr-token')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: { id: 'order-1', status: 'COOKING' } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: null, priceByn: 8.5 }] }] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'order-1' }) } as Response)
+    window.history.pushState({}, '', '/?qr_token=stable-qr-token&orderId=order-1')
+
+    render(<App />)
+
+    expect(await screen.findByRole('link', { name: 'Статус заказа' })).toHaveAttribute(
+      'href',
+      '/order/order-1/status?qr_token=stable-qr-token',
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить Капучино' }))
+
+    expect(await screen.findByText('Позиция добавлена в заказ')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/orders\/order-1\/items$/), expect.objectContaining({
+      method: 'POST', headers: expect.objectContaining({ 'X-QR-Token': 'stable-qr-token' }), body: JSON.stringify({ itemId: 'item-1', quantity: 1 }),
+    }))
   })
 
   it('shows an error when the QR token cannot be resolved', async () => {
@@ -61,5 +93,47 @@ describe('App', () => {
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('sends a waiter call using the QR session and selected reason', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null,
+      }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+    render(<App />)
+    await screen.findByText('Стол 5 · Main Hall')
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Официант уже идёт')
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/call-waiter$/), expect.objectContaining({
+      method: 'POST', headers: expect.objectContaining({ 'X-QR-Token': 'stable-qr-token' }),
+      body: JSON.stringify({ tableId: 'table-1', reason: 'NEED_BILL' }),
+    }))
+  })
+
+  it('shows an error when sending a waiter call fails because of a network error', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' },
+        table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null,
+      }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+    render(<App />)
+    await screen.findByText('Стол 5 · Main Hall')
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Не удалось отправить вызов')
+    expect(screen.getByRole('dialog', { name: 'Вызвать официанта' })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/call-waiter$/), expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ tableId: 'table-1', reason: 'NEED_BILL' }),
+    }))
   })
 })

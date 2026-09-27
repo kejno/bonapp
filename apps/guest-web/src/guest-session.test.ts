@@ -26,7 +26,7 @@ describe('guest session identity', () => {
     expect(fetcher).toHaveBeenCalledWith(expect.stringMatching(/\/guest\/orders$/), expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'X-QR-Token': 'qr-token' }),
-      body: JSON.stringify({ items: [], comment: '', guestSessionId: '3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3' }),
+      body: JSON.stringify({ items: [], comment: '', qrToken: 'qr-token', guestSessionId: '3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3' }),
     }))
   })
 })
