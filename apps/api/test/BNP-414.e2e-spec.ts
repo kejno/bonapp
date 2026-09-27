@@ -9,6 +9,10 @@ describe('BNP-414: авторизация административного API
 
   it('отклоняет запросы к API сотрудников и смен без токена', async () => {
     await request(fixture.app.getHttpServer()).get('/api/v1/admin/staff').expect(401);
+    await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/staff')
+      .set('Authorization', 'Bearer invalid-token')
+      .expect(401);
     await request(fixture.app.getHttpServer()).post('/api/v1/admin/staff').send({}).expect(401);
     await request(fixture.app.getHttpServer()).post('/api/v1/admin/shifts/open').send({}).expect(401);
   });
