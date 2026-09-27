@@ -4,9 +4,8 @@
 
 - Оба открытых inline-замечания учтены: добавлен подключённый экран оформления заказа и серверный сценарий создания заказа; `qrToken` передаётся в JSON body и заголовке `X-QR-Token`.
 - В `input/BNP-143` нет CI-логов, `pr_files.txt`, отдельного `ticket.md` или спецификации. Требования проверены по `request.md`, обсуждениям PR и `pr_discussions_raw.json`.
-- Первичная типизация потребовала обновить локальный Prisma Client по схеме ветки. После `npx prisma generate --schema apps/api/prisma/schema.prisma` typecheck прошёл.
-- E2E сначала не запустился без `DATABASE_URL`; после настройки локальной тестовой базы и применения миграций целевой интеграционный набор прошёл.
-- ESLint завершился без ошибок; остались два предупреждения `no-unsafe-argument` в коде ежедневной нумерации заказов.
+- Для typecheck и тестов сгенерирован Prisma Client по схеме ветки командой `npx prisma generate --schema apps/api/prisma/schema.prisma`.
+- Отдельный `ticket.md`, спецификация, `pr_files.txt` и CI-логи в `input/BNP-143` отсутствуют; требования проверены по `request.md` и PR-обсуждениям.
 
 ## Approach
 
@@ -25,10 +24,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — проверены; существующие изменения checkout находятся в коммите PR, незакоммиченных файлов после проверки нет.
-- `npx eslint` по всем 16 изменённым TypeScript-файлам — завершился с кодом 0; два предупреждения `no-unsafe-argument` остались в `guest-session.service.ts` и `orders.service.ts`.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — проверен. В ходе этой проверки обновлён `outputs/response.md`; других незакоммиченных файлов нет.
+- `npx eslint` по изменённым TypeScript-файлам — успешно, ошибок и предупреждений нет.
 - `npm run typecheck` — все четыре workspace прошли после генерации Prisma Client.
 - `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/16 тестов; сборка и проверка design tokens тоже прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены 35 миграций. `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — 5/5 сценариев пройдены; проверены HTTP 201, сумма с модификаторами, ежедневный номер, валидация и доставка `order:created`.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены 35 миграций к локальной тестовой базе. `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — 5/5 сценариев пройдены; проверены HTTP 201, сумма с модификаторами, ежедневный номер, валидация и доставка `order:created`.
 - `git diff --check origin/main...HEAD` — успешно. Blast-radius ежедневного счётчика проверен поиском всех потребителей в `apps/` и `packages/`; существующие миграции не менялись.
 - `outputs/review_replies.json` сопоставлен с `pr_discussions_raw.json`: для каждого из двух открытых тредов указаны `threadId`, `inReplyToId` и путь к отдельному Markdown-ответу.
