@@ -107,6 +107,21 @@ describe('BNP-422: Redis adapter order status delivery', () => {
     if (!secondAddress || typeof secondAddress === 'string')
       throw new Error('Second HTTP server did not start');
 
+    const secondGateway = secondApp.get(MenuGateway);
+    const emitOrderStatusChanged = secondGateway.emitOrderStatusChanged.bind(secondGateway);
+    let publishCount = 0;
+    let resolvePublished: () => void = () => {};
+    const published = new Promise<void>((resolve) => {
+      resolvePublished = resolve;
+    });
+    jest.spyOn(secondGateway, 'emitOrderStatusChanged').mockImplementation((...args) => {
+      if (args[1] === orderId) {
+        publishCount += 1;
+        resolvePublished();
+      }
+      emitOrderStatusChanged(...args);
+    });
+
     subscriber = io(`http://127.0.0.1:${primaryAddress.port}`, {
       auth: { accessToken: staffToken(fixture.tenantId, chef.id) },
       forceNew: true,
@@ -125,14 +140,14 @@ describe('BNP-422: Redis adapter order status delivery', () => {
 
     const received = collectStatusEvents(subscriber, orderId);
     handler.emit('order:update_status', { orderId, department: 'HOT' });
-    await waitForStatus(received);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForProcessingAndDelivery(received, published);
 
     expect(
       await fixture.prisma.order.findUniqueOrThrow({ where: { id: orderId } }),
     ).toMatchObject({ status: 'COOKING' });
     expect(received.events).toHaveLength(1);
     expect(received.events[0]).toMatchObject({ orderId, status: 'COOKING' });
+    expect(publishCount).toBe(1);
   }, 30_000);
 });
 
@@ -203,16 +218,17 @@ function collectStatusEvents(
   return { events, received };
 }
 
-async function waitForStatus(result: {
-  received: Promise<void>;
-}): Promise<void> {
+async function waitForProcessingAndDelivery(
+  result: { received: Promise<void> },
+  published: Promise<void>,
+): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   try {
     await Promise.race([
-      result.received,
+      Promise.all([result.received, published]),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error('Timed out waiting for order:status_changed')),
+          () => reject(new Error('Timed out waiting for order status processing and Redis delivery')),
           5_000,
         );
       }),
