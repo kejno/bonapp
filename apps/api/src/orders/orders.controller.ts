@@ -14,9 +14,10 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, UserRole } from '@prisma/client';
 import type { TenantRequest } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
+import { WelcomeService } from '../welcome/welcome.service';
 import { MenuGateway } from '../menu/menu.gateway';
 
 @Controller('orders')
@@ -24,11 +25,17 @@ import { MenuGateway } from '../menu/menu.gateway';
 export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
+    private readonly welcomeService: WelcomeService,
     private readonly menuGateway: MenuGateway,
   ) {}
 
   @Post()
-  create(@Body() body: unknown) {
+  create(@Body() body: unknown, @Req() req: TenantRequest) {
+    if (typeof body === 'object' && body !== null && (body as Record<string, unknown>)['isTest'] === true) {
+      const allowedRoles = new Set<UserRole>([UserRole.OWNER, UserRole.MANAGER]);
+      if (!req.user?.role || !allowedRoles.has(req.user.role)) throw new ForbiddenException();
+      return this.welcomeService.simulateTestOrder(req.user.tenantId!);
+    }
     if (
       typeof body !== 'object' ||
       body === null ||

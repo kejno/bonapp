@@ -9,9 +9,11 @@ describe('OrdersController', () => {
     findOne: jest.fn(),
     updateStatus: jest.fn(),
   };
+  const welcomeService = { simulateTestOrder: jest.fn() };
   const menuGateway = { emitOrderCreated: jest.fn(), emitOrderStatusChanged: jest.fn() };
   const controller = new OrdersController(
     ordersService as unknown as OrdersService,
+    welcomeService as never,
     menuGateway as unknown as MenuGateway,
   );
 

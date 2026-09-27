@@ -225,6 +225,7 @@ model Order {
   tipsAmountByn    Decimal        @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   paymentMethod    PaymentMethod? @map("payment_method")
   isPaid           Boolean        @default(false) @map("is_paid")
+  isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
   comment          String?

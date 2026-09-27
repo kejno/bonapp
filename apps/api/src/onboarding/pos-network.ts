@@ -16,6 +16,16 @@ export function isPublicIpv4(address: string): boolean {
     (a === 203 && b === 0 && c === 113));
 }
 
+export function selectPublicIpv4(addresses: Array<{ address: string; family: number }>): string {
+  const ipv4Addresses = addresses.filter((entry) => entry.family === 4);
+  if (ipv4Addresses.some((entry) => !isPublicIpv4(entry.address))) {
+    throw new Error('Хост POS разрешается в недопустимый IP-адрес');
+  }
+  const destination = ipv4Addresses[0];
+  if (!destination) throw new Error('Хост POS не разрешается в публичный IPv4-адрес');
+  return destination.address;
+}
+
 export function isAllowedPosHost(host: string, configuredHosts: string): boolean {
   const allowed = configuredHosts.split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
   return allowed.includes(host.toLowerCase());
@@ -28,11 +38,8 @@ export async function requestPosMenu(url: URL, apiKey: string, allowedHosts: str
   const addresses = isIP(url.hostname)
     ? [{ address: url.hostname, family: isIP(url.hostname) }]
     : await lookup(url.hostname, { all: true, verbatim: true });
-  const publicAddresses = addresses.filter((entry) => entry.family === 4 && isPublicIpv4(entry.address));
-  if (publicAddresses.length === 0 || publicAddresses.length !== addresses.length) {
-    throw new Error('Хост POS разрешается в недопустимый IP-адрес');
-  }
-  const destination = publicAddresses[0];
+  const destinationAddress = selectPublicIpv4(addresses);
+  const destination = { address: destinationAddress };
   const client = url.protocol === 'https:' ? https : http;
   const target = new URL('/api/v1/menu', url);
 

@@ -23,6 +23,7 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
 import { WaiterCallModule } from './waiter-call/waiter-call.module';
+import { WelcomeModule } from './welcome/welcome.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { WaiterCallModule } from './waiter-call/waiter-call.module';
     StaffModule,
     GuestSessionModule,
     WaiterCallModule,
+    WelcomeModule,
   ],
   controllers: [AppController],
   providers: [

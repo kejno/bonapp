@@ -31,6 +31,7 @@ describe('PrismaService tenant query scope', () => {
         'ModifierOption',
         'Modifier',
         'MenuItemModifierGroup',
+        'Shift',
         'StopListItem',
         'Shift',
         'ShiftReport',
