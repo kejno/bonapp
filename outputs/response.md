@@ -23,7 +23,7 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; в рабочем дереве изменён только этот итоговый отчёт.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — перечислены файлы PR; `git status --short` — рабочее дерево чистое.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
 - `npx eslint apps/api/src/menu/menu.gateway.spec.ts apps/api/src/menu/menu.gateway.ts apps/api/src/orders/admin-orders.controller.spec.ts apps/api/src/orders/admin-orders.controller.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/src/orders/orders.module.ts apps/api/src/orders/orders.service.spec.ts apps/api/src/orders/orders.service.ts apps/api/src/orders/phone-number.spec.ts apps/api/src/orders/phone-number.ts apps/api/src/tenant/tenant.module.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
