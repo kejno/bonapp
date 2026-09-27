@@ -50,6 +50,35 @@ describe('MenuGateway event routing', () => {
     expect(join).toHaveBeenCalledWith('tenant_tenant-1_kitchen');
   });
 
+  it('rejects kitchen room access for staff without kitchen permissions', async () => {
+    const secret = 'gateway-test-secret';
+    const { accessToken } = buildTokenPair('staff-1', 'tenant-1', UserRole.WAITER, secret);
+    const join = jest.fn();
+    const prisma = {
+      forTenant: () => ({
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'staff-1', tenantId: 'tenant-1', role: UserRole.WAITER }) },
+      }),
+    };
+    const gateway = new MenuGateway(
+      {} as HttpAdapterHost,
+      prisma as unknown as PrismaService,
+      { getOrThrow: () => secret } as unknown as ConfigService,
+      { updateKitchenStatusForTenant: jest.fn() } as never,
+    );
+    const socket: TestSocket = {
+      handshake: { auth: { accessToken }, headers: {}, query: {} },
+      join,
+      data: {},
+    };
+
+    await expect(
+      (gateway as unknown as { joinTenantRoom(socket: TestSocket, payload: unknown): Promise<string> })
+        .joinTenantRoom(socket, { room: 'kitchen' }),
+    ).rejects.toThrow('Kitchen access required');
+
+    expect(join).not.toHaveBeenCalled();
+  });
+
   it('sends a new order to kitchen and hall rooms', () => {
     const { gateway, emissions } = makeGateway();
     const order = { id: 'order-1' };

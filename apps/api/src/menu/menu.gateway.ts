@@ -139,6 +139,12 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     if (!user) throw new Error('Invalid staff session');
     const requested = data['room'];
     if (requested !== 'kitchen' && requested !== 'hall') throw new Error('Invalid tenant room');
+    if (
+      requested === 'kitchen' &&
+      user.role !== UserRole.CHEF &&
+      user.role !== UserRole.OWNER &&
+      user.role !== UserRole.MANAGER
+    ) throw new Error('Kitchen access required');
     const room = `tenant_${user.tenantId}_${requested}`;
     await socket.join(room);
     (socket.data as Record<string, unknown>)['staff'] = { tenantId: user.tenantId, userId: user.id, role: user.role };
