@@ -124,7 +124,21 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Не удалось открыть стол по QR-коду')).toBeInTheDocument()
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/guest\/session\/unknown-token$/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('shows a not found error when an unknown table token is opened from its route', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    window.history.pushState({}, '', '/t/unknown-token')
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
