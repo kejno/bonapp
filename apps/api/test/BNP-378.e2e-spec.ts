@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { GuestSessionController } from '../src/guest-session/guest-session.controller';
 import { GuestSessionService } from '../src/guest-session/guest-session.service';
+import { MenuGateway } from '../src/menu/menu.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('BNP-378: unknown guest QR token', () => {
@@ -15,7 +16,11 @@ describe('BNP-378: unknown guest QR token', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [GuestSessionController],
-      providers: [GuestSessionService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        GuestSessionService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: MenuGateway, useValue: {} },
+      ],
     }).compile();
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1');

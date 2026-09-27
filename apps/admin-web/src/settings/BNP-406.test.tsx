@@ -9,16 +9,19 @@ afterEach(() => {
 
 describe('BNP-406: предпросмотр и сохранение цвета бренда', () => {
   it('обновляет предпросмотр сразу и сохраняет выбранный цвет для меню', async () => {
-    const settings = {
+    let persistedSettings = {
       name: 'Кафе', slug: 'cafe', address: 'Минск', unp: '123', legalName: 'ООО Кафе',
       logoUrl: null, brandColor: '#e0533c', serviceMode: 'ORDER_AND_PAY',
     };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => settings })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...settings, brandColor: '#123456' }) });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        persistedSettings = { ...persistedSettings, ...JSON.parse(String(init.body)) };
+      }
+      return { ok: true, json: async () => persistedSettings } as Response;
+    });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<SettingsPage />);
+    const view = render(<SettingsPage />);
     fireEvent.change(await screen.findByLabelText('Цвет бренда'), { target: { value: '#123456' } });
     const preview = screen.getByLabelText('Предпросмотр меню');
     expect(preview).toHaveStyle({ borderColor: '#123456' });
@@ -30,5 +33,9 @@ describe('BNP-406: предпросмотр и сохранение цвета �
       expect.objectContaining({ method: 'PUT', body: expect.stringContaining('"brandColor":"#123456"') }),
     ));
     expect(await screen.findByRole('status')).toHaveTextContent('Настройки сохранены');
+
+    view.unmount();
+    render(<SettingsPage />);
+    expect(await screen.findByLabelText('Цвет бренда')).toHaveValue('#123456');
   });
 });
