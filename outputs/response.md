@@ -3,8 +3,7 @@
 ## Issues/Notes
 
 - Закрыты замечания о незавершённом сценарии оформления заказа и отсутствии `qrToken` в JSON body. Ответы на оба открытых inline-треда подготовлены в `outputs/review_replies/`.
-- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и отдельные спецификации отсутствуют в `input/BNP-143`; требования сверены с `request.md` и обсуждениями. `instruction.md` и `AGENTS.md` в корне проекта отсутствуют; прочитаны `CLAUDE.md` и инструкции `.dmtools/agents/instructions/pr_rework/`.
-- Первый typecheck выявил устаревший локальный Prisma Client; после `npx prisma generate` typecheck прошёл. E2E сначала не нашёл таблицы в пустой локальной БД; после `prisma migrate deploy` интеграционный тест прошёл.
+- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и отдельные спецификации отсутствуют в `input/BNP-143`; требования сверены с `request.md` и обсуждениями. Корневой `instruction.md` отсутствует; прочитаны `CLAUDE.md` и инструкции `.dmtools/agents/instructions/pr_rework/`.
 
 ## Approach
 
@@ -24,9 +23,9 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; незакоммиченных изменений перед подготовкой отчёта не было.
-- `npx eslint` по 16 затронутым TypeScript-файлам — без ошибок; остались два предупреждения `no-unsafe-argument` в `apps/api/src/guest-session/guest-session.service.ts` и `apps/api/src/orders/orders.service.ts`.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно; после генерации `npm run typecheck` прошёл для всех четырёх workspace.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; в рабочем дереве изменён только этот отчёт.
+- `npx eslint` по 16 затронутым TypeScript-файлам — успешно, без ошибок и предупреждений. `npm run lint` — успешно для всех четырёх workspace; пять предупреждений относятся к нетронутым файлам API.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно; затем `npm run typecheck` прошёл для всех четырёх workspace. До генерации локального Prisma Client typecheck выявил отсутствующее сгенерированное поле `dailyOrderNumberDate`.
 - `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборки и проверка design tokens также прошли.
 - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно; `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
 - `git diff --check origin/main...HEAD` — успешно. CodeGraph недоступен: поиском проверены все потребители `dailyOrderNumberDate` и все вызовы `order.create` в API; обе точки создания синхронизируют счётчик блокировкой tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
