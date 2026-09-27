@@ -5,7 +5,7 @@
 - Учтены оба открытых inline-замечания: реализованы экран оформления и серверный сценарий создания заказа; `qrToken` передаётся и в JSON body, и в заголовке `X-QR-Token`.
 - В `input/BNP-143` отсутствуют CI-логи, `pr_files.txt`, отдельный `ticket.md` и связанные спецификации. Требования сверены по `request.md`, комментариям PR и `pr_discussions_raw.json`.
 - Начальный `npm run typecheck` завершился ошибками, потому что локальный Prisma Client не соответствовал схеме. После `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный typecheck прошёл.
-- Первый запуск e2e обнаружил пустую локальную тестовую БД. После `prisma migrate deploy` интеграционный набор прошёл.
+- Первый запуск e2e завершился ошибкой, так как `DATABASE_URL` не был задан. Для проверки запущен изолированный PostgreSQL на порту `55432`, после чего интеграционный набор прошёл.
 
 ## Approach
 
@@ -30,7 +30,7 @@
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — выполнен для синхронизации Prisma Client со схемой.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/16 тестов; сборка и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены 35 миграций к локальной тестовой БД.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5/5 сценариев. Проверены ответ `201` с `orderId`, сумма с модификаторами, публикация `order:created`, ежедневный номер, стоп-лист и ошибки валидации.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:55432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены все 35 миграций к изолированной тестовой БД.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:55432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5/5 сценариев. Проверены ответ `201` с `orderId`, сумма с модификаторами, публикация `order:created`, ежедневный номер, стоп-лист и ошибки валидации.
 - `rg -n "dailyOrderNumber" apps packages` — проверены потребители поля по всему монорепозиторию; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
 - `git diff --check origin/main...HEAD` и `git diff --check` — успешно.
