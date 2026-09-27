@@ -24,9 +24,10 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check origin/main...HEAD` — выполнены; конфликтных маркеров нет.
-- `npx eslint` по 16 изменённым TypeScript-файлам — успешно, 0 ошибок; есть 2 предупреждения `no-unsafe-argument` в `guest-session.service.ts` и `orders.service.ts`.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно. `npm run typecheck` после генерации — успешно для всех четырёх workspace. Запуск typecheck до генерации завершился ошибкой из-за устаревшего локального Prisma Client.
+- `npx eslint` по 16 изменённым TypeScript-файлам — успешно, ошибок и предупреждений нет.
+- Первый `npm run typecheck` выявил устаревший локальный Prisma Client. После `npx prisma generate --schema apps/api/prisma/schema.prisma` команда `npm run typecheck` успешно прошла для всех четырёх workspace.
 - `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборка и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно. `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
-- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции. CodeGraph недоступен: поиском проверены потребители `dailyOrderNumberDate` и все вызовы `order.create` в API; обе точки создания синхронизируют счётчик блокировкой tenant.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно. `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев; проверены ответ 201, сумма заказа, ежедневный номер, обязательные/неактивные модификаторы, стоп-лист, пустая корзина, длина комментария и событие `order:created`.
+- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции; существующие миграции не изменялись. CodeGraph недоступен: поиском проверены потребители `dailyOrderNumberDate` и все вызовы `order.create` в `apps/` и `packages/`; точки штатного и гостевого создания заказа синхронизируют счётчик блокировкой tenant.
+- `git diff --check` и `git diff --check origin/main...HEAD` — успешно. Перед обновлением отчёта `git status --short` был пуст; сейчас изменён только `outputs/response.md` с фактическими результатами проверки.
 - Формат `outputs/review_replies.json` проверен; каждая запись соответствует одному из двух открытых тредов по `threadId` и `inReplyToId`.
