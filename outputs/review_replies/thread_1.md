@@ -1,1 +1,1 @@
-Добавил исключение `**/e2e/**` в `apps/guest-web/vite.config.ts`, поэтому Vitest не загружает Playwright spec. Проверки `npm test` и отдельный Playwright-сценарий `dish-card.spec.ts` прошли.
+В `apps/guest-web/vite.config.ts` каталог `**/e2e/**` исключён из Vitest. Полный `npm test` прошёл, Playwright-сценарий `dish-card.spec.ts` отдельно прошёл после установки Chromium. Описание PR не совпадает с BNP-142; предложенный вариант текста добавлен в `outputs/response.md`.
