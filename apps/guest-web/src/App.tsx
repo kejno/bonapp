@@ -56,14 +56,14 @@ export default function App() {
     setSelected((current) => {
       const chosen = current[group.id] ?? []
       if (chosen.includes(modifier.id)) return { ...current, [group.id]: chosen.filter((id) => id !== modifier.id) }
-      if (group.isRequired || group.maxSelection === 1) return { ...current, [group.id]: [modifier.id] }
+      if (group.maxSelection === 1) return { ...current, [group.id]: [modifier.id] }
       if (group.maxSelection !== null && chosen.length >= group.maxSelection) return current
       return { ...current, [group.id]: [...chosen, modifier.id] }
     })
     setValidationError(false)
   }
   const submitDish = () => {
-    if (!selectedItem || groups.some((group) => group.isRequired && !selected[group.id]?.length)) { setValidationError(true); return }
+    if (!selectedItem || groups.some((group) => (selected[group.id]?.length ?? 0) < Math.max(group.isRequired ? 1 : 0, group.minSelection))) { setValidationError(true); return }
     addToCart({ id: selectedItem.id, name: selectedItem.name, quantity, priceByn: unitPrice, selectedModifiers: chosenModifiers.map((modifier) => modifier.id) })
     setSelectedItem(null)
   }
@@ -200,7 +200,7 @@ export default function App() {
           {selectedItem.description && <p className="mt-2">{selectedItem.description}</p>}
           {(selectedItem.weightGrams != null || selectedItem.calories != null) && <p className="mt-3 text-sm">{selectedItem.weightGrams != null && `${selectedItem.weightGrams} г`}{selectedItem.calories != null && ` · ${selectedItem.calories} ккал`}{selectedItem.proteins != null && ` · Б ${selectedItem.proteins} г`}{selectedItem.fats != null && ` · Ж ${selectedItem.fats} г`}{selectedItem.carbs != null && ` · У ${selectedItem.carbs} г`}</p>}
           {!!selectedItem.allergens?.length && <div className="mt-3 flex flex-wrap gap-2">{selectedItem.allergens.map((allergen) => <span key={allergen} className="rounded-full bg-surface-container-high px-3 py-1 text-xs">{allergenLabels[allergen] ?? allergen}</span>)}</div>}
-          <div className="mt-5 space-y-4">{groups.map((group) => <fieldset key={group.id}><legend className="mb-2 font-semibold">{group.name}<span className="ml-2 text-sm font-normal">{group.isRequired ? 'Выберите 1' : `До ${group.maxSelection ?? 'любого количества'}`}</span></legend>{group.modifiers.map((modifier) => { const radio = group.isRequired || group.maxSelection === 1; return <label key={modifier.id} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3"><input type={radio ? 'radio' : 'checkbox'} name={`modifier-${group.id}`} checked={selected[group.id]?.includes(modifier.id) ?? false} onChange={() => toggleModifier(group, modifier)} /><span className="flex-1">{modifier.name}</span>{Number(modifier.price) !== 0 && <span>+{money(Number(modifier.price), session.tenant.currency)}</span>}</label> })}</fieldset>)}</div>
+          <div className="mt-5 space-y-4">{groups.map((group) => <fieldset key={group.id}><legend className="mb-2 font-semibold">{group.name}<span className="ml-2 text-sm font-normal">{Math.max(group.isRequired ? 1 : 0, group.minSelection) > 0 ? `Выберите от ${Math.max(group.isRequired ? 1 : 0, group.minSelection)}` : 'Необязательно'}{group.maxSelection !== null ? ` до ${group.maxSelection}` : ''}</span></legend>{group.modifiers.map((modifier) => { const radio = group.maxSelection === 1; return <label key={modifier.id} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3"><input type={radio ? 'radio' : 'checkbox'} name={`modifier-${group.id}`} checked={selected[group.id]?.includes(modifier.id) ?? false} onChange={() => toggleModifier(group, modifier)} /><span className="flex-1">{modifier.name}</span>{Number(modifier.price) !== 0 && <span>+{money(Number(modifier.price), session.tenant.currency)}</span>}</label> })}</fieldset>)}</div>
           {validationError && <p role="alert" className="mt-3 text-error">Выберите обязательные модификаторы</p>}
           <div className="mt-5 flex items-center justify-between"><div className="flex items-center gap-4"><button aria-label="Уменьшить количество" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button><span>{quantity}</span><button aria-label="Увеличить количество" onClick={() => setQuantity((value) => value + 1)}>+</button></div><button onClick={submitDish}>Добавить в заказ · {money(unitPrice * quantity, session.tenant.currency)}</button></div>
         </section>

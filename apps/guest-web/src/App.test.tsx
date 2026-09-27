@@ -8,6 +8,7 @@ vi.mock('socket.io-client', () => ({ io: () => ({ on: vi.fn(), disconnect: vi.fn
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  useCartStore.setState({ items: [], comment: '', qrToken: null })
   window.history.pushState({}, '', '/')
 })
 
@@ -183,6 +184,45 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Добавить в заказ · 22.50 BYN' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
     expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('Корзина · 1')
+  })
+
+  it('requires minSelection even when a modifier group is not marked required', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat', name: 'Кофе', items: [{ id: 'coffee', name: 'Кофе', description: null, priceByn: 5, modifierGroups: [{ modifierGroup: { id: 'milk', name: 'Молоко', isRequired: false, minSelection: 1, maxSelection: 2, modifiers: [{ id: 'oat', name: 'Овсяное', price: 1 }, { id: 'soy', name: 'Соевое', price: 2 }] } }] }] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=test-token')
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать · Кофе' }))
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Выберите обязательные модификаторы')
+    fireEvent.click(screen.getByLabelText(/Овсяное/))
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Оформить заказ (1)' })).toBeInTheDocument()
+  })
+
+  it('allows multiple selections in a required group when maxSelection allows them', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat', name: 'Пицца', items: [{ id: 'pizza', name: 'Пицца', description: null, priceByn: 10, modifierGroups: [{ modifierGroup: { id: 'toppings', name: 'Добавки', isRequired: true, minSelection: 1, maxSelection: 2, modifiers: [{ id: 'olive', name: 'Оливки', price: 1 }, { id: 'pepper', name: 'Перец', price: 2 }] } }] }] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=test-token')
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать · Пицца' }))
+    fireEvent.click(screen.getByLabelText(/Оливки/))
+    fireEvent.click(screen.getByLabelText(/Перец/))
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Оформить заказ (1)' })).toBeInTheDocument()
+    cleanup()
+    window.history.pushState({}, '', '/order/checkout?qr_token=test-token')
+    render(<App />)
+
+    expect(screen.getByText('Пицца · 13.00 BYN')).toBeInTheDocument()
+    expect(screen.getByText('Итого: 13.00 BYN')).toBeInTheDocument()
   })
 
 })
