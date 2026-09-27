@@ -26,4 +26,5 @@
 - `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/CheckoutPage.tsx apps/guest-web/src/orders/cart.store.ts apps/guest-web/src/orders/cart.store.test.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 62 набора/547 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/19 тестов; сборка и проверка design tokens также завершились успешно.
-- Миграционный blast-radius check: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции PR, существующие миграции не изменены.
+- Blast-radius check схемы и миграций: поиск `rg -n 'dailyOrderNumberDate|daily_order_number_date' apps/api/src apps/api/prisma` проверил все обращения к новому полю; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две новые миграции, существующие миграции не изменены.
+- `git diff --check` — успешно.
