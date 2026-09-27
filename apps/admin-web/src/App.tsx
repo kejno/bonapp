@@ -15,6 +15,7 @@ import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
+import OnboardingStep1Page from './pages/OnboardingStep1Page';
 import OnboardingStep3Page from './pages/OnboardingStep3Page';
 import OnboardingStep4Page from './pages/OnboardingStep4Page';
 import WaiterCallNotifications from './components/WaiterCallNotifications';
@@ -45,6 +46,8 @@ function App() {
         <Routes>
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/onboarding/step-1" element={<ProtectedRoute><OnboardingStep1Page /></ProtectedRoute>} />
+          <Route path="/onboarding/step-2" element={<ProtectedRoute><main className="min-h-screen bg-stone-50 p-10"><div className="mx-auto max-w-2xl rounded-2xl bg-white p-8"><p className="text-sm font-semibold text-orange-700">Настройка заведения · Шаг 2 из 4</p><h1 className="mt-4 text-2xl font-bold">Профиль сохранён</h1><p className="mt-2 text-stone-600">Основные данные заведения сохранены. Продолжите настройку на следующем шаге.</p></div></main></ProtectedRoute>} />
           <Route
             path="/login"
             element={

@@ -2,32 +2,27 @@
 
 ## Issues/Notes
 
-- В `input/BNP-134` отсутствуют `ci_failures.md` и `ci_failures_full.log`; CI-сбои по локальным материалам не указаны.
-- Первый полный запуск `npm test` обнаружил совпадение timestamp миграции регистрации с миграцией из `main`. Миграцию регистрации перенёс на уникальный timestamp после всех миграций `main`; существующие миграции не изменялись.
-- В `pr_discussions_raw.json` найден один открытый inline-тред и один общий комментарий без `threadId`/`rootCommentId`. Ответ подготовлен для inline-треда.
+- Единственное адресное замечание в `pr_discussions_raw.json` помечено как resolved; открытых inline-тредов нет. Поэтому `outputs/review_replies.json` содержит пустой список. CI-логи в `input/BNP-134` отсутствуют.
+- Устранены конфликты с `main`, сохранив маршрут регистрации и onboarding PR вместе с добавленными в `main` маршрутами шагов 1 и 2.
 
 ## Approach
 
-- Добавил отдельное ограничение `5` запросов в минуту для `POST /public/tenants/register` через Nest Throttler.
-- Добавил HTTP-регрессионный тест: первые пять регистрационных запросов проходят, шестой получает `429`. До исправления тест падал, получая `201`.
-- Разрешил конфликты с `main`, объединив маршруты admin-web, импорты модулей API и все поля Tenant из обеих версий схемы.
-- Перенёс миграцию регистрации на `20260927020000_tenant_registration`, после последней миграции `main` (`20260927010002`).
+- Объединил маршруты регистрации и онбординга с маршрутами onboarding из `main` в `apps/admin-web/src/App.tsx`.
+- Сохранил изменения tenant onboarding и соответствующие регрессионные тесты, находившиеся в подготовленной рабочей копии.
+- Проверил использование `saveOnboardingStep1`, `isSlugAvailable` и `getSettings` поиском `rg` в `apps/` и `packages/`; CodeGraph недоступен.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — объединены маршруты регистрации/онбординга с маршрутами из `main`.
-- `apps/api/prisma/schema.prisma` — объединены конфликтующие поля Tenant.
-- `apps/api/src/app.module.ts` — сохранены модули регистрации, официантских вызовов и welcome-экрана.
-- `apps/api/src/public-registration/public-registration.controller.ts` — лимит регистрации 5 запросов в минуту.
-- `apps/api/src/public-registration/public-registration.controller.spec.ts` — регрессионная проверка ограничения через HTTP.
-- `apps/api/prisma/migrations/20260927020000_tenant_registration/migration.sql` — уникальный timestamp миграции регистрации.
-- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — отчёт и ответ в review-тред.
+- `apps/admin-web/src/App.tsx` — объединены маршруты регистрации и onboarding.
+- `apps/admin-web/src/pages/OnboardingStep1Page.tsx`, `onboarding-validation.ts`, `onboarding-validation.test.ts` — изменения onboarding и его проверок.
+- `apps/api/src/tenant/tenant.controller.ts`, `tenant.service.ts`, `tenant.service.spec.ts` — изменения tenant onboarding и регрессионные проверки.
+- `outputs/response.md`, `outputs/review_replies.json` — итоговый отчёт; удалён файл ответа для уже разрешённого треда.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки исходных изменений и состояния рабочей копии.
-- `npx eslint apps/admin-web/src/App.tsx apps/api/src/app.module.ts apps/api/src/public-registration/public-registration.controller.ts apps/api/src/public-registration/public-registration.controller.spec.ts` — успешно.
-- `npm run typecheck` — успешно для всех четырёх workspace.
-- `npm test` — успешно для API, admin-web, guest-web и проверки design tokens; сборки workspace также выполнены.
-- `git diff --check` — успешно.
-- Проверка влияния миграций: сравнил миграции с `origin/main`; миграция регистрации добавлена с timestamp после существующих, существующие миграции не менялись. Проверка уникальности timestamp миграций проходит в полном наборе тестов.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/OnboardingStep1Page.tsx apps/admin-web/src/pages/onboarding-validation.test.ts apps/admin-web/src/pages/onboarding-validation.ts apps/api/src/tenant/tenant.controller.ts apps/api/src/tenant/tenant.service.ts apps/api/src/tenant/tenant.service.spec.ts` — успешно.
+- `npm run typecheck` — успешно во всех четырёх workspace.
+- `npm test` — успешно: API 66 наборов / 564 теста, guest-web 8 файлов / 26 тестов, admin-web 34 файла / 86 тестов; сборка и проверка design tokens также прошли.
+- `git diff --check` и `git diff --cached --check` — успешно; конфликтных маркеров не осталось.
+- Blast-radius: проверены вызовы затронутых tenant-методов через `rg` по `apps/` и `packages/`.
