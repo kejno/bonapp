@@ -30,7 +30,7 @@ const queryClient = new QueryClient();
 
 function KdsRoute() {
   const role = useAuthStore((state) => state.user?.role);
-  if (!['CHEF', 'OWNER', 'MANAGER'].includes(role ?? ''))
+  if (!['CHEF', 'OWNER', 'MANAGER', 'WAITER'].includes(role ?? ''))
     return <Navigate to="/dashboard" replace />;
   return (
     <ProtectedRoute>

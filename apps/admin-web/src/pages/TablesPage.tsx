@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createTable, generateQrPdf, getAreas, getTables, updateTable } from '../tables/tables.api';
 import type { DiningTable, TableInput } from '../tables/tables.api';
+import { useAuthStore } from '../auth/auth.store';
 
 const STATUS: Record<string, { label: string; color: string }> = {
   AVAILABLE: { label: 'Свободен', color: 'FREE' },
@@ -14,6 +15,7 @@ const STATUS: Record<string, { label: string; color: string }> = {
 type FormMode = 'create' | 'edit';
 
 export default function TablesPage() {
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const areasQuery = useQuery({ queryKey: ['dining-areas'], queryFn: getAreas });
   const tablesQuery = useQuery({ queryKey: ['dining-tables'], queryFn: getTables, refetchInterval: 5000 });
@@ -27,7 +29,9 @@ export default function TablesPage() {
   const areas = areasQuery.data ?? [];
   const activeAreaId = areas.some((area) => area.id === areaId) ? areaId : areas[0]?.id ?? '';
   const tables = tablesQuery.data ?? [];
-  const visibleTables = useMemo(() => tables.filter((table) => table.areaId === activeAreaId), [tables, activeAreaId]);
+  const visibleTables = useMemo(() => tables.filter((table) =>
+    table.areaId === activeAreaId && (user?.role !== 'WAITER' || table.assignedWaiterId === user.id),
+  ), [tables, activeAreaId, user?.id, user?.role]);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['dining-tables'] });
   const saveMutation = useMutation({
     mutationFn: ({ mode, id, input }: { mode: FormMode; id?: string; input: TableInput }) =>
