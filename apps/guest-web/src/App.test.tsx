@@ -43,7 +43,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Стол 5 · Main Hall')).toBeInTheDocument()
+    expect(await screen.findByText(/Стол №/)).toHaveTextContent('Стол №5 · Main Hall')
     expect(screen.getByText('Test Restaurant')).toBeInTheDocument()
     expect(await screen.findByText('Капучино')).toBeInTheDocument()
     expect(localStorage.getItem('guest_session_id')).toBe('3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3')
@@ -63,6 +63,27 @@ describe('App', () => {
         signal: expect.any(AbortSignal),
       }),
     )
+  })
+
+  it('renders QR menu category navigation and hit and stop-list dish cards', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Кафе', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 7, areaName: 'Зал' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'drinks', name: 'Напитки', items: [
+        { id: 'coffee', name: 'Капучино', description: 'Кофе с молоком', priceByn: '8.50', imageUrl: '/coffee.jpg', isHit: true, isInStopList: false },
+        { id: 'tea', name: 'Чёрный чай', description: 'Листовой чай', priceByn: '4.00', imageUrl: '/tea.jpg', isHit: false, isInStopList: true },
+      ] }] } as Response)
+    window.history.pushState({}, '', '/?qr_token=table-token')
+
+    render(<App />)
+
+    expect(await screen.findByText(/Стол №/)).toHaveTextContent('Стол №7')
+    expect(screen.getByRole('link', { name: 'Напитки' })).toHaveAttribute('href', '#category-drinks')
+    expect(screen.getByRole('heading', { name: 'Напитки' }).closest('section')).toHaveAttribute('id', 'category-drinks')
+    expect(screen.getByRole('img', { name: 'Капучино' })).toHaveClass('h-24', 'w-24')
+    expect(screen.getByText('🔥')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Чёрный чай' })).toHaveClass('grayscale')
+    expect(screen.getByRole('button', { name: 'Выбрать · Чёрный чай' })).toBeDisabled()
   })
 
   it('renders and enforces required modifier groups in the API response shape', async () => {
@@ -142,7 +163,7 @@ describe('App', () => {
       .mockResolvedValueOnce({ ok: true } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
     render(<App />)
-    await screen.findByText('Стол 5 · Main Hall')
+    await screen.findByText(/Стол №/)
     fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
     fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Официант уже идёт')
@@ -163,7 +184,7 @@ describe('App', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
     render(<App />)
-    await screen.findByText('Стол 5 · Main Hall')
+    await screen.findByText(/Стол №/)
     fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
     fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Не удалось отправить вызов')
