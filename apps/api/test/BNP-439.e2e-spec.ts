@@ -99,10 +99,24 @@ describe('BNP-439: отклонение некорректной гостево�
   });
 
   it('отклоняет блюдо из стоп-листа без создания заказа и события', async () => {
-    menuItemFindFirst.mockResolvedValue(null);
+    menuItemFindFirst.mockResolvedValue({
+      id: 'dish-in-stop-list',
+      name: 'Блюдо в стоп-листе',
+      priceByn: 12,
+      kitchenDepartment: 'HOT',
+      menuItemModifierGroups: [],
+      modifierGroups: [],
+      stopListItem: { isStopped: true },
+    });
 
     await expectRejectedWithoutSideEffects({
       items: [{ menuItemId: 'dish-in-stop-list', quantity: 1, selectedModifiers: [] }],
     }, 'One or more menu items are unavailable');
+    const calls = menuItemFindFirst.mock.calls as unknown as [Record<string, unknown>][];
+    const query = calls[0]?.[0];
+    expect(query).toMatchObject({
+      where: { id: 'dish-in-stop-list', isActive: true },
+      include: { stopListItem: { select: { isStopped: true } } },
+    });
   });
 });
