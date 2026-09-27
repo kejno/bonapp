@@ -2,36 +2,33 @@
 
 ## Issues/Notes
 
-- Подготовленные файлы `ci_failures.md` и `ci_failures_full.log` отсутствуют, поэтому отдельные падения CI не предоставлены. Ветка `pr_discussions_raw.json` содержит три открытых inline-треда; для каждого подготовлен отдельный ответ.
-- В схеме и коде API нет хранилища tenant-level credentials платёжных провайдеров. Согласно решению BNP-267, до появления соответствующих моделей готовность этого пункта возвращается как `false`; решение BNP-270 требует учитывать сохранённые credentials, когда такое хранилище будет доступно. Создание новой модели или endpoint для настройки платежей выходит за согласованный scope. Текущее ограничение подробно пояснено в ответе на тред 1.
-- Предложение вынести расчёт бизнес-дня пропущено: в актуальном `OrdersService` нет копии `businessDayBounds`/`zonedMidnight`; он использует счётчик `Tenant.dailyOrderNumber`, который сбрасывается при открытии и закрытии смены.
-- Описание PR в `pr_info.md` относится к PDF/QR-гонке и не соответствует BNP-139. Внешнее описание PR этим локальным rework не изменялось.
+- В `input/BNP-139` отсутствуют `ci_failures.md` и `ci_failures_full.log`; отдельные ошибки CI не предоставлены.
+- Согласно `pr_discussions_raw.json`, все три inline-треда разрешены. Открытых review-тредов, требующих ответа, нет.
+- В текущей модели нет tenant-level конфигурации credentials платёжных провайдеров. Согласно решению BNP-267, `paymentsReady` остаётся `false` до появления источника конфигурации; BNP-270 требует проверять credentials после его появления. Новая модель или endpoint настройки платежей выходят за scope этой задачи.
+- Предложение вынести расчёт бизнес-дня не применяется: `OrdersService` не содержит копии `businessDayBounds`/`zonedMidnight`; обычная нумерация использует `Tenant.dailyOrderNumber`, сбрасываемый при открытии и закрытии смены.
+- Описание PR из `pr_info.md` относится к PDF/QR-гонке и не соответствует BNP-139; внешнее описание не изменялось.
 
 ## Approach
 
-- Разрешил все семь конфликтов из `merge_conflicts.md`, сохранив Welcome-изменения и совместив их с маршрутами, KDS, модулями и схемой `main`.
-- Согласовал Welcome-сервис с моделью `Shift` из актуальной схемы: активная смена имеет статус `OPEN`, при открытии указывается `cashierId`.
-- Изменил выбор стола для тестового заказа: сначала минимальный `tableNumber`, затем дата создания. Добавил регрессионную проверку выбора порядка.
-- Перенёс миграцию Welcome на `20260927000000`, после всех миграций `main` (максимальный timestamp — `20260926220000`), и оставил в ней только добавление `orders.is_test`; таблица `shifts` уже создаётся миграцией `main`.
+- Разрешены четыре конфликта в выходных файлах; содержимое оставлено относящимся к BNP-139.
+- Исправлен выбор стола для тестового заказа: сначала минимальный `tableNumber`, затем `createdAt`. Добавлена регрессионная проверка.
+- Сохранена интеграция с актуальной моделью смен из базовой ветки. Welcome-миграция переименована в `20260927010000_welcome_dashboard`: timestamp уникален и следует за последней миграцией базовой ветки (`20260927000000_add_payment_credentials`).
+- Так как открытых inline-тредов нет, список ответов на review-треды пуст.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — объединил маршруты Welcome и актуальные маршруты приложения.
-- `apps/api/prisma/schema.prisma` — объединил изменения схемы и добавил `Order.isTest`.
-- `apps/api/src/app.module.ts` — зарегистрировал WelcomeModule совместно с модулями `main`.
-- `apps/api/src/orders/orders.controller.ts`, `orders.controller.spec.ts`, `orders.module.ts` — объединил симуляцию тестового заказа с KDS и административными контроллерами.
-- `apps/api/src/prisma/prisma.service.ts` — сохранил tenant-scoping актуальных моделей `main`.
-- `apps/api/src/welcome/welcome.service.ts`, `welcome.service.spec.ts`, `apps/api/test/BNP-139.e2e-spec.ts` — исправил выбор стола и интеграцию со схемой смен; добавил e2e-регрессию через публичный HTTP API.
-- `apps/api/prisma/migrations/20260927000000_welcome_dashboard/migration.sql` — добавил поле тестового заказа миграцией с новым timestamp.
-- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/*.md` — итог и ответы на открытые ревью-треды.
+- `outputs/response.md` — итог повторной доработки.
+- `outputs/review_replies.json` — отмечено отсутствие открытых тредов.
+- `outputs/review_replies/thread_1.md`, `thread_2.md`, `thread_3.md` — устаревшие ответы на уже разрешённые треды удалены.
+- `apps/api/prisma/migrations/20260927010000_welcome_dashboard/migration.sql` — уникальный timestamp новой миграции после миграций базовой ветки.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка списка файлов PR.
-- `git status --short` — выполнена; все семь конфликтных файлов разрешены и добавлены в индекс.
-- `npx eslint` для файлов исходников, изменённых при разрешении конфликтов и исправлении — успешно, ошибок нет. Prisma schema проигнорирована конфигурацией ESLint.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено.
+- `git status --short` — выполнено; конфликтные файлы разрешены и добавлены в индекс.
+- `npx eslint` для изменённых TypeScript-файлов — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 62 suite / 543 теста, admin-web 31 файл / 82 теста, guest-web 6 файлов / 14 тестов; сборка и проверка design tokens завершились успешно.
-- `npx jest --config test/jest-e2e.json BNP-139.e2e-spec.ts --runInBand --forceExit` — успешно: 1 e2e-тест на реальных PostgreSQL и Redis через Docker.
+- `npm test` — успешно: API 63 набора / 547 тестов, admin-web 32 файла / 83 теста, guest-web 6 файлов / 14 тестов; сборка и проверка design tokens также прошли.
+- `npx jest --config test/jest-e2e.json BNP-139.e2e-spec.ts --runInBand --forceExit` — успешно: 1 e2e-тест.
 - `git diff --check` — успешно.
-- Миграционная проверка: timestamp новой миграции позже максимального timestamp на `main`; существующие миграции не изменялись.
+- Проверка миграций: timestamp Welcome следует за максимальным timestamp базовой ветки; существующие миграции не изменялись.
