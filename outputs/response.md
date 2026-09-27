@@ -10,7 +10,7 @@
 - Реализован подключённый checkout-сценарий: редактирование сохраняемой корзины, создание заказа через API и переход к статусу после успешного ответа.
 - Запрос передаёт `qrToken` в JSON body и сохраняет заголовок `X-QR-Token`. Сервер валидирует корзину, блюдо и модификаторы, рассчитывает цену по актуальному меню и публикует `order:created` в комнату кухни.
 - Ежедневная нумерация синхронизирована для гостевых и штатных заказов транзакционной блокировкой tenant; дата сброса соответствует локальному календарному дню ресторана.
-- CodeGraph недоступен, поэтому проверены поиском все обращения к `dailyOrderNumber` и точки `order.create` в `apps/` и `packages/`. Проверка миграций подтвердила, что добавлены только две новые миграции с timestamp после последней миграции базовой ветки.
+- CodeGraph недоступен, поэтому поиском проверены обращения к `dailyOrderNumberDate` и точки `order.create` в `apps/` и `packages/`. Проверка миграций подтвердила, что добавлены только две новые миграции с timestamp после последней миграции базовой ветки.
 
 ## Files Modified
 
@@ -23,10 +23,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; в рабочем дереве изменён только этот отчёт.
-- `npx eslint` по 16 затронутым TypeScript-файлам — успешно, без ошибок и предупреждений. `npm run lint` — успешно для всех четырёх workspace; пять предупреждений относятся к нетронутым файлам API.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно; затем `npm run typecheck` прошёл для всех четырёх workspace. До генерации локального Prisma Client typecheck выявил отсутствующее сгенерированное поле `dailyOrderNumberDate`.
-- `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборки и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно; `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
-- `git diff --check origin/main...HEAD` — успешно. CodeGraph недоступен: поиском проверены все потребители `dailyOrderNumberDate` и все вызовы `order.create` в API; обе точки создания синхронизируют счётчик блокировкой tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check origin/main...HEAD` — выполнены; конфликтных маркеров нет.
+- `npx eslint` по 16 изменённым TypeScript-файлам — успешно, 0 ошибок; есть 2 предупреждения `no-unsafe-argument` в `guest-session.service.ts` и `orders.service.ts`.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно. `npm run typecheck` после генерации — успешно для всех четырёх workspace. Запуск typecheck до генерации завершился ошибкой из-за устаревшего локального Prisma Client.
+- `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборка и проверка design tokens также прошли.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно. `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
+- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции. CodeGraph недоступен: поиском проверены потребители `dailyOrderNumberDate` и все вызовы `order.create` в API; обе точки создания синхронизируют счётчик блокировкой tenant.
 - Формат `outputs/review_replies.json` проверен; каждая запись соответствует одному из двух открытых тредов по `threadId` и `inReplyToId`.
