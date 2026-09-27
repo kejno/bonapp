@@ -2,31 +2,30 @@
 
 ## Issues/Notes
 
-- Исправлена обработка dual-stack DNS-ответа: публичные IPv6-записи не блокируют POS-хост, если DNS возвращает безопасный публичный IPv4.
-- Если среди IPv4-адресов есть частный или иной запрещённый адрес, хост отклоняется. Хост без публичного IPv4 также отклоняется.
-- Разрешён конфликт схемы `Tenant`: сохранены поля POS и оплаты, а также поля ежедневной нумерации заказов из актуальной базовой ветки.
-- В `input/BNP-136` нет файлов CI-отчётов и отдельного `ticket.md`; требования сверены с `request.md`. Все inline review-треды в исходном JSON закрыты, поэтому список ответов пуст.
+- Исправлена обработка dual-stack DNS: IPv6-записи пропускаются, а для POS-запроса выбирается публичный IPv4. Если DNS возвращает запрещённый IPv4 или не возвращает IPv4, соединение отклоняется.
+- Конфликт схемы `Tenant` разрешён с сохранением полей интеграции POS, платёжных реквизитов и ежедневной нумерации заказов.
+- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и отдельный `ticket.md`. Требования проверены по `request.md`.
+- Все inline-треды в `pr_discussions_raw.json` помечены как разрешённые; `outputs/review_replies.json` содержит пустой список.
 
 ## Approach
 
-- Добавлены регрессионные тесты смешанных IPv4/IPv6 DNS-ответов и отказа при наличии запрещённого IPv4.
-- DNS-валидация пропускает IPv6, проверяет каждый IPv4 и закрепляет соединение за первым безопасным адресом. Существующая allowlist и защита от перенаправлений сохранены.
+- Регрессионные тесты покрывают смешанный ответ с публичными IPv4 и IPv6, а также запрещённый IPv4 в том же DNS-ответе.
+- Проверена интеграция адресной валидации с allowlist POS-хостов и закреплением HTTP-соединения за проверенным IPv4; перенаправления отклоняются.
+- Поиск потребителей `dailyOrderNumberDate` в `apps/*` и `packages/*` подтвердил использование поля ежедневной нумерацией заказов. Миграция POS добавлена новой append-only миграцией; существующие миграции не изменялись.
 
 ## Files Modified
 
-- `apps/api/src/onboarding/pos-network.ts` — выбор безопасного IPv4 из DNS-ответов.
-- `apps/api/src/onboarding/pos-network.spec.ts` — проверки смешанных DNS-ответов и запрещённых IPv4.
-- `apps/api/prisma/schema.prisma` — разрешён конфликт полей `Tenant` с сохранением полей POS, оплаты и ежедневной нумерации.
-- `outputs/response.md` — результаты доработки и проверок.
+- `apps/api/src/onboarding/pos-network.ts` — выбор безопасного IPv4 из dual-stack DNS-ответа.
+- `apps/api/src/onboarding/pos-network.spec.ts` — регрессионные проверки DNS-ответов.
+- `apps/api/prisma/schema.prisma` — согласованная модель `Tenant`.
+- `outputs/response.md` — результаты повторной проверки.
 - `outputs/review_replies.json` — пустой список, так как открытых inline-тредов нет.
-- `outputs/review_replies/thread_1.md` — удалён устаревший ответ на закрытый тред.
 
 ## Test Coverage
 
-- RED/GREEN: `npm test --workspace @bonapp/api -- --runInBand src/onboarding/pos-network.spec.ts` — регрессионный тест воспроизводил отказ для dual-stack до исправления; после исправления прошли 9 тестов.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
 - `npx eslint apps/api/src/onboarding/pos-network.ts apps/api/src/onboarding/pos-network.spec.ts` — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 65 наборов / 560 тестов, admin-web 33 файла / 86 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также завершились с кодом 0.
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- Blast-radius для объединённой схемы проверен поиском потребителей `dailyOrderNumberDate` по `apps/*` и `packages/*`; Prisma generate и API typecheck/test подтвердили согласованность схемы. Существующие миграции не редактировались.
-- `git diff --check` и `git diff --cached --check` — успешно; конфликтных маркеров не осталось.
+- `npm run typecheck` — успешно во всех четырёх workspace; генерация Prisma Client прошла.
+- `npm test` — успешно: API 65 наборов / 560 тестов, admin-web 33 файла / 86 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также прошли.
+- `git diff --check` — успешно; маркеров конфликта в `apps/admin-web/src/App.tsx` и `apps/api/prisma/schema.prisma` нет.
+- Проверка blast radius схемы: `rg` по `dailyOrderNumberDate` в `apps` и `packages`; typecheck и полный набор тестов прошли. Проверка миграций показала только добавление `20260927000001_add_pos_onboarding/migration.sql`, существующие миграции не менялись.
