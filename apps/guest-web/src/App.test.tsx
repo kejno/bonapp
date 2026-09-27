@@ -37,41 +37,16 @@ describe('App', () => {
     expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('1')
   })
 
-  it('sends a waiter call with the QR session and shows a success state', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
-      .mockResolvedValueOnce({ ok: true } as Response)
-    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
-
-    render(<App />)
-    await screen.findByText('Стол №5')
-    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent('Запрос на счёт отправлен')
-    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/call-waiter$/), expect.objectContaining({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-QR-Token': 'stable-qr-token' },
-      body: JSON.stringify({ reason: 'NEED_BILL' }),
-    }))
-  })
-
-  it('shows an error when the waiter call fails', async () => {
+  it('does not show waiter calling before that flow is in scope', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
-      .mockResolvedValueOnce({ ok: false } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
     render(<App />)
     await screen.findByText('Стол №5')
-    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Позвать официанта' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent('Не удалось отправить вызов')
-    expect(screen.getByRole('dialog', { name: 'Вызвать официанта' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Вызвать официанта' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Вызвать официанта' })).not.toBeInTheDocument()
   })
 })

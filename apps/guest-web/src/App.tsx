@@ -30,8 +30,6 @@ export default function App() {
   const [menuLoaded, setMenuLoaded] = useState(false)
   const [error, setError] = useState(false)
   const [menuError, setMenuError] = useState(false)
-  const [callModalOpen, setCallModalOpen] = useState(false)
-  const [callStatus, setCallStatus] = useState('')
   const [tenantConfig, setTenantConfig] = useState<TenantConfig | null>(null)
   const [orderItemMessage, setOrderItemMessage] = useState('')
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
@@ -68,16 +66,6 @@ export default function App() {
       if (!response.ok) throw new Error('Unable to add item')
       setOrderItemMessage('Позиция добавлена в заказ')
     } catch { setOrderItemMessage('Не удалось добавить позицию в заказ') }
-  }
-
-  async function callWaiter(reason: 'NEED_BILL' | 'CALL_STAFF') {
-    if (!qrToken) return
-    try {
-      const response = await fetch(`${API_BASE}/guest/call-waiter`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken }, body: JSON.stringify({ reason }) })
-      if (!response.ok) throw new Error('Unable to call waiter')
-      setCallModalOpen(false)
-      setCallStatus(reason === 'NEED_BILL' ? 'Запрос на счёт отправлен' : 'Официант вызван')
-    } catch { setCallStatus('Не удалось отправить вызов') }
   }
 
   useEffect(() => {
@@ -121,9 +109,7 @@ export default function App() {
   return <main className="min-h-svh bg-background pb-24 text-on-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as CSSProperties}>
     {!session && <section className="flex min-h-svh items-center justify-center text-center"><div><h1 className="text-2xl font-semibold text-primary">Bonapp</h1>{qrToken && !error && <p className="mt-3">Открываем стол…</p>}{error && <p role="alert" className="mt-3">Не удалось открыть стол по QR-коду. Отсканируйте актуальный код.</p>}</div></section>}
     {session && <>
-      <header className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-4"><div className="flex min-w-0 items-center gap-3">{(tenantConfig?.logoUrl || session.tenant.logoUrl) && <img src={tenantConfig?.logoUrl || session.tenant.logoUrl || ''} alt="" className="h-10 w-10 rounded-xl object-cover" />}<div className="min-w-0"><h1 className="truncate text-lg font-semibold">{session.tenant.name}</h1><p className="text-sm text-on-background/65">Стол №{session.table.tableNumber}</p></div></div><button type="button" onClick={() => { setCallStatus(''); setCallModalOpen(true) }} className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm text-white">Вызвать официанта</button></header>
-      {callStatus && <p role="status" className="mx-auto max-w-3xl px-4">{callStatus}</p>}
-      {callModalOpen && <section role="dialog" aria-modal="true" aria-label="Вызвать официанта" className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-2xl bg-background p-5"><h2 className="text-lg font-semibold">Вызвать официанта</h2><div className="mt-4 flex flex-col gap-2"><button onClick={() => void callWaiter('NEED_BILL')} className="rounded-xl bg-primary px-4 py-3 text-white">Попросить счёт</button><button onClick={() => void callWaiter('CALL_STAFF')} className="rounded-xl border px-4 py-3">Позвать официанта</button><button onClick={() => setCallModalOpen(false)} className="px-4 py-2">Закрыть</button></div></div></section>}
+      <header className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-4"><div className="flex min-w-0 items-center gap-3">{(tenantConfig?.logoUrl || session.tenant.logoUrl) && <img src={tenantConfig?.logoUrl || session.tenant.logoUrl || ''} alt="" className="h-10 w-10 rounded-xl object-cover" />}<div className="min-w-0"><h1 className="truncate text-lg font-semibold">{session.tenant.name}</h1><p className="text-sm text-on-background/65">Стол №{session.table.tableNumber}</p></div></div></header>
       <div className="sticky top-0 z-10 border-y border-on-background/10 bg-background/95 backdrop-blur"><nav aria-label="Категории меню" className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-4 py-3">{menu.map((category) => <a key={category.id} href={`#category-${category.id}`} className="shrink-0 rounded-full bg-surface-card px-4 py-2 text-sm">{category.name}</a>)}</nav></div>
       <section aria-label="Меню" className="mx-auto max-w-3xl px-4"><label className="my-5 block"><span className="sr-only">Поиск по меню</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти блюдо" className="w-full rounded-xl border border-on-background/15 bg-surface-card px-4 py-3 outline-primary" /></label>
         {menuError && <p role="alert">Не удалось загрузить меню</p>}{!menuError && !menuLoaded && <p>Загружаем меню…</p>}{!menuError && menuLoaded && filteredMenu.length === 0 && <p className="py-8 text-center text-on-background/60">Ничего не найдено</p>}
