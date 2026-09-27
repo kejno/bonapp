@@ -131,6 +131,34 @@ describe('App', () => {
     )
   })
 
+  it('filters the loaded menu by item name and description without another API request', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat-1', name: 'Основное', items: [
+        { id: 'borscht', name: 'Борщ', description: 'Свёкла и говядина', priceByn: 12 },
+        { id: 'draniki', name: 'Драники', description: 'Картофель и сметана', priceByn: 10 },
+      ] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+
+    render(<App />)
+
+    const search = await screen.findByRole('searchbox', { name: 'Поиск блюд' })
+    expect(screen.getByText('Драники')).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'борщ' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.queryByText('Драники')).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: 'говядина' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.queryByText('Драники')).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.getByText('Драники')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+  })
+
   it('sends a waiter call using the QR session and selected reason', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => ({
