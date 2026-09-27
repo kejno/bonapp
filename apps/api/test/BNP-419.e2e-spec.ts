@@ -1,5 +1,10 @@
 import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
+
+jest.mock('../src/guest-session/guest-session.module', () => ({
+  GuestSessionModule: class GuestSessionModule {},
+}));
+
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
@@ -7,15 +12,12 @@ describe('BNP-419: guest order room status event', () => {
   const fixture = new MenuCacheTestFixture();
   let socket: Socket | undefined;
 
-  beforeAll(async () => fixture.start(), 120_000);
-  afterEach(() => { socket?.disconnect(); socket = undefined; });
+  beforeAll(async () => fixture.start({ redisAdapter: false }), 120_000);
+  afterEach(async () => { await disconnectSocket(socket); socket = undefined; });
   afterAll(async () => fixture.stop());
 
   it('joins the authorized order room and receives its status after PATCH', async () => {
-    const area = await fixture.prisma.diningArea.create({ data: { tenantId: fixture.tenantId, name: 'Main' } });
-    const table = await fixture.prisma.table.create({
-      data: { tenantId: fixture.tenantId, areaId: area.id, tableNumber: 1, qrToken: fixture.qrToken },
-    });
+    const table = await fixture.prisma.table.findFirstOrThrow({ where: { qrToken: fixture.qrToken } });
     await fixture.app.listen(0, '127.0.0.1');
     const address = (fixture.app.getHttpServer() as HttpServer).address();
     if (!address || typeof address === 'string') throw new Error('HTTP server did not start');
@@ -54,4 +56,19 @@ function joinOrderRoom(socket: Socket, orderId: string): Promise<void> {
 
 function waitForStatus(socket: Socket): Promise<{ orderId: string; status: string }> {
   return new Promise((resolve) => socket.once('order:status_changed', resolve));
+}
+
+async function disconnectSocket(socket: Socket | undefined): Promise<void> {
+  if (!socket || !socket.connected) {
+    socket?.disconnect();
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => resolve(), 1_000);
+    socket.once('disconnect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.disconnect();
+  });
 }

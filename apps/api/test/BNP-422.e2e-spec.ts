@@ -2,27 +2,48 @@ import { createHmac } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Server as HttpServer } from 'node:http';
+import type { Socket as NetSocket } from 'node:net';
 import { io, Socket } from 'socket.io-client';
+
+jest.mock('../src/guest-session/guest-session.module', () => ({
+  GuestSessionModule: class GuestSessionModule {},
+}));
+
 import { AppModule } from '../src/app.module';
 import { MenuGateway } from '../src/menu/menu.gateway';
-import { MenuCacheTestFixture } from './menu-cache-test.fixture';
+import { MenuCacheTestFixture, prepareGatewayShutdown } from './menu-cache-test.fixture';
+import { ShiftService } from '../src/staff/shift.service';
 
 describe('BNP-422: Redis adapter cross-instance delivery', () => {
   const fixture = new MenuCacheTestFixture();
   let secondApp: INestApplication | undefined;
   let socket: Socket | undefined;
+  const serverConnections = new Set<NetSocket>();
 
-  beforeAll(async () => fixture.start(), 120_000);
-  afterEach(() => { socket?.disconnect(); socket = undefined; });
-  afterAll(async () => { await secondApp?.close(); await fixture.stop(); });
+  beforeAll(async () => fixture.start({ redisAdapter: true }), 120_000);
+  afterEach(async () => { await disconnectSocket(socket); socket = undefined; });
+  afterAll(async () => {
+    if (secondApp) await prepareGatewayShutdown(secondApp.get(MenuGateway));
+    await secondApp?.close();
+    for (const connection of serverConnections) connection.destroy();
+    await fixture.stop();
+  });
 
   it('delivers a tenant event from one Gateway instance to a subscriber on another', async () => {
     const user = await fixture.prisma.user.create({
       data: { tenantId: fixture.tenantId, email: `${fixture.tenantId}@redis-test.local`, passwordHash: 'unused', fullName: 'Redis staff', role: 'OWNER', mustChangePassword: false },
     });
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(ShiftService)
+      .useValue({})
+      .compile();
     secondApp = module.createNestApplication();
     secondApp.setGlobalPrefix('api/v1');
+    const httpServer = secondApp.getHttpServer() as HttpServer;
+    httpServer.on('connection', (connection: NetSocket) => {
+      serverConnections.add(connection);
+      connection.once('close', () => serverConnections.delete(connection));
+    });
     await secondApp.init();
     await secondApp.listen(0, '127.0.0.1');
     const address = (secondApp.getHttpServer() as HttpServer).address();
@@ -58,4 +79,19 @@ function staffToken(tenantId: string, userId: string): string {
 
 function waitForStopListEvent(socket: Socket): Promise<unknown> {
   return new Promise((resolve) => socket.once('menu:stop_list_changed', resolve));
+}
+
+async function disconnectSocket(socket: Socket | undefined): Promise<void> {
+  if (!socket || !socket.connected) {
+    socket?.disconnect();
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => resolve(), 1_000);
+    socket.once('disconnect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.disconnect();
+  });
 }

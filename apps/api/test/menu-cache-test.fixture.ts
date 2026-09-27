@@ -6,10 +6,12 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
+import type { Server } from 'socket.io';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
 import { ShiftService } from '../src/staff/shift.service';
+import { MenuGateway } from '../src/menu/menu.gateway';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 
@@ -30,7 +32,8 @@ export class MenuCacheTestFixture {
   private databaseUrl = '';
   private previousEnvironment: Record<string, string | undefined> = {};
 
-  async start(): Promise<void> {
+  async start(options: { redisAdapter?: boolean } = {}): Promise<void> {
+    const redisAdapter = options.redisAdapter ?? true;
     this.postgresContainer = this.docker(
       'run',
       '--detach',
@@ -80,7 +83,7 @@ export class MenuCacheTestFixture {
       DATABASE_URL: this.databaseUrl,
       REDIS_HOST: '127.0.0.1',
       REDIS_PORT: redisPort,
-      REDIS_URL: `redis://127.0.0.1:${redisPort}`,
+      REDIS_URL: redisAdapter ? `redis://127.0.0.1:${redisPort}` : '',
       JWT_SECRET: 'menu-cache-e2e-secret',
       S3_ENDPOINT: 'http://localhost:9000',
       S3_BUCKET: 'bonapp',
@@ -155,7 +158,9 @@ export class MenuCacheTestFixture {
   }
 
   async stop(): Promise<void> {
+    if (this.app) await prepareGatewayShutdown(this.app.get(MenuGateway));
     await this.app?.close();
+    this.redis?.disconnect();
     await this.prisma?.$disconnect();
     this.restoreEnvironment();
     this.stopContainer(this.redisContainer);
@@ -250,4 +255,22 @@ export class MenuCacheTestFixture {
       /* Cleanup must not hide an assertion failure. */
     }
   }
+}
+
+export async function prepareGatewayShutdown(gateway: MenuGateway): Promise<void> {
+  const internals = gateway as unknown as {
+    io?: Server;
+    pubClient?: Redis;
+    subClient?: Redis;
+  };
+  if (internals.io) {
+    internals.io.disconnectSockets(true);
+    await new Promise<void>((resolve) => {
+      const onClose = () => { resolve(); };
+      void internals.io!.close(onClose);
+    });
+  }
+  internals.pubClient?.disconnect();
+  internals.subClient?.disconnect();
+  gateway.onModuleDestroy = async () => {};
 }

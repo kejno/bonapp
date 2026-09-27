@@ -1,6 +1,11 @@
 import { createHmac } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
+
+jest.mock('../src/guest-session/guest-session.module', () => ({
+  GuestSessionModule: class GuestSessionModule {},
+}));
+
 import { MenuGateway } from '../src/menu/menu.gateway';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
@@ -9,9 +14,9 @@ describe('BNP-420: tenant staff room authorization and isolation', () => {
   let ownSocket: Socket | undefined;
   let otherSocket: Socket | undefined;
 
-  beforeAll(async () => fixture.start(), 120_000);
-  afterEach(() => {
-    ownSocket?.disconnect(); otherSocket?.disconnect();
+  beforeAll(async () => fixture.start({ redisAdapter: false }), 120_000);
+  afterEach(async () => {
+    await Promise.all([disconnectSocket(ownSocket), disconnectSocket(otherSocket)]);
     ownSocket = undefined; otherSocket = undefined;
   });
   afterAll(async () => fixture.stop());
@@ -70,5 +75,20 @@ function waitForNoEvent(socket: Socket): Promise<void> {
     const handler = () => { clearTimeout(timer); reject(new Error('Received another tenant event')); };
     const timer = setTimeout(() => { socket.off('menu:stop_list_changed', handler); resolve(); }, 500);
     socket.once('menu:stop_list_changed', handler);
+  });
+}
+
+async function disconnectSocket(socket: Socket | undefined): Promise<void> {
+  if (!socket || !socket.connected) {
+    socket?.disconnect();
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => resolve(), 1_000);
+    socket.once('disconnect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.disconnect();
   });
 }
