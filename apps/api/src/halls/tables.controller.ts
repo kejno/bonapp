@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import QRCode from 'qrcode';
 import { TableStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
@@ -177,6 +178,12 @@ export class TablesController {
       count: body.count,
       seatsCount: body.seatsCount,
     });
+  }
+
+  @Get(':id/qr-preview')
+  async qrPreview(@Req() req: TenantRequest, @Param('id') id: string) {
+    const table = await this.hallsService.getTableQrPreview(req.user!.tenantId!, id);
+    return { ...table, qrDataUrl: await QRCode.toDataURL(table.url, { width: 240, margin: 1 }) };
   }
 
   @Put(':id')

@@ -25,10 +25,18 @@ export default function OnboardingStep1Page() {
   const [logoError, setLogoError] = useState('');
   const [slugError, setSlugError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState('');
   const [error, setError] = useState('');
   const headers = useMemo(() => ({ Authorization: `Bearer ${token ?? ''}`, 'Content-Type': 'application/json' }), [token]);
 
   useEffect(() => { if (!slugEdited) setSlug(makeSlug(name)); }, [name, slugEdited]);
+
+  useEffect(() => {
+    if (!logoFile) { setLogoPreviewUrl(''); return; }
+    const previewUrl = URL.createObjectURL(logoFile);
+    setLogoPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [logoFile]);
 
   const chooseLogo = (file?: File) => {
     setLogoError(''); setLogoFile(null); setLogoUrl('');
@@ -94,7 +102,7 @@ export default function OnboardingStep1Page() {
           {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end border-t border-stone-100 pt-4"><button type="submit" disabled={!canContinue} className="rounded-xl bg-orange-700 px-6 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Сохраняем…' : 'Далее'}</button></div>
         </section>
-        <aside className="h-fit rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-sm font-semibold">Предпросмотр меню</h2><div className="mt-4 overflow-hidden rounded-xl border border-stone-200"><div className="flex items-center gap-3 p-4" style={{ borderBottom: `3px solid ${brandColor}` }}>{logoFile ? <img src={URL.createObjectURL(logoFile)} alt="Логотип" className="h-12 w-12 rounded-lg object-cover"/> : logoUrl ? <img src={logoUrl} alt="Логотип" className="h-12 w-12 rounded-lg object-cover"/> : <div className="grid h-12 w-12 place-items-center rounded-lg text-white" style={{ backgroundColor: brandColor }}>Б</div>}<div><p className="font-semibold">{name || 'Название заведения'}</p><p className="text-xs text-stone-500">Меню заведения</p></div></div><div className="space-y-3 p-4"><div className="h-24 rounded-lg bg-stone-100"/><p className="text-sm font-semibold">Популярное</p><div className="flex justify-between rounded-lg bg-stone-50 p-3 text-sm"><span>Блюдо дня</span><span style={{ color: brandColor }}>18,00 BYN</span></div></div></div></aside>
+        <aside className="h-fit rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-sm font-semibold">Предпросмотр меню</h2><div className="mt-4 overflow-hidden rounded-xl border border-stone-200"><div className="flex items-center gap-3 p-4" style={{ borderBottom: `3px solid ${brandColor}` }}>{logoFile ? <img src={logoPreviewUrl} alt="Логотип" className="h-12 w-12 rounded-lg object-cover"/> : logoUrl ? <img src={logoUrl} alt="Логотип" className="h-12 w-12 rounded-lg object-cover"/> : <div className="grid h-12 w-12 place-items-center rounded-lg text-white" style={{ backgroundColor: brandColor }}>Б</div>}<div><p className="font-semibold">{name || 'Название заведения'}</p><p className="text-xs text-stone-500">Меню заведения</p></div></div><div className="space-y-3 p-4"><div className="h-24 rounded-lg bg-stone-100"/><p className="text-sm font-semibold">Популярное</p><div className="flex justify-between rounded-lg bg-stone-50 p-3 text-sm"><span>Блюдо дня</span><span style={{ color: brandColor }}>18,00 BYN</span></div></div></div></aside>
       </form>
     </div>
   </main>;

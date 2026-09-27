@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  BrowserRouter as Router,
+  Routes,
+} from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
@@ -9,13 +14,33 @@ import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import OnboardingStep1Page from './pages/OnboardingStep1Page';
+import OnboardingStep3Page from './pages/OnboardingStep3Page';
+import OnboardingStep4Page from './pages/OnboardingStep4Page';
+import WaiterCallNotifications from './components/WaiterCallNotifications';
+import KdsPage from './kds/KdsPage';
+import { useAuthStore } from './auth/auth.store';
+import StaffPage from './pages/StaffPage';
+import SettingsPage from './settings/SettingsPage';
+import WelcomePage from './pages/WelcomePage';
 
 const queryClient = new QueryClient();
+
+function KdsRoute() {
+  const role = useAuthStore((state) => state.user?.role);
+  if (!['CHEF', 'OWNER', 'MANAGER'].includes(role ?? ''))
+    return <Navigate to="/dashboard" replace />;
+  return (
+    <ProtectedRoute>
+      <KdsPage />
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <WaiterCallNotifications />
         <Routes>
           <Route path="/onboarding/step-1" element={<ProtectedRoute><OnboardingStep1Page /></ProtectedRoute>} />
           <Route path="/onboarding/step-2" element={<ProtectedRoute><main className="min-h-screen bg-stone-50 p-10"><div className="mx-auto max-w-2xl rounded-2xl bg-white p-8"><p className="text-sm font-semibold text-orange-700">Настройка заведения · Шаг 2 из 4</p><h1 className="mt-4 text-2xl font-bold">Профиль сохранён</h1><p className="mt-2 text-stone-600">Основные данные заведения сохранены. Продолжите настройку на следующем шаге.</p></div></main></ProtectedRoute>} />
@@ -27,6 +52,15 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/welcome" element={<ProtectedRoute><WelcomePage /></ProtectedRoute>} />
+          <Route
+            path="/onboarding/step-4"
+            element={
+              <ProtectedRoute>
+                <OnboardingStep4Page />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={
@@ -35,8 +69,47 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
-          <Route path="/menu/editor" element={<ProtectedRoute><MenuEditorPage /></ProtectedRoute>} />
+          <Route
+            path="/onboarding/step-3"
+            element={
+              <ProtectedRoute>
+                <OnboardingStep3Page />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/menu"
+            element={
+              <ProtectedRoute>
+                <MenuPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/menu/editor"
+            element={
+              <ProtectedRoute>
+                <MenuEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/kds" element={<KdsRoute />} />
+          <Route
+            path="/staff"
+            element={
+              <ProtectedRoute>
+                <StaffPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/tables"
             element={
