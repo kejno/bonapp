@@ -2,27 +2,27 @@
 
 ## Issues/Notes
 
-- Актуальное ревью в локальной истории не содержит новых замечаний по коду. Все четыре адресуемых inline-треда в `pr_discussions_raw.json` закрыты; общие комментарии ревью не являются открытыми inline-тредами.
-- В `input/BNP-136` нет `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и отдельного `ticket.md`. Требования сверены с `request.md`.
-- Код PR в этом раунде не менялся; checkout уже содержит проверенный head `c9a1d36d`.
+- В актуальном результате ревью после `e4269ea` новых замечаний по коду нет. Четыре inline-треда в `input/BNP-136/pr_discussions_raw.json` закрыты; открытых inline-тредов, требующих ответа, нет.
+- В подготовленных данных отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `pr_files.txt` и отдельный `ticket.md`. Требования сверены с `request.md`.
+- ESLint завершился без ошибок и вывел два предупреждения `no-unsafe-argument` в `apps/api/src/onboarding/onboarding.service.ts:151`.
 
 ## Approach
 
-- Сверил список изменений PR относительно `origin/main`, состояние рабочей копии и последние обсуждения.
-- Проверил изменения POS-онбординга и тесты; повторный запуск импорта использует условный переход состояния, POS-запросы ограничены allowlist и проверенным публичным IPv4 без перенаправлений.
-- Проверил потребителей `dailyOrderNumberDate` и POS-полей поиском `rg` в `apps/` и `packages/` (CodeGraph недоступен).
-- Проверил миграции относительно `origin/main`: POS-миграция добавлена новой; существующие миграции не изменены.
+- Сверил список файлов PR относительно `origin/main`, рабочее дерево и последние обсуждения. Код PR в этом раунде не менялся.
+- Проверил реализации исправлений предыдущих замечаний: POS-запросы ограничены allowlist и проверенным публичным IPv4 без перенаправлений; повторный запуск импорта защищён условным атомарным переходом состояния; mixed IPv4/IPv6 DNS-ответ обрабатывается с выбором безопасного IPv4.
+- CodeGraph недоступен, поэтому проверил потребителей полей POS, `posItemId` и `dailyOrderNumberDate` поиском `rg` в `apps/` и `packages/`.
+- Сверил миграции с `origin/main`: добавлена только новая append-only миграция `20260927000001_add_pos_onboarding`; существующие миграции не изменены.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты повторной проверки.
-- `outputs/review_replies.json` — пустой список, поскольку открытых inline-тредов нет.
+- `outputs/response.md` — результаты повторной проверки и обязательных проверок.
+- `outputs/review_replies.json` — проверен, содержит обязательный пустой список, поскольку открытых inline-тредов нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; до обновления отчёта рабочая копия была чистой.
-- `npx eslint` для изменённых TypeScript/TSX файлов PR — успешно, 0 ошибок и 2 предупреждения в `apps/api/src/onboarding/onboarding.service.ts`.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; исходное рабочее дерево было чистым.
+- `npx eslint` для изменённых PR TypeScript/TSX-файлов — успешно, 0 ошибок и 2 предупреждения в `onboarding.service.ts`.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 67 наборов / 576 тестов, admin-web 35 файлов / 89 тестов, guest-web 8 файлов / 26 тестов; production-сборки и проверка design tokens также прошли.
+- `npm test` — успешно (код возврата 0); прошли тесты всех workspace, production-сборки и проверка design tokens.
 - `git diff --check origin/main...HEAD` — успешно.
-- Blast radius: поиском `rg` проверены потребители полей POS и `dailyOrderNumberDate`; единственное изменение миграций — новая `20260927000001_add_pos_onboarding/migration.sql`.
+- Blast radius схемы и публичных полей проверен поиском `rg` по `apps/` и `packages/`; все найденные использования учтены. Проверка миграций подтвердила добавление новой POS-миграции без изменения существующих.
