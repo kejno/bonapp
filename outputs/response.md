@@ -1,31 +1,28 @@
-# Повторная доработка PR #160
+# Повторная проверка PR #160 — BNP-136
 
 ## Issues/Notes
 
-- Исправлена обработка dual-stack DNS: IPv6-записи пропускаются, а для POS-запроса выбирается публичный IPv4. Если DNS возвращает запрещённый IPv4 или не возвращает IPv4, соединение отклоняется.
-- Конфликт схемы `Tenant` разрешён с сохранением полей интеграции POS, платёжных реквизитов и ежедневной нумерации заказов.
-- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и отдельный `ticket.md`. Требования проверены по `request.md`.
-- Все inline-треды в `pr_discussions_raw.json` помечены как разрешённые; `outputs/review_replies.json` содержит пустой список.
+- В последней проверке нет новых замечаний по коду; в локальном checkout отсутствуют `ci_failures.md`, `ci_failures_full.log` и `merge_conflicts.md`.
+- Все четыре inline review-треда в `input/BNP-136/pr_discussions_raw.json` разрешены. Общие комментарии ревью не являются открытыми inline-тредами.
+- Входные данные содержат `request.md`, но отдельного `ticket.md` нет; соответствие требованиям сверялось по `request.md`.
+- Исходная ветка уже содержит исправления предыдущих замечаний, поэтому в этом раунде код не менялся.
 
 ## Approach
 
-- Регрессионные тесты покрывают смешанный ответ с публичными IPv4 и IPv6, а также запрещённый IPv4 в том же DNS-ответе.
-- Проверена интеграция адресной валидации с allowlist POS-хостов и закреплением HTTP-соединения за проверенным IPv4; перенаправления отклоняются.
-- Поиск потребителей `dailyOrderNumberDate` в `apps/*` и `packages/*` подтвердил использование поля ежедневной нумерацией заказов. Миграция POS добавлена новой append-only миграцией; существующие миграции не изменялись.
+- Проверил изменения PR относительно `origin/main`, состояние рабочей копии и отсутствие маркеров конфликтов.
+- Повторно проверил изменения TypeScript линтером, выполнил typecheck и полный набор тестов.
+- Изменений схемы и миграций в этом раунде нет; дополнительная проверка blast radius не требовалась.
 
 ## Files Modified
 
-- `apps/api/src/onboarding/pos-network.ts` — выбор безопасного IPv4 из dual-stack DNS-ответа.
-- `apps/api/src/onboarding/pos-network.spec.ts` — регрессионные проверки DNS-ответов.
-- `apps/api/prisma/schema.prisma` — согласованная модель `Tenant`.
 - `outputs/response.md` — результаты повторной проверки.
-- `outputs/review_replies.json` — пустой список, так как открытых inline-тредов нет.
+- `outputs/review_replies.json` — пустой список, поскольку открытых inline-тредов нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
-- `npx eslint apps/api/src/onboarding/pos-network.ts apps/api/src/onboarding/pos-network.spec.ts` — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace; генерация Prisma Client прошла.
-- `npm test` — успешно: API 65 наборов / 560 тестов, admin-web 33 файла / 86 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также прошли.
-- `git diff --check` — успешно; маркеров конфликта в `apps/admin-web/src/App.tsx` и `apps/api/prisma/schema.prisma` нет.
-- Проверка blast radius схемы: `rg` по `dailyOrderNumberDate` в `apps` и `packages`; typecheck и полный набор тестов прошли. Проверка миграций показала только добавление `20260927000001_add_pos_onboarding/migration.sql`, существующие миграции не менялись.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена; просмотрен список файлов PR.
+- `git status --short` — рабочая копия чистая до обновления файлов отчёта.
+- `git diff --check` — успешно.
+- `npx eslint` для всех изменённых TypeScript/TSX файлов PR — успешно.
+- `npm run typecheck` — успешно во всех четырёх workspace.
+- `npm test` — успешно: API 65 наборов / 560 тестов, admin-web 33 файла / 86 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens завершились с кодом 0.
