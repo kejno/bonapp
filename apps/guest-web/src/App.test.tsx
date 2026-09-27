@@ -58,7 +58,10 @@ describe('App', () => {
     )
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/menu\?tenantId=tenant-1$/),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        headers: { 'X-QR-Token': 'stable-qr-token' },
+        signal: expect.any(AbortSignal),
+      }),
     )
   })
 

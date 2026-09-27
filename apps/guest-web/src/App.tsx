@@ -126,7 +126,7 @@ export default function App() {
         setTenantConfig(await configResponse.json() as TenantConfig)
         const response = await fetch(
           `${API_BASE}/guest/menu?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`,
-          { signal: controller.signal },
+          { headers: { 'X-QR-Token': qrToken }, signal: controller.signal },
         )
         if (!response.ok) throw new Error('Unable to load guest menu')
         setMenu(await response.json() as GuestMenu)

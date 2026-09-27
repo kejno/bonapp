@@ -2,30 +2,29 @@
 
 ## Issues/Notes
 
-- Исправлены оба открытых замечания: меню обрабатывает вложенный `modifierGroup` из `GET /guest/menu`, корзина изолируется по QR-токену и очищается при переходе к другому столу.
-- Отдельный `ticket.md`, `pr_files.txt` и CI-логи в `.dmtools/input/BNP-143` отсутствуют; требования сверены с `request.md` и обсуждениями PR.
-- Новые миграции добавлены отдельными файлами; существующие миграции не изменялись.
+- Исправлено актуальное замечание из `input/BNP-143/pr_discussions.md`: запрос меню теперь передаёт `X-QR-Token`, требуемый `GuestSessionGuard`.
+- `input/BNP-143/pr_discussions_raw.json` не содержит идентификаторов этого замечания; в GitHub у PR сейчас нет открытых review-тредов, поэтому `outputs/review_replies.json` содержит пустой список.
+- Отдельный `ticket.md`, `pr_files.txt` и CI-логи в `input/BNP-143` отсутствуют; требования сверены с `request.md` и локальной историей обсуждения.
 
 ## Approach
 
-- Регрессионный тест меню использует фактическую вложенную форму ответа, проверяет запрет добавления блюда без обязательного модификатора и успешное добавление после его выбора.
-- Тест корзины переключает QR между двумя столами и проверяет удаление прежних позиций и комментария. Тест приложения также проверяет пустую корзину при открытии checkout с QR другого стола.
-- Подготовлены адресные ответы на оба открытых inline-треда.
+- Добавлена проверка в тест загрузки меню: fetch должен содержать заголовок `X-QR-Token` со значением текущего QR-токена.
+- Проверка сначала завершилась ожидаемой ошибкой на прежнем коде без заголовка; после исправления стала проходить.
 
 ## Files Modified
 
 - `outputs/response.md` — результаты проверки.
-- `outputs/review_replies.json` — привязка ответов к двум открытым тредам.
-- `outputs/review_replies/thread_1.md` — ответ о вложенной форме групп модификаторов.
-- `outputs/review_replies/thread_2.md` — ответ об изоляции корзины по QR-токену.
+- `outputs/review_replies.json` — пустой список, поскольку открытых GitHub review-тредов нет.
+- `apps/guest-web/src/App.tsx` — передача `X-QR-Token` при запросе меню.
+- `apps/guest-web/src/App.test.tsx` — проверка заголовка QR-токена в запросе меню.
 
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR проверен.
-- `git status --short` — проверено; перед обновлением этого отчёта рабочее дерево было чистым.
-- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/orders/cart.store.ts apps/guest-web/src/orders/cart.store.test.ts` — успешно.
+- `git status --short` — проверено; изменены только `apps/guest-web/src/App.tsx`, `apps/guest-web/src/App.test.tsx` и файлы итогового отчёта.
+- `npx eslint apps/guest-web/src/App.test.tsx apps/guest-web/src/App.tsx` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: guest-web — 6 файлов / 22 теста; API — 62 набора / 547 тестов; admin-web — 29 файлов / 80 тестов. Сборка и проверка design tokens также прошли.
+- `npm test` — успешно; прошли тесты всех workspace, сборка и проверка design tokens.
 - `git diff --check` — успешно.
 - `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — проверено: обе миграции новые (`A`), существующие не изменены.
-- Проверены клиенты `activateCartForQrToken` через поиск по `apps/guest-web/src`; меню API сопоставлено с формой клиента и покрыто тестом с вложенной группой модификаторов. Глобальные провайдеры не затронуты.
+- Изменён только публичный клиентский GET-запрос меню; глобальные провайдеры, схема БД и миграции этим исправлением не затронуты.
