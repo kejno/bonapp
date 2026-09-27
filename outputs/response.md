@@ -24,11 +24,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнен; итоговый `git status --short` показывает изменение только `outputs/response.md`.
-- `npx eslint` по 16 изменённым TypeScript-файлам — без ошибок; есть два предупреждения `no-unsafe-argument` в передачах даты счётчика в `apps/api/src/guest-session/guest-session.service.ts` и `apps/api/src/orders/orders.service.ts`.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npm run typecheck` — успешно для всех четырёх workspace.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; незакоммиченных изменений перед подготовкой отчёта не было.
+- `npx eslint` по 16 затронутым TypeScript-файлам — без ошибок; остались два предупреждения `no-unsafe-argument` в `apps/api/src/guest-session/guest-session.service.ts` и `apps/api/src/orders/orders.service.ts`.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно; после генерации `npm run typecheck` прошёл для всех четырёх workspace.
 - `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборки и проверка design tokens также прошли.
 - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно; `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
-- `git diff --check origin/main...HEAD` — успешно. Проверены все потребители даты/номера и вызовы `order.create`; обе точки создания используют блокировку tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавленные миграции.
+- `git diff --check origin/main...HEAD` — успешно. CodeGraph недоступен: поиском проверены все потребители `dailyOrderNumberDate` и все вызовы `order.create` в API; обе точки создания синхронизируют счётчик блокировкой tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только две добавленные миграции.
 - Формат `outputs/review_replies.json` проверен; каждая запись соответствует одному из двух открытых тредов по `threadId` и `inReplyToId`.
