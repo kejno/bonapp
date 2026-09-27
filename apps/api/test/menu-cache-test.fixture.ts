@@ -159,8 +159,8 @@ export class MenuCacheTestFixture {
 
   async stop(): Promise<void> {
     if (this.app) await prepareGatewayShutdown(this.app.get(MenuGateway));
+    if (this.redis?.status === 'ready') await this.redis.quit();
     await this.app?.close();
-    this.redis?.disconnect();
     await this.prisma?.$disconnect();
     this.restoreEnvironment();
     this.stopContainer(this.redisContainer);
