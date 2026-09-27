@@ -14,13 +14,31 @@ import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import OnboardingStep3Page from './pages/OnboardingStep3Page';
+import OnboardingStep4Page from './pages/OnboardingStep4Page';
+import WaiterCallNotifications from './components/WaiterCallNotifications';
+import KdsPage from './kds/KdsPage';
+import { useAuthStore } from './auth/auth.store';
+import StaffPage from './pages/StaffPage';
+import SettingsPage from './settings/SettingsPage';
 
 const queryClient = new QueryClient();
+
+function KdsRoute() {
+  const role = useAuthStore((state) => state.user?.role);
+  if (!['CHEF', 'OWNER', 'MANAGER'].includes(role ?? ''))
+    return <Navigate to="/dashboard" replace />;
+  return (
+    <ProtectedRoute>
+      <KdsPage />
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <WaiterCallNotifications />
         <Routes>
           <Route
             path="/login"
@@ -28,6 +46,14 @@ function App() {
               <PublicOnlyRoute>
                 <LoginPage />
               </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/onboarding/step-4"
+            element={
+              <ProtectedRoute>
+                <OnboardingStep4Page />
+              </ProtectedRoute>
             }
           />
           <Route
@@ -59,6 +85,23 @@ function App() {
             element={
               <ProtectedRoute>
                 <MenuEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/kds" element={<KdsRoute />} />
+          <Route
+            path="/staff"
+            element={
+              <ProtectedRoute>
+                <StaffPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />

@@ -19,7 +19,7 @@ describe('BNP-365: reject a non-boolean stop-list value', () => {
     const emitStopListChanged = jest.spyOn(gateway, 'emitStopListChanged');
 
     await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set(authorization)
       .expect(200);
     const cachedMenuBefore = await fixture.redis.get(fixture.cacheKey);
