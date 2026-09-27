@@ -138,7 +138,10 @@ export class TableQrPdfService implements OnModuleInit, OnModuleDestroy {
       sheets.push(`<section class="sheet"><article><img class="logo" src="${logo}"/><h1>${escape(name)}</h1><div class="table">Стол ${table.tableNumber}</div><img class="qr" src="${table.qr}"/></article></section>`);
     }
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:12mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.sheet{height:273mm;page-break-after:always}.sheet:last-child{page-break-after:auto}article{height:100%;border:1px dashed #aaa;display:flex;flex-direction:column;align-items:center;justify-content:center}.logo{max-width:65mm;max-height:28mm;object-fit:contain}.qr{width:85mm;height:85mm}.table{font-size:32pt;font-weight:bold;margin:10mm}h1{font-size:20pt}</style></head><body>${sheets.join('')}</body></html>`;
-    this.browser ??= await puppeteer.launch({ headless: true });
+    this.browser ??= await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await this.browser.newPage();
     try {
       await page.setContent(html, { waitUntil: 'load' });

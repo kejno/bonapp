@@ -1,0 +1,1 @@
+Исправлено: тест обращается к вызовам через `vi.mocked(tablesApi.createTablesBulk).mock.calls`, поэтому типы Vitest сохраняются. Проверка typecheck выполнена; результат приведён в `outputs/response.md`.

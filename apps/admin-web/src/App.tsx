@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  BrowserRouter as Router,
+  Routes,
+} from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import DashboardPage from './pages/DashboardPage';
@@ -9,13 +14,30 @@ import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
 import OnboardingStep4Page from './pages/OnboardingStep4Page';
+import WaiterCallNotifications from './components/WaiterCallNotifications';
+import KdsPage from './kds/KdsPage';
+import { useAuthStore } from './auth/auth.store';
+import StaffPage from './pages/StaffPage';
+import SettingsPage from './settings/SettingsPage';
 
 const queryClient = new QueryClient();
+
+function KdsRoute() {
+  const role = useAuthStore((state) => state.user?.role);
+  if (!['CHEF', 'OWNER', 'MANAGER'].includes(role ?? ''))
+    return <Navigate to="/dashboard" replace />;
+  return (
+    <ProtectedRoute>
+      <KdsPage />
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <WaiterCallNotifications />
         <Routes>
           <Route
             path="/login"
@@ -37,8 +59,25 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
-          <Route path="/menu/editor" element={<ProtectedRoute><MenuEditorPage /></ProtectedRoute>} />
+          <Route
+            path="/menu"
+            element={
+              <ProtectedRoute>
+                <MenuPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/menu/editor"
+            element={
+              <ProtectedRoute>
+                <MenuEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/kds" element={<KdsRoute />} />
+          <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route
             path="/tables"
             element={

@@ -31,7 +31,7 @@ describe('OnboardingStep4Page', () => {
     fireEvent.change(screen.getByLabelText('Количество столов'), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Добавить столы' }));
 
-    await waitFor(() => expect(tablesApi.createTablesBulk.mock.calls[0][0]).toEqual({
+    await waitFor(() => expect(vi.mocked(tablesApi.createTablesBulk).mock.calls[0][0]).toEqual({
       areaId: 'area-1', seatsCount: 4, startNumber: 1, count: 5,
     }));
     expect(await screen.findByText('В этом сеансе создано столов: 5 (1, 2, 3, 4, 5)')).toBeInTheDocument();
