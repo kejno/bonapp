@@ -2,27 +2,27 @@
 
 ## Issues/Notes
 
-- Открытый inline-тред указывал, что Vitest загружает Playwright spec. В текущем PR конфигурация Vitest уже исключает `**/e2e/**`; полный `npm test` и отдельный Playwright сценарий прошли.
-- Описание PR в `.dmtools/input/BNP-142/pr_info.md` посвящено генерации QR-PDF и не соответствует BNP-142. Его следует синхронизировать с реализацией карточки блюда и корзины.
-- Файлы `ci_failures.md`, `ci_failures_full.log` и `merge_conflicts.md` в подготовленном контексте отсутствуют. В текущем checkout нет конфликтных маркеров; рабочее дерево чистое.
+- Блокирующий тред сообщал, что Vitest запускает Playwright spec. На текущей ветке `apps/guest-web/vite.config.ts` уже исключает `**/e2e/**`, поэтому unit-тесты не подхватывают этот файл; отдельный Playwright запуск прошёл.
+- Описание PR в `.dmtools/input/BNP-142/pr_info.md` относится к BNP-387 и генерации QR-PDF, а не к BNP-142. Оно требует обновления на GitHub; в рамках этого прохода внешний PR не изменялся.
+- Файлы `ci_failures.md`, `ci_failures_full.log` и `merge_conflicts.md` не приложены. Код в этом проходе не менялся: исправление исключения уже присутствовало в ветке.
 
 ## Approach
 
-- Проверил исправление в `apps/guest-web/vite.config.ts`: Vitest исключает e2e-каталог, а Playwright запускается отдельной командой `test:e2e`.
-- Конфигурационное исправление уже находилось в PR до этого прохода. В этом проходе код не менялся; перепроверил линт, typecheck, полный набор тестов и целевой e2e.
+- Проверил настройку Vitest, отделяющую unit-тесты от Playwright e2e.
+- Повторно выполнил lint, typecheck, полный набор тестов и сценарий добавления блюда с модификатором в корзину.
 
 ## Files Modified
 
-- `outputs/response.md` — актуальный отчёт о проверках и несоответствии описания PR.
-- `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред о разделении Vitest и Playwright.
-- `outputs/review_replies.json` — ссылка на ответ с `threadId` и `inReplyToId` открытого треда.
+- `outputs/response.md` — результаты и замечания по контексту PR.
+- `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред.
+- `outputs/review_replies.json` — привязка ответа к открытому треду через `threadId` и `inReplyToId`.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — проверен список файлов PR; до обновления отчёта `git status --short` не показывал изменений.
-- `npx eslint apps/guest-web/e2e/dish-card.spec.ts apps/guest-web/src/App.test.tsx apps/guest-web/src/App.tsx apps/guest-web/src/cart.test.ts apps/guest-web/src/cart.ts apps/guest-web/vite.config.ts` — 0 ошибок; ESLint пропустил `vite.config.ts` из-за настройки игнорирования.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — проверены список файлов PR и состояние рабочей копии.
+- `npx eslint apps/guest-web/e2e/dish-card.spec.ts apps/guest-web/src/App.test.tsx apps/guest-web/src/App.tsx apps/guest-web/src/cart.test.ts apps/guest-web/src/cart.ts apps/guest-web/vite.config.ts` — завершился успешно, 0 ошибок; `vite.config.ts` пропущен ESLint по настройке игнорирования.
 - `npm run typecheck` — успешно во всех 4 workspace.
-- `npm test` — успешно: API 61 suite / 543 теста, admin-web 29 файлов / 80 тестов, guest-web 4 файла / 14 тестов; сборка и проверка design tokens также прошли.
-- `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` — успешно, 1 тест. Первый запуск остановился из-за отсутствующего Chromium; после `npx playwright install chromium` целевой запуск прошёл.
-- `git diff --check` — успешно; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` не показывает изменений миграций. Проверка конфликтных маркеров в `apps/guest-web` ничего не нашла.
-- Изменений схемы БД, глобальных провайдеров и публичных сигнатур нет; проверка blast radius для этих областей не требовалась.
+- `npm test` — успешно: API 61 suite / 543 теста, admin-web 29 файлов / 80 тестов, guest-web 4 файла / 14 тестов; сборка и проверка design tokens также завершились успешно.
+- `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` — успешно, 1 тест. Для запуска установлен отсутствовавший Chromium.
+- `git diff --check` — успешно; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` не показывает изменений миграций. Конфликтных маркеров в коде нет.
+- Схема БД, глобальные провайдеры и публичные сигнатуры не затронуты; дополнительная проверка blast radius для них не требовалась.

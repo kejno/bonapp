@@ -1,1 +1,1 @@
-В `apps/guest-web/vite.config.ts` Vitest исключает `**/e2e/**`. Playwright spec остаётся в каталоге e2e и проходит отдельный запуск `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` (1 тест).
+В `apps/guest-web/vite.config.ts` Vitest исключает каталог `**/e2e/**`, поэтому Playwright spec не запускается командой `npm test`. Отдельный запуск `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` завершился успешно: 1 тест пройден.
