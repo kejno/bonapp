@@ -1,26 +1,34 @@
-# Повторная проверка PR #154
+# Повторная проверка PR #155
 
 ## Issues/Notes
 
-- В открытом блокирующем треде запрошена кнопка «Вызвать официанта». Решение BNP-263 из `input/BNP-141/existing_questions.json` требует скрыть её до отдельной истории. Текущий экран этому соответствует, менять код приложения не требуется.
-- В подготовленном контексте отсутствуют `pr_files.txt`, `ci_failures.md`, `ci_failures_full.log` и `merge_conflicts.md`. Маркеров конфликтов в рабочем дереве нет.
+- Исправлена ошибка TypeScript в `OnboardingStep4Page.test.tsx`: вызовы мок-функции читаются через `vi.mocked`.
+- Добавлен сквозной e2e-сценарий API: создание пяти столов, проверка уникальности и сохранения QR-токенов, затем генерация PDF именно для созданных столов.
+- Генератор PDF запускает Chromium с аргументами для контейнерной среды, где sandbox недоступен.
+- Разрешён конфликт `App.tsx`: сохранены роут онбординга и маршруты, добавленные в `main`.
+- Нет изменений схемы БД, миграций, глобальных провайдеров или публичных сигнатур.
 
 ## Approach
 
-- Сверил замечание ревью с решением BNP-263 и реализацией хедера в `apps/guest-web/src/App.tsx`.
-- Проверил тест `apps/guest-web/src/App.test.tsx`: через пользовательский интерфейс он подтверждает отсутствие кнопки и диалога вызова официанта.
-- Изменения затрагивают только PR-артефакты ответа. Схема БД, миграции, глобальные провайдеры и публичные сигнатуры не менялись.
+- Сверил требования тикета и замечания с уже имеющимися проверками API. Расширил `BNP-361.e2e-spec.ts`, чтобы проверять сценарий создания и печати в одном проходе на реальных PostgreSQL, Redis и API.
+- В UI-тесте заменил обращение к `.mock` нетипизированной функции на типизированный мок Vitest.
+- Добавил аргументы `--no-sandbox` и `--disable-setuid-sandbox`, чтобы PDF-сервис работал в Linux-контейнерах CI.
+- В разрешении конфликта `App.tsx` объединил обе стороны без удаления существующих маршрутов.
 
 ## Files Modified
 
-- `outputs/response.md` — итог повторной проверки и результаты проверок.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на единственный открытый inline-тред.
+- `apps/admin-web/src/App.tsx` — разрешён конфликт импорта маршрута онбординга с изменениями `main`.
+- `apps/admin-web/src/pages/OnboardingStep4Page.test.tsx` — исправлено обращение к mock-вызовам.
+- `apps/api/test/BNP-361.e2e-spec.ts` — добавлена проверка PDF после создания пяти столов и проверки их уникальных токенов.
+- `apps/api/src/halls/table-qr-pdf.service.ts` — добавлены параметры запуска Chromium для контейнерной среды.
+- `outputs/response.md` — результат повторной проверки.
+- `outputs/review_replies.json` и `outputs/review_replies/*.md` — ответы на открытые inline-треды.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; получен список файлов PR.
-- `git status --short` — выполнено до подготовки выходных файлов; незакоммиченных изменений приложения не было.
-- `npx eslint` для файлов исходного PR — завершился без ошибок; `apps/guest-web/vite.config.ts` пропущен по ignore-правилу ESLint.
-- `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 61 suite / 541 тест, guest-web 4 файла / 9 тестов, admin-web 29 файлов / 80 тестов; сборки и проверка design tokens также прошли.
-- `git diff --check` — выполнен после подготовки отчёта.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/OnboardingStep4Page.test.tsx apps/api/test/BNP-361.e2e-spec.ts apps/api/src/halls/table-qr-pdf.service.ts` — пройден.
+- `npm run typecheck` — пройден для всех четырёх workspace.
+- `npm test` — пройден: API 61 suite / 541 тест, admin-web 30 файлов / 81 тест, guest-web 6 файлов / 14 тестов; production build и проверка design tokens также пройдены.
+- `npm run test:e2e --workspace=@bonapp/api -- --runInBand --forceExit test/BNP-361.e2e-spec.ts` — пройден: пять столов с уникальными сохранёнными токенами созданы, PDF вернул сигнатуру `%PDF-`.
+- `git diff --check` — пройден.

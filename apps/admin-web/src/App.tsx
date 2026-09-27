@@ -13,6 +13,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import OnboardingStep4Page from './pages/OnboardingStep4Page';
 import WaiterCallNotifications from './components/WaiterCallNotifications';
 import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
@@ -45,6 +46,10 @@ function App() {
                 <LoginPage />
               </PublicOnlyRoute>
             }
+          />
+          <Route
+            path="/onboarding/step-4"
+            element={<ProtectedRoute><OnboardingStep4Page /></ProtectedRoute>}
           />
           <Route
             path="/dashboard"
