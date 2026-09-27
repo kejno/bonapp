@@ -59,16 +59,19 @@ function waitForStatus(socket: Socket): Promise<{ orderId: string; status: strin
 }
 
 async function disconnectSocket(socket: Socket | undefined): Promise<void> {
-  if (!socket || !socket.connected) {
-    socket?.disconnect();
+  if (!socket) return;
+  const engine = socket.io.engine;
+  if (!engine || engine.readyState === 'closed') {
+    socket.disconnect();
     return;
   }
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => resolve(), 1_000);
-    socket.once('disconnect', () => {
+    const timer = setTimeout(resolve, 1_000);
+    engine.once('close', () => {
       clearTimeout(timer);
       resolve();
     });
     socket.disconnect();
+    engine.close();
   });
 }

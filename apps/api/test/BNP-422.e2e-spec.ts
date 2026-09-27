@@ -12,6 +12,8 @@ jest.mock('../src/guest-session/guest-session.module', () => ({
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { MenuGateway } from '../src/menu/menu.gateway';
+import { OnboardingService } from '../src/onboarding/onboarding.service';
+import { TableQrPdfService } from '../src/halls/table-qr-pdf.service';
 import {
   MenuCacheTestFixture,
   prepareGatewayShutdown,
@@ -36,8 +38,8 @@ describe('BNP-422: Redis adapter order status delivery', () => {
   });
   afterAll(async () => {
     if (secondApp) await prepareGatewayShutdown(secondApp.get(MenuGateway));
-    await secondApp?.close();
     for (const connection of serverConnections) connection.destroy();
+    await secondApp?.close();
     await fixture.stop();
   });
 
@@ -86,6 +88,10 @@ describe('BNP-422: Redis adapter order status delivery', () => {
 
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(ShiftService)
+      .useValue({})
+      .overrideProvider(OnboardingService)
+      .useValue({})
+      .overrideProvider(TableQrPdfService)
       .useValue({})
       .compile();
     secondApp = module.createNestApplication();
@@ -217,16 +223,19 @@ async function waitForStatus(result: {
 }
 
 async function disconnectSocket(socket: Socket | undefined): Promise<void> {
-  if (!socket || !socket.connected) {
-    socket?.disconnect();
+  if (!socket) return;
+  const engine = socket.io.engine;
+  if (!engine || engine.readyState === 'closed') {
+    socket.disconnect();
     return;
   }
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => resolve(), 1_000);
-    socket.once('disconnect', () => {
+    const timer = setTimeout(resolve, 1_000);
+    engine.once('close', () => {
       clearTimeout(timer);
       resolve();
     });
     socket.disconnect();
+    engine.close();
   });
 }
