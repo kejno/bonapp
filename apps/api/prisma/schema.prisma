@@ -17,6 +17,16 @@ enum UserRole {
   ADMIN
 }
 
+enum TenantStatus {
+  TRIAL
+}
+
+enum VenueType {
+  RESTAURANT
+  CAFE
+  BAR
+}
+
 enum TableStatus {
   AVAILABLE
   OCCUPIED
@@ -35,6 +45,8 @@ model Tenant {
   id                     String          @id @default(uuid())
   slug                   String          @unique
   name                   String
+  status                 TenantStatus    @default(TRIAL)
+  venueType              VenueType       @default(RESTAURANT) @map("venue_type")
   legalName              String?         @map("legal_name")
   unp                    String?
   address                String?
@@ -68,8 +80,14 @@ model Tenant {
   staffShifts            StaffShift[]
   dailyOrderNumber       Int             @default(0) @map("daily_order_number")
   dailyOrderNumberDate   String?         @map("daily_order_number_date")
-
   @@map("tenants")
+}
+
+model TenantRegistration {
+  email    String @id
+  tenantId String @unique @map("tenant_id")
+
+  @@map("tenant_registrations")
 }
 
 model User {

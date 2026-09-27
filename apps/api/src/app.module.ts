@@ -15,6 +15,7 @@ import { GuestSessionModule } from './guest-session/guest-session.module';
 import { HallsModule } from './halls/halls.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
+import { PublicRegistrationModule } from './public-registration/public-registration.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StaffAuthModule } from './staff-auth/staff-auth.module';
 import { StaffModule } from './staff/staff.module';
@@ -38,6 +39,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     StaffAuthModule,
     StaffModule,
     GuestSessionModule,
+    PublicRegistrationModule,
     WaiterCallModule,
     WelcomeModule,
   ],

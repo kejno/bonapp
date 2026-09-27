@@ -69,7 +69,7 @@ export class AuthGuard implements CanActivate {
       ) {
         throw new UnauthorizedException();
       }
-      if (user?.mustChangePassword) {
+      if (user?.mustChangePassword && request.path !== '/api/v1/auth/initial-password') {
         throw new ForbiddenException('Password change required');
       }
     }
