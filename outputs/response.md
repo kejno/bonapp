@@ -2,34 +2,34 @@
 
 ## Issues/Notes
 
-- Закрыт блокирующий обход ограничений WAITER: роль перенаправляется с маршрутов меню, редактирования меню, сотрудников, настроек и заказов.
-- На странице столов WAITER видит только назначенные ему столы; действия создания/редактирования и печати QR скрыты. Выбор столов в QR-диалоге также ограничен назначенными столами.
-- BNP-410 теперь создаёт три заказа через клиент `createGuestOrder`, которым пользуется пользовательский поток оформления заказа, вместо прямого вызова замоканного `fetch` из теста.
-- Открытые inline-треды 4 и 5 обработаны; для каждого подготовлен отдельный ответ.
-- В `input/BNP-163/` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и `merge_conflicts.md`; использованы доступные данные PR и описание задачи в `request.md`.
+- Устранена утечка списка столов через `GET /admin/tables`: API ограничивает выдачу WAITER столами с активными заказами, назначенными этому официанту.
+- В текущей Prisma-схеме назначение официанта хранится у заказа, а не у стола. Поэтому фильтр применяется через связь `orders`; вложенные заказы также ограничены текущим официантом. Для отображения таблица получает `assignedWaiterId` из подтверждённого контекста запроса.
+- Если у пользователя с ролью WAITER отсутствует идентификатор, контроллер возвращает `403`, не запрашивая таблицы.
+- В подготовленных данных отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и `merge_conflicts.md`. Проверил текущую ветку и доступные материалы PR; маркеров конфликта не обнаружено.
 
 ## Approach
 
-- Добавлен `NonWaiterRoute` и применён к административным страницам, включая прямые URL.
-- Экран столов ограничивает данные WAITER его назначенными столами и скрывает управляющие действия. Добавлены проверки перенаправления с `/staff` и недоступности действий управления.
-- Заказы в BNP-410 отправляются через публичный клиент гостевого приложения; UI итогов смены проверяется по ответам модели текущей смены и после закрытия.
+- Контроллер передаёт `userId` только для роли WAITER и запрещает запрос при отсутствующем `userId`.
+- `HallsService.listTables` отбирает столы через связанные активные заказы, назначенные пользователю; вложенный список заказов использует тот же фильтр.
+- Добавлены регрессионные проверки контроллера для передачи личности и отказа без неё, а также проверки выдачи только назначенных столов.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — ограничение маршрутов для WAITER.
-- `apps/admin-web/src/pages/TablesPage.tsx` — ограничение столов и управляющих действий.
-- `apps/admin-web/src/pages/BNP-409.test.tsx` — регрессия для прямого маршрута и доступных действий.
-- `apps/admin-web/src/pages/BNP-410.test.tsx` — создание заказов через клиент приложения.
-- `outputs/review_replies/` — ответы на открытые review-треды.
-- `outputs/review_replies.json` — ссылки на ответы в тредах.
+- `apps/api/src/halls/tables.controller.ts` — серверная проверка роли и передача идентификатора официанта.
+- `apps/api/src/halls/tables.controller.spec.ts` — проверки передачи идентификатора и отказа при его отсутствии.
+- `apps/api/src/halls/halls.service.ts` — фильтрация столов и вложенных заказов по назначенному официанту.
+- `apps/api/src/halls/halls.service.spec.ts` — регрессия на выборку собственных столов WAITER.
+- `apps/api/src/halls/waiter-tables.spec.ts` — HTTP-проверка ответа `GET /admin/tables` под ролью WAITER.
+- `outputs/response.md` — сводка доработки и результаты проверок.
+- `outputs/review_replies/thread_6.md` — ответ на открытый блокирующий тред.
+- `outputs/review_replies.json` — ссылка на ответ в открытом треде.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов проверен.
-- `git status --short` — выполнено; незакоммиченные изменения ограничены четырьмя файлами кода и файлами отчёта.
-- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/TablesPage.tsx apps/admin-web/src/pages/BNP-409.test.tsx apps/admin-web/src/pages/BNP-410.test.tsx` — пройдено.
-- `npm run test -w apps/admin-web -- BNP-409 BNP-410` — пройдено (4 теста).
-- `npm run typecheck` — пройдено для всех четырёх пакетов.
-- `npm test` — пройдено: 68 API suites / 577 тестов, 57 admin-web suites / 116 тестов, 8 guest-web suites / 26 тестов; сборка и проверка дизайн-токенов также завершились успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR проверен.
+- `git status --short` — выполнено; проверены изменённые файлы текущей доработки.
+- `npx eslint apps/api/src/halls/halls.service.spec.ts apps/api/src/halls/halls.service.ts apps/api/src/halls/tables.controller.spec.ts apps/api/src/halls/tables.controller.ts apps/api/src/halls/waiter-tables.spec.ts` — пройдено.
+- `npm run typecheck` — пройдено для всех четырёх workspace.
+- `npm test` — пройдено: API 69 наборов / 581 тест, admin-web 57 файлов / 116 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens завершились успешно.
 - `git diff --check` — пройдено.
-- Blast-radius: затронуты общая маршрутизация admin-web и экран столов; выполнен полный `npm test`. Схема БД, миграции и публичные серверные API не менялись.
+- Blast-radius: HTTP-ответ `/admin/tables` проверен под ролью WAITER на отсутствие чужих столов и заказов; полный набор `npm test` прошёл. Схема БД и миграции не менялись.
