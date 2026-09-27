@@ -15,6 +15,8 @@ describe('BNP-468: пропуск подключения POS', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><OnboardingStep2Page /></QueryClientProvider>);
 
+    fireEvent.change(screen.getByLabelText('POS-система'), { target: { value: 'none' } });
+    expect(screen.getByLabelText('POS-система')).toHaveValue('none');
     fireEvent.click(screen.getByRole('button', { name: 'Пропустить' }));
 
     await waitFor(() => expect(onboardingApi.savePos).toHaveBeenCalled());
