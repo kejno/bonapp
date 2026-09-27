@@ -6,7 +6,7 @@
 - В этом раунде production-код менять не потребовалось: проверка доступа уже ограничивает комнату заказа действующей сессией и столом заказа. Усилен E2E сценарий в `apps/api/test/admin-orders.e2e-spec.ts`: гость другого стола явно получает отказ при попытке войти в чужую комнату, не получает статусное событие, а владелец заказа и кухня получают его. Проверка проходит через реальные Socket.io-подключения и API.
 - В `pr_discussions_raw.json` найден один открытый inline-тред с `threadId` и `rootCommentId`; для него подготовлен ответ. Остальные открытые записи — сводные отзывы без идентификаторов треда; предыдущие inline-треды разрешены.
 - В `input/BNP-154` отсутствуют `instruction.md`, `pr_files.txt`, CI-логи, `merge_conflicts.md` и `ticket.md`. Прочитаны `CLAUDE.md`, доступные материалы PR и инструкции `agents/instructions/pr_rework/`.
-- Первый запуск ESLint выявил устаревший сгенерированный Prisma Client (`TransactionClient.guest`). После `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный ESLint прошёл. Typecheck и тесты выполнены с актуальным клиентом.
+- Первый запуск `npm run typecheck` выявил устаревший сгенерированный Prisma Client (`TransactionClient.guest`). После `npx prisma generate --schema apps/api/prisma/schema.prisma` повторный typecheck прошёл; причина была в локально сгенерированном клиенте, исходники не менялись.
 
 ## Approach
 
@@ -24,7 +24,7 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; проверен состав PR и статус рабочей копии.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npx eslint apps/api/test/admin-orders.e2e-spec.ts` — успешно; перед этим ESLint для файлов PR также прошёл после генерации Prisma Client.
+- `npx eslint apps/api/test/admin-orders.e2e-spec.ts` — успешно.
 - `npm run typecheck` — успешно во всех 4 workspace.
 - `npm test` — успешно: API 60 наборов / 538 тестов, admin-web 29 файлов / 80 тестов, guest-web 1 файл / 5 тестов; сборка и проверка design tokens также прошли.
 - `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест; проверена изоляция события для гостей разных столов.
