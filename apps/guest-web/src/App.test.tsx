@@ -12,13 +12,14 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the guest heading when no table QR token is provided', () => {
+  it('renders the guest heading and an empty cart when no table QR token is provided', () => {
     render(<App />)
-    const heading = screen.getByText('Bonapp — Guest')
+    const heading = screen.getByText('Bonapp')
 
     expect(heading).toBeInTheDocument()
     expect(heading).toHaveClass('text-primary')
-    expect(heading.parentElement?.parentElement).toHaveClass('bg-background')
+    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
+    expect(screen.getByRole('main')).toHaveClass('bg-background')
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
@@ -45,7 +46,7 @@ describe('App', () => {
     expect(screen.getByText('Test Restaurant')).toBeInTheDocument()
     expect(await screen.findByText('Капучино')).toBeInTheDocument()
     expect(localStorage.getItem('guest_session_id')).toBe('3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3')
-    expect(screen.getByText('8.5 BYN')).toBeInTheDocument()
+    expect(screen.getByText('8.50 BYN')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/stable-qr-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -69,12 +70,12 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Молоко *')).toBeInTheDocument()
-    const addButton = screen.getByRole('button', { name: 'В корзину: Капучино' })
-    expect(addButton).toBeDisabled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать · Капучино' }))
+    expect(screen.getByText('Молоко')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Выберите обязательные модификаторы')
     fireEvent.click(screen.getByLabelText(/Овсяное/))
-    expect(addButton).toBeEnabled()
-    fireEvent.click(addButton)
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
     expect(screen.getByRole('link', { name: 'Оформить заказ (1)' })).toBeInTheDocument()
   })
 
@@ -167,4 +168,21 @@ describe('App', () => {
       method: 'POST', body: JSON.stringify({ tableId: 'table-1', reason: 'NEED_BILL' }),
     }))
   })
+
+  it('validates required modifiers and adds the selected dish to the cart', async () => {
+    useCartStore.setState({ items: [] })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat', name: 'Пицца', items: [{ id: 'pizza', name: 'Маргарита', description: null, priceByn: 20, modifierGroups: [{ modifierGroup: { id: 'size', name: 'Размер', isRequired: true, minSelection: 1, maxSelection: 1, modifiers: [{ id: 'large', name: 'Большая', price: '2.50' }] } }] }] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=test-token')
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать · Маргарита' }))
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Выберите обязательные модификаторы')
+    fireEvent.click(screen.getByLabelText(/Большая/))
+    expect(screen.getByRole('button', { name: 'Добавить в заказ · 22.50 BYN' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('Корзина · 1')
+  })
+
 })
