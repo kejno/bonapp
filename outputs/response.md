@@ -1,22 +1,23 @@
-## Issues/Notes
+h2. Issues/Notes
 
-- Исправлено единственное открытое адресуемое замечание (thread `PRRT_kwDOUUbUMs6mdivC`): тест BNP-406 проверял применение цвета только в админке.
-- В `input/BNP-406` не приложены CI failure-логи, поэтому состояние CI не подтверждено.
-- Разрешён конфликт `outputs/response.md` и добавлен файл в индекс.
+* Единственное адресуемое блокирующее inline-замечание касалось отсутствия проверки гостевого PWA. В доступном diff тест гостевого приложения загружает конфигурацию с сохранённым цветом и проверяет применение CSS-переменной color-primary.
+* Все inline-треды в {{input/BNP-406/pr_discussions_raw.json}} уже отмечены закрытыми; новых открытых адресуемых тредов нет. Ответы в {{outputs/review_replies.json}} не требуются.
+* CI failure-логи не приложены, поэтому статус CI отдельно не подтверждён.
 
-## Approach
+h2. Approach
 
-- Добавлен отдельный тест гостевого приложения BNP-406: он открывает меню по QR-токену, загружает сохранённую конфигурацию заведения и проверяет значение `--color-primary`.
-- Проверки BNP-405 и админской части BNP-406 оставлены без изменений.
-- Для блокирующего inline-замечания подготовлен адресный ответ в `outputs/review_replies/`.
+* Проверил тесты BNP-405 и BNP-406 в {{admin-web}} и BNP-406 в {{guest-web}}.
+* Разрешил конфликт {{outputs/response.md}}, восстановив результат текущей доработки поверх состояния ветки.
 
-## Files Modified
+h2. Files Modified
 
-- `apps/guest-web/src/BNP-406.test.tsx` — проверка загрузки конфигурации и применения цвета в гостевом PWA.
-- `outputs/response.md` — сводка изменений и проверок; конфликтный файл разрешён.
-- `outputs/review_replies.json`, `outputs/review_replies/thread_7.md` — ответ на открытый блокирующий тред.
+* {{outputs/response.md}} — итог rework и результаты целевых тестов.
+* {{outputs/pr_body.md}} — описание для PR.
+* {{outputs/test_automation_result.json}} — машинно-читаемый результат.
+* {{outputs/review_replies.json}} — пустой список: адресуемых открытых inline-тредов нет.
 
-## Test Coverage
+h2. Test Coverage
 
-- `npm run test -w apps/guest-web -- BNP-406` — 1 тест пройден.
-- `npm run test -w apps/admin-web -- BNP-405 BNP-406` — 2 теста пройдены.
+* {{npm run test -w apps/admin-web -- BNP-405 BNP-406}} — пройдены 2 теста.
+* {{npm run test -w apps/guest-web -- BNP-406}} — пройден 1 тест.
+* {{git diff --check}} — пройдено.
