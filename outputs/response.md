@@ -2,29 +2,30 @@
 
 ## Issues/Notes
 
-- Единственный открытый inline-тред касается раскрытия статусов заказов гостям других столов. В текущей версии PR гостевой сокет присоединяется к `order_<id>` только после проверки QR-токена или действующей сессии и подтверждения, что активный заказ принадлежит столу этой сессии. Общее событие для кухни отправляется только в авторизованную комнату `tenant_<id>_kitchen`.
-- E2E-сценарий использует QR-токены двух столов: проверяет отказ гостю другого стола при попытке войти в комнату заказа и отсутствие у него события, а также доставку события владельцу заказа и кухне.
-- Исправление и регрессионный тест уже присутствовали в проверенной рабочей копии; исходный код в этой итерации не менялся. В `input/BNP-154/` отсутствуют `instruction.md`, `pr_files.txt`, CI-логи, отдельный `ticket.md`, файлы конфликтов и связанные спецификации.
+- Единственный открытый inline-тред касается раскрытия статусов заказов гостям других столов. В текущем HEAD `2aaebbbfb74c7ef00cc354f4f4ce54cf55def963` гостевой сокет входит в `order_<id>` только после проверки QR-токена или действующей сессии и подтверждения, что активный заказ принадлежит столу этой сессии. События кухни направляются только в авторизованную комнату кухни.
+- Исправление и регрессионный E2E-тест уже присутствовали в рабочей копии; исходный код в этой итерации не менялся.
+- Для локальной проверки сгенерирован Prisma Client по актуальной схеме. До генерации typecheck и ESLint сообщали об отсутствующей модели `Guest`; после генерации оба прошли.
+- В `input/BNP-154/` нет `instruction.md`, `pr_files.txt`, CI-логов, отдельного `ticket.md`, файлов конфликтов или связанных спецификаций.
 
 ## Approach
 
 - Сверил проверку доступа в `joinOrderRoom`, маршрутизацию статусов и E2E-сценарий с открытым замечанием.
-- Проверил Socket.io-комнаты и вызовы событий с помощью `rg`; CodeGraph недоступен.
-- Проверил `git diff --check`, статус рабочей копии и список миграций относительно `origin/main`. Единственная миграция PR новая; существующие миграции не изменялись.
-- Перед проверкой типов сгенерировал Prisma Client по `apps/api/prisma/schema.prisma`. Первоначальный `npm run typecheck` до генерации завершился ошибкой отсутствующего поля `guest` в сгенерированном `TransactionClient`; после генерации проверка типов прошла.
+- E2E использует QR-токены двух столов: проверяет отказ чужому гостю при попытке войти в комнату заказа, получение события владельцем заказа и кухней, а также отсутствие события у гостя другого стола.
+- Проверил diff и миграции относительно `origin/main`; миграция PR новая, существующие миграции не менялись.
 
 ## Files Modified
 
 - `outputs/response.md` — актуализирован отчёт проверки.
-- `apps/api/src/menu/menu.gateway.ts` и `apps/api/test/admin-orders.e2e-spec.ts` уже содержат проверку доступа и интеграционное покрытие в текущем PR; в этой итерации они не менялись.
+- `outputs/review_replies/thread_1.md` — ответ на единственный открытый inline-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и рабочей копии.
-- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — проверены список файлов PR и рабочая копия.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
+- `npx eslint` для всех изменённых TypeScript-файлов PR — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 61 suite / 542 теста; admin-web — 29 файлов / 80 тестов; guest-web — 3 файла / 11 тестов; сборки и проверка design tokens также прошли.
-- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест, включая Socket.io-доставку и изоляцию QR-клиентов между столами.
-- `git diff --check origin/main...HEAD` — успешно.
+- `npm test` — успешно: API — 61 suite / 542 теста; admin-web — 29 файлов / 80 тестов; guest-web — 3 файла / 11 тестов; сборки workspace прошли.
+- `npm run test:design-tokens` — успешно.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест, включая доставку Socket.io и изоляцию QR-клиентов между столами.
+- `git diff --check` — успешно.
 - `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — успешно; обнаружена только новая миграция `apps/api/prisma/migrations/20260926220000_admin_order_guests/migration.sql`.
