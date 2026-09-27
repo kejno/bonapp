@@ -28,5 +28,6 @@
 - `npx eslint apps/guest-web/e2e/dish-card.spec.ts apps/guest-web/src/App.test.tsx apps/guest-web/src/App.tsx apps/guest-web/src/cart.test.ts apps/guest-web/src/cart.ts apps/guest-web/vite.config.ts` — ошибок нет; ESLint пропустил `vite.config.ts` согласно ignore-правилу.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 61 suite / 543 теста, admin-web 29 файлов / 80 тестов, guest-web 4 файла / 14 тестов; сборка и проверка design tokens также успешны.
-- `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` — успешно, 1 тест. Первоначально запуск не прошёл из-за отсутствующего Chromium; после `npx playwright install chromium` повторная проверка прошла.
+- `npx playwright install chromium` — установлен отсутствовавший браузер Chromium.
+- `npm run test:e2e --workspace @bonapp/guest-web -- e2e/dish-card.spec.ts` — успешно, 1 тест.
 - `git diff --check` — успешно.
