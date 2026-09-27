@@ -70,15 +70,6 @@ describe('BNP-154: administrator orders and status delivery', () => {
     await waitForConnect(kitchenSocket);
     await joinTenantRoom(kitchenSocket, 'kitchen');
 
-    const guestSession = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/session/${table.qrToken}`)
-      .expect(200);
-    const otherGuestSession = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/session/${otherTable.qrToken}`)
-      .expect(200);
-    const guestToken = (guestSession.body as { tableSessionToken: string }).tableSessionToken;
-    const otherGuestToken = (otherGuestSession.body as { tableSessionToken: string }).tableSessionToken;
-
     const created = await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/orders')
       .set('Authorization', `Bearer ${fixture.token()}`)
@@ -93,12 +84,12 @@ describe('BNP-154: administrator orders and status delivery', () => {
     const otherOrderId = (otherCreated.body as { id: string }).id;
 
     guestSocket = io(serverUrl, {
-      auth: { tableSessionToken: guestToken },
+      auth: { qrToken: table.qrToken },
       forceNew: true,
       transports: ['websocket'],
     });
     otherGuestSocket = io(serverUrl, {
-      auth: { tableSessionToken: otherGuestToken },
+      auth: { qrToken: otherTable.qrToken },
       forceNew: true,
       transports: ['websocket'],
     });
