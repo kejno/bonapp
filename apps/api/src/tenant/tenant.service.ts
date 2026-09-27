@@ -53,7 +53,7 @@ export class TenantService {
     const extension = MIME_TO_EXT[contentType];
     if (!extension) throw new ConflictException('Unsupported logo format');
     return this.storage.getPresignedUploadUrl(
-      `tenants/${tenant.id}/logo.${extension}`,
+      `tenants/${tenant.id}/logos/${randomUUID()}.${extension}`,
       contentType,
     );
   }

@@ -50,6 +50,16 @@ export class AuthController {
     }
   }
 
+  @Post('initial-password')
+  @UseGuards(AuthGuard)
+  async setInitialPassword(@Req() req: AuthenticatedRequest, @Body() body: unknown): Promise<{ success: true }> {
+    const password = body && typeof body === 'object' ? (body as Record<string, unknown>).password : undefined;
+    if (typeof password !== 'string') throw new BadRequestException('Укажите пароль');
+    const { userId, tenantId } = req.user ?? {};
+    if (!userId || !tenantId) throw new BadRequestException('Контекст авторизации отсутствует');
+    return this.authService.setInitialPassword(userId, tenantId, password);
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(

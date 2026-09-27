@@ -13,6 +13,8 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import RegisterPage from './pages/RegisterPage';
+import OnboardingPage from './pages/OnboardingPage';
 import OnboardingStep2Page from './onboarding/OnboardingStep2Page';
 import OnboardingStep1Page from './pages/OnboardingStep1Page';
 import OnboardingStep3Page from './pages/OnboardingStep3Page';
@@ -43,6 +45,8 @@ function App() {
       <Router>
         <WaiterCallNotifications />
         <Routes>
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/onboarding/step-1" element={<ProtectedRoute><OnboardingStep1Page /></ProtectedRoute>} />
           <Route
             path="/login"

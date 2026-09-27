@@ -8,6 +8,7 @@ import { TenantContextService } from './tenant-context.service';
 const mockStorageService = {
   upload: jest.fn(),
   isPublicUrlForKeyPrefix: jest.fn(),
+  getPresignedUploadUrl: jest.fn(),
 };
 
 const mockPrismaService = {
@@ -177,6 +178,34 @@ describe('TenantService', () => {
 
         expect(mockStorageService.upload).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('createLogoUpload', () => {
+    it('creates a unique versioned upload key accepted by settings validation', async () => {
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue({ id: 'tenant-uuid' });
+      mockStorageService.getPresignedUploadUrl.mockImplementation((key: string) => Promise.resolve({ publicUrl: `https://cdn/bucket/${key}` }));
+      mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
+      mockPrismaService.db.tenant.update.mockResolvedValue({
+        id: 'tenant-uuid', name: 'Cafe', slug: 'cafe', brandColor: '#123456',
+        logoUrl: 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png',
+        serviceMode: 'VIEW_ONLY',
+      });
+
+      const upload = await service.createLogoUpload('tenant-uuid', 'image/png');
+      mockPrismaService.db.tenant.update.mockResolvedValue({
+        id: 'tenant-uuid', name: 'Cafe', slug: 'cafe', brandColor: '#123456',
+        logoUrl: upload.publicUrl, serviceMode: 'VIEW_ONLY',
+      });
+
+      expect(mockStorageService.getPresignedUploadUrl).toHaveBeenCalledWith(
+        expect.stringMatching(/^tenants\/tenant-uuid\/logos\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.png$/),
+        'image/png',
+      );
+      await expect(service.updateSettings('tenant-uuid', {
+        name: 'Cafe', address: null, unp: null, legalName: null,
+        brandColor: '#123456', logoUrl: upload.publicUrl, serviceMode: 'VIEW_ONLY',
+      })).resolves.toMatchObject({ logoUrl: upload.publicUrl });
     });
   });
 

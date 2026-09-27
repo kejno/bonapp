@@ -45,6 +45,7 @@ export class TenantController {
   }
 
   @Put('settings')
+  @UseGuards(AdminRoleGuard)
   async updateSettings(
     @Req() req: AuthenticatedRequest,
     @Body() body: Record<string, unknown>,

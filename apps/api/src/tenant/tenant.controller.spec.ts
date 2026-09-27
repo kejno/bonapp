@@ -65,6 +65,15 @@ describe('TenantController', () => {
     ).toContain(AdminRoleGuard);
   });
 
+  it('requires the administrative role guard to update tenant settings', () => {
+    expect(
+      Reflect.getMetadata(
+        '__guards__',
+        Reflect.get(TenantController.prototype, 'updateSettings'),
+      ),
+    ).toContain(AdminRoleGuard);
+  });
+
   describe('uploadLogo', () => {
     const tenantId = 'tenant-uuid';
     const file = {
