@@ -1,1 +1,1 @@
-Исправление уже внесено в `apps/guest-web/vite.config.ts`: Vitest исключает `**/e2e/**`. Проверил разделение запусков: `npm test` проходит, а Playwright spec отдельно проходит через `test:e2e` (1 тест).
+Добавил исключение `**/e2e/**` в `apps/guest-web/vite.config.ts`, поэтому `npm test` больше не загружает Playwright spec. Полный `npm test` и отдельный `test:e2e` для `dish-card.spec.ts` прошли.
