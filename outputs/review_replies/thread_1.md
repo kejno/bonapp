@@ -1,1 +1,1 @@
-`apps/guest-web/vite.config.ts` исключает `**/e2e/**` из поиска Vitest. Полный `npm test` прошёл (включая 14 unit-тестов guest-web), а отдельный Playwright spec `e2e/dish-card.spec.ts` прошёл: 1 тест пройден.
+Vitest исключает каталог `**/e2e/**` в `apps/guest-web/vite.config.ts`. Полный `npm test` прошёл, Playwright spec запускается отдельно через `test:e2e` и также прошёл: 1 тест.
