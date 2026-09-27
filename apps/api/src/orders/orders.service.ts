@@ -1,22 +1,26 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { OrderStatus, ServiceMode, TableStatus, UserRole } from '@prisma/client';
+import { OrderStatus, PaymentStatus, ServiceMode, TableStatus, UserRole } from '@prisma/client';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { nextDailyOrderNumber, tenantLocalDate } from './daily-order-number';
+import { normalizeBelarusPhone } from './phone-number';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
-    @Optional() private readonly menuGateway?: MenuGateway,
+    @Optional() @Inject(forwardRef(() => MenuGateway)) private readonly menuGateway?: MenuGateway,
   ) {}
 
   async findAll() {
@@ -209,16 +213,84 @@ export class OrdersService {
 
   async findOne(id: string) {
     const tenantId = this.tenantContext.getTenantId();
-    const order = await this.prisma.db.order.findFirst({ where: { id } });
+    const order = await this.prisma.db.order.findFirst({ where: { id }, include: { items: true, payments: true } });
     if (!order || order.tenantId !== tenantId) {
       throw new ForbiddenException();
     }
     return order;
   }
 
-  async create(tableId: string) {
+  async findActive() {
+    const tenantId = this.tenantContext.getTenantId();
+    const orders = await this.prisma.db.order.findMany({
+      where: {
+        tenantId,
+        status: { in: [OrderStatus.NEW, OrderStatus.COOKING, OrderStatus.READY] },
+      },
+      include: { table: true, items: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const itemIds = [...new Set(orders.flatMap((order) => order.items.map((item) => item.itemId)))];
+    const menuItems = await this.prisma.db.menuItem.findMany({
+      where: { tenantId, id: { in: itemIds } },
+      select: { id: true, name: true },
+    });
+    const names = new Map(menuItems.map((item) => [item.id, item.name]));
+
+    return orders.map((order) => {
+      const groupedItems = new Map<string, {
+        itemId: string;
+        name: string;
+        quantity: number;
+        kitchenDepartment: string;
+      }>();
+      for (const item of order.items) {
+        const key = `${item.kitchenDepartment}\u0000${item.itemId}`;
+        const grouped = groupedItems.get(key);
+        if (grouped) grouped.quantity += item.quantity;
+        else groupedItems.set(key, {
+          itemId: item.itemId,
+          name: names.get(item.itemId) ?? item.itemId,
+          quantity: item.quantity,
+          kitchenDepartment: item.kitchenDepartment,
+        });
+      }
+      return { ...order, items: [...groupedItems.values()] };
+    });
+  }
+
+  async changeStatus(id: string, status: OrderStatus) {
     const tenantId = this.tenantContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
+    if (status === OrderStatus.PAID) throw new BadRequestException('PAID requires a successful payment');
+    const updated = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const order = await tx.order.findFirst({ where: { id, tenantId } });
+      if (!order) throw new NotFoundException(`Order ${id} not found`);
+      const transitions: Partial<Record<OrderStatus, OrderStatus[]>> = {
+        [OrderStatus.NEW]: [OrderStatus.COOKING, OrderStatus.CANCELLED],
+        [OrderStatus.COOKING]: [OrderStatus.READY, OrderStatus.CANCELLED],
+        [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
+        [OrderStatus.SERVED]: [OrderStatus.CANCELLED],
+      };
+      if (!transitions[order.status]?.includes(status)) {
+        throw new BadRequestException(`Transition ${order.status} → ${status} is not allowed`);
+      }
+      const updated = await tx.order.update({ where: { id_tenantId: { id, tenantId } }, data: { status } });
+      if (status === OrderStatus.SERVED) {
+        await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.OCCUPIED } });
+      } else if (status === OrderStatus.CANCELLED) {
+        await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.AVAILABLE } });
+      }
+      return updated;
+    });
+    this.menuGateway?.emitOrderStatusChanged(tenantId, id, status);
+    return updated;
+  }
+
+  async create(tableId: string, guestPhone?: string) {
+    const tenantId = this.tenantContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException();
+    const phone = guestPhone === undefined ? undefined : normalizeBelarusPhone(guestPhone);
 
     const order = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
@@ -242,8 +314,14 @@ export class OrdersService {
         where: { id: tenantId },
         data: { dailyOrderNumber, dailyOrderNumberDate: today },
       });
+      const guest = phone === undefined ? undefined : await tx.guest.upsert({
+        where: { tenantId_phone: { tenantId, phone } },
+        create: { tenantId, phone },
+        update: {},
+        select: { id: true },
+      });
       const order = await tx.order.create({
-        data: { tenantId, tableId, dailyOrderNumber },
+        data: { tenantId, tableId, dailyOrderNumber, ...(guest && { guestId: guest.id }) },
       });
       return order;
     });
@@ -260,6 +338,10 @@ export class OrdersService {
       if (order.isPaid || order.status === OrderStatus.PAID) {
         throw new ConflictException('Order is already paid');
       }
+      const payment = await tx.payment.findFirst({
+        where: { orderId: id, tenantId, status: PaymentStatus.SUCCEEDED },
+      });
+      if (!payment) throw new ConflictException('A successful payment is required');
 
       const paidOrder = await tx.order.update({
         where: { id_tenantId: { id, tenantId } },
@@ -269,6 +351,9 @@ export class OrdersService {
         where: { id_tenantId: { id: order.tableId, tenantId } },
         data: { status: TableStatus.AVAILABLE },
       });
+      return paidOrder;
+    }).then((paidOrder) => {
+      this.menuGateway?.emitOrderStatusChanged(tenantId, id, OrderStatus.PAID);
       return paidOrder;
     });
   }
