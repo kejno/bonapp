@@ -3,10 +3,12 @@ import type { CSSProperties } from 'react'
 import { calculateUnitPrice, type SelectedModifier, useCartStore } from './cart'
 import { io } from 'socket.io-client'
 import OrderStatusPage from './OrderStatusPage'
+import { useGuestSessionStore } from './guest-session.store'
+import { createGuestManifest } from './pwa-manifest'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 type GuestSession = {
-  tenant: { id: string; name: string; currency: string; logoUrl?: string | null }
+  tenant: { id: string; name: string; currency: string; logoUrl?: string | null; brandColor?: string | null }
   table: { id: string; tableNumber: number; areaName: string }
   activeOrder: { id: string; status: string } | null
 }
@@ -22,8 +24,10 @@ export default function App() {
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
   const search = new URLSearchParams(window.location.search)
-  const qrToken = search.get('qr_token')
+  const qrToken = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)?.[1] ?? search.get('qr_token')
   const orderId = search.get('orderId')
+  const setGuestSession = useGuestSessionStore((store) => store.setSession)
+  const clearGuestSession = useGuestSessionStore((store) => store.clearSession)
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [query, setQuery] = useState('')
@@ -69,7 +73,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!qrToken) return
+    if (!qrToken) { clearGuestSession(); return }
     const controller = new AbortController()
     let sessionResolved = false
     fetch(`${API_BASE}/guest/session/${encodeURIComponent(qrToken)}`, { signal: controller.signal })
@@ -77,6 +81,10 @@ export default function App() {
       .then(async (resolvedSession) => {
         sessionResolved = true
         setSession(resolvedSession)
+        const brandColor = resolvedSession.tenant.brandColor ?? '#e0533c'
+        setGuestSession({ tenantId: resolvedSession.tenant.id, tableId: resolvedSession.table.id, tableNumber: resolvedSession.table.tableNumber, brandColor, logoUrl: resolvedSession.tenant.logoUrl ?? null })
+        document.documentElement.style.setProperty('--color-primary', brandColor)
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', brandColor)
         const configResponse = await fetch(`${API_BASE}/guest/tenant/config?tenantId=${encodeURIComponent(resolvedSession.tenant.id)}`, { signal: controller.signal })
         if (!configResponse.ok) throw new Error('Unable to load tenant config')
         setTenantConfig(await configResponse.json() as TenantConfig)
@@ -87,11 +95,11 @@ export default function App() {
       })
       .catch((requestError: unknown) => {
         if (requestError instanceof Error && requestError.name === 'AbortError') return
-        if (!sessionResolved) setError(true)
+        if (!sessionResolved) { clearGuestSession(); setError(true) }
         else setMenuError(true)
       })
     return () => controller.abort()
-  }, [qrToken])
+  }, [qrToken, clearGuestSession, setGuestSession])
 
   useEffect(() => {
     if (!qrToken) return
@@ -101,13 +109,27 @@ export default function App() {
     return () => { socket.disconnect() }
   }, [qrToken])
 
+  useEffect(() => {
+    const brandColor = tenantConfig?.brandColor ?? session?.tenant.brandColor
+    if (!brandColor || typeof URL.createObjectURL !== 'function') return
+    const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')
+    if (!manifestLink) return
+    const previousHref = manifestLink.href
+    const manifestUrl = URL.createObjectURL(new Blob([createGuestManifest(brandColor)], { type: 'application/manifest+json' }))
+    manifestLink.href = manifestUrl
+    return () => {
+      URL.revokeObjectURL(manifestUrl)
+      manifestLink.href = previousHref
+    }
+  }, [session?.tenant.brandColor, tenantConfig?.brandColor])
+
   const filteredMenu = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('ru')
     return menu.map((category) => ({ ...category, items: category.items.filter((item) => !normalized || `${item.name} ${item.description ?? ''}`.toLocaleLowerCase('ru').includes(normalized)) })).filter((category) => category.items.length > 0)
   }, [menu, query])
 
-  return <main className="min-h-svh bg-background pb-24 text-on-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as CSSProperties}>
-    {!session && <section className="flex min-h-svh items-center justify-center text-center"><div><h1 className="text-2xl font-semibold text-primary">Bonapp</h1>{qrToken && !error && <p className="mt-3">Открываем стол…</p>}{error && <p role="alert" className="mt-3">Не удалось открыть стол по QR-коду. Отсканируйте актуальный код.</p>}</div></section>}
+  return <main className="min-h-svh bg-background pb-24 text-on-background" style={{ '--color-primary': tenantConfig?.brandColor ?? session?.tenant.brandColor ?? '#e0533c' } as CSSProperties}>
+    {!session && <section className="flex min-h-svh items-center justify-center text-center"><div><h1 className="text-2xl font-semibold text-primary">Bonapp</h1>{qrToken && !error && <p className="mt-3">Открываем стол…</p>}{!qrToken && <p className="mt-3">Сканируйте QR-код</p>}{error && <p role="alert" className="mt-3">Стол не найден</p>}</div></section>}
     {session && <>
       <header className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-4"><div className="flex min-w-0 items-center gap-3">{(tenantConfig?.logoUrl || session.tenant.logoUrl) && <img src={tenantConfig?.logoUrl || session.tenant.logoUrl || ''} alt="" className="h-10 w-10 rounded-xl object-cover" />}<div className="min-w-0"><h1 className="truncate text-lg font-semibold">{session.tenant.name}</h1><p className="text-sm text-on-background/65">Стол №{session.table.tableNumber}</p></div></div></header>
       <div className="sticky top-0 z-10 border-y border-on-background/10 bg-background/95 backdrop-blur"><nav aria-label="Категории меню" className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-4 py-3">{menu.map((category) => <a key={category.id} href={`#category-${category.id}`} className="shrink-0 rounded-full bg-surface-card px-4 py-2 text-sm">{category.name}</a>)}</nav></div>

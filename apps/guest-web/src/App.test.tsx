@@ -20,6 +20,34 @@ const sessionResponse = {
 const configResponse = { logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }
 
 describe('App', () => {
+  it('shows the QR scanning prompt when opened without a token', () => {
+    render(<App />)
+
+    expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
+  })
+
+  it('opens a session from the table token route and applies the restaurant color', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...sessionResponse, tenant: { ...sessionResponse.tenant, brandColor: '#245678' } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+    window.history.pushState({}, '', '/t/e2e-token')
+
+    render(<App />)
+
+    expect(await screen.findByText('Стол №5')).toBeInTheDocument()
+    expect(document.querySelector('main')).toHaveStyle('--color-primary: #123456')
+  })
+
+  it('shows the not-found message when the table token is invalid', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    window.history.pushState({}, '', '/t/unknown-token')
+
+    render(<App />)
+
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
+  })
+
   it('renders the menu and adds a dish to the cart', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
