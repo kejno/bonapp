@@ -7,6 +7,7 @@ describe('OrdersController', () => {
   const ordersService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    updateStatus: jest.fn(),
   };
   const menuGateway = { emitOrderCreated: jest.fn(), emitOrderStatusChanged: jest.fn() };
   const controller = new OrdersController(
@@ -46,5 +47,12 @@ describe('OrdersController', () => {
         controller.findOne('other-tenant-order-id'),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+  });
+
+  it('does not allow the generic status endpoint to bypass payment processing', async () => {
+    await expect(controller.updateStatus('order-1', { status: 'PAID' })).rejects.toThrow(
+      'Valid unpaid order status is required',
+    );
+    expect(ordersService.updateStatus).not.toHaveBeenCalled();
   });
 });

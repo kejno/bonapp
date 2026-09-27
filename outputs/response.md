@@ -1,30 +1,30 @@
-# Исправления PR #146
+# Исправление PR #150
 
 ## Issues/Notes
 
-- Исправлена маршрутизация `tenant:service_mode_changed`: событие отправляется в комнаты кухни и зала, к которым подключается персонал.
-- Входящие замечания по проверке перехода статуса и JWT из query уже устранены в предыдущем изменении PR; текущий открытый тред касался только маршрутизации события.
-- В исходной локальной установке отсутствовал `@socket.io/redis-adapter`; зависимости восстановлены командой `npm install --ignore-scripts --no-audit --no-fund`, Prisma Client сгенерирован через `npx prisma generate --schema apps/api/prisma/schema.prisma`.
-- CI-логи и файл конфликтов слияния в `.dmtools/input/BNP-155/` отсутствуют, поэтому локально проверены доступные материалы и текущая ветка.
+- Закрыта открытая блокирующая тема KDS: позиция, добавленная гостем в заказ со статусом `COOKING`, теперь сохраняется на текущей стадии заказа. Благодаря этому она участвует в штатном переходе кухни к `SERVED`.
+- После успешного завершения транзакции сервер отправляет в комнату кухни событие `order:updated`; KDS перечитывает заказ и получает добавленную позицию.
+- Целевой e2e-набор `kds-order-status.e2e-spec.ts` запускался, но его приложение не стартовало: Nest не может разрешить `OrdersService` для `MenuGateway` в `TenantModule`. Полный `npm test` этот e2e-набор не включает. Ошибка отмечена как ограничение проверки.
+- В `input/BNP-144/` отсутствуют файлы CI-ошибок, конфликтов и `pr_files.txt`. Файл `instruction.md` отсутствует; инструкции проекта взяты из корневого `CLAUDE.md`.
 
 ## Approach
 
-- Добавлен регрессионный тест с проверкой события и обеих целевых комнат.
-- Сначала тест воспроизвёл дефект: событие уходило в `tenant:<id>`. Затем Gateway был исправлен на отправку в `tenant_<id>_kitchen` и `tenant_<id>_hall`.
+- Добавил регрессионный тест на дозаказ в готовящийся заказ: проверяется стадия новой позиции и отправка обновления после возврата транзакции.
+- Сверил вызовы `addOrderItem` и `emitKitchenOrder` через `rg` в `apps/api/src` и `apps/guest-web/src`; дополнительный потребитель или другой поток изменения позиции не найден. CodeGraph недоступен.
+- Изменения схемы и миграций не требовались. Из четырёх записей в `pr_discussions_raw.json` открыта одна inline-тема; остальные три уже разрешены. Создан ответ для открытой темы.
 
 ## Files Modified
 
-- `apps/api/src/menu/menu.gateway.ts` — маршрутизация события смены режима обслуживания в обе комнаты персонала.
-- `apps/api/src/menu/menu.gateway.spec.ts` — регрессионный тест маршрутизации.
-- `outputs/response.md` — отчёт о rework.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый review-тред.
+- `apps/api/src/guest-session/guest-session.service.ts` — сохраняет новую позицию в текущем статусе активного заказа и уведомляет KDS после транзакции.
+- `apps/api/src/guest-session/guest-session.service.spec.ts` — регрессионный тест сценария дозаказа.
+- `outputs/response.md` — сводка исправления и проверок.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_4.md` — ответ на открытый review-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки состава файлов и рабочей копии.
-- `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts` — успешно.
+- RED: целевой тест сначала падал, потому что позиция создавалась со статусом `NEW` вместо `COOKING`.
+- `npx eslint apps/api/src/guest-session/guest-session.module.ts apps/api/src/guest-session/guest-session.service.spec.ts apps/api/src/guest-session/guest-session.service.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API — 56 наборов и 525 тестов; admin-web — 28 файлов и 76 тестов; guest-web — 1 файл и 3 теста. Команда также запустила сборку и проверку design tokens.
-- `npm run test:design-tokens` — успешно; сборка трёх приложений и проверка design tokens завершились.
-- `git diff --check` — успешно.
-- Blast-radius check для Prisma: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только новую миграцию (существующие миграции не изменены); `rg` по `tableSession`/`table_sessions` проверил все вызовы в `apps/api/src` и модель схемы.
+- `npm test` — успешно: API: 59 наборов и 536 тестов; admin-web: 29 файлов и 80 тестов; guest-web: 3 файла и 11 тестов. В команде также прошли сборки и проверка design tokens.
+- `npm run test:e2e --workspace=@bonapp/api -- --runInBand test/kds-order-status.e2e-spec.ts` — не прошёл на старте Nest-приложения из-за отсутствующей зависимости `OrdersService` в `TenantModule`; см. примечание выше.
+- `git diff --check` и поиск blast radius по `addOrderItem`/`emitKitchenOrder` — успешно. Миграций в PR нет.

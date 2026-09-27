@@ -94,21 +94,34 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
   private async joinOrderRoom(socket: Socket, value: unknown): Promise<string> {
     const data = record(value);
     const orderId = data['orderId'];
-    const token = record(socket.handshake.auth)['tableSessionToken'];
-    if (typeof orderId !== 'string' || typeof token !== 'string') throw new Error('Invalid join payload');
-    const session = await this.prisma.unscopedClient.tableSession.findFirst({
-      where: { tokenHash: hashToken(token), expiresAt: { gt: new Date() }, revokedAt: null },
-      select: { id: true, tenantId: true, tableId: true },
-    });
-    if (!session) throw new Error('Invalid table session');
-    const order = await this.prisma.forTenant(session.tenantId).order.findFirst({
-      where: { id: orderId, tableId: session.tableId, status: { notIn: ['PAID', 'CANCELLED'] } },
+    const auth = record(socket.handshake.auth);
+    if (typeof orderId !== 'string') throw new Error('Invalid join payload');
+    const qrToken = auth['qrToken'];
+    const sessionToken = auth['tableSessionToken'];
+    let tenantId: string;
+    let tableId: string;
+    if (typeof qrToken === 'string') {
+      const table = await this.prisma.findTableByQrToken(qrToken);
+      if (!table) throw new Error('Invalid table session');
+      tenantId = table.tenantId;
+      tableId = table.id;
+    } else if (typeof sessionToken === 'string') {
+      const session = await this.prisma.unscopedClient.tableSession.findFirst({
+        where: { tokenHash: hashToken(sessionToken), expiresAt: { gt: new Date() }, revokedAt: null },
+        select: { id: true, tenantId: true, tableId: true },
+      });
+      if (!session) throw new Error('Invalid table session');
+      tenantId = session.tenantId;
+      tableId = session.tableId;
+      (socket.data as Record<string, unknown>)['guestSessionId'] = session.id;
+    } else throw new Error('Invalid table session');
+    const order = await this.prisma.forTenant(tenantId).order.findFirst({
+      where: { id: orderId, tableId, status: { notIn: ['PAID', 'CANCELLED'] } },
       select: { id: true },
     });
     if (!order) throw new Error('Order is not part of this active table session');
     const room = `order_${order.id}`;
     await socket.join(room);
-    (socket.data as Record<string, unknown>)['guestSessionId'] = session.id;
     return room;
   }
 
@@ -150,7 +163,7 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     const order = await this.ordersService.updateKitchenStatusForTenant(
       staff.tenantId, data['orderId'], 'COOKING', data['department'], staff.userId, UserRole.CHEF,
     );
-    this.emitOrderStatusChanged(staff.tenantId, order.id, order.status);
+    this.emitOrderStatusChanged(staff.tenantId, order.id, order.status, order);
   }
 
   emitOrderCreated(tenantId: string, order: unknown): void {
@@ -158,8 +171,19 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     this.io.to(`tenant_${tenantId}_hall`).emit('order:created', order);
   }
 
-  emitOrderStatusChanged(tenantId: string, orderId: string, status: string): void {
-    const event = { orderId, status };
+  emitOrderStatusChanged(tenantId: string, orderId: string, status: string, details?: { dailyOrderNumber?: number; updatedAt?: Date }): void {
+    const event: Record<string, unknown> = {
+      id: orderId,
+      orderId,
+      status,
+    };
+    if (details?.updatedAt) event['updatedAt'] = details.updatedAt.toISOString();
+    if (details?.dailyOrderNumber !== undefined) event['dailyOrderNumber'] = details.dailyOrderNumber;
+    if (details?.updatedAt) {
+      event['estimatedReadyAt'] = status === 'COOKING'
+        ? new Date(details.updatedAt.getTime() + 12 * 60_000).toISOString()
+        : null;
+    }
     this.io.to(`order_${orderId}`).emit('order:status_changed', event);
     if (status === 'NEW' || status === 'COOKING') this.io.to(`tenant_${tenantId}_kitchen`).emit('order:status_changed', event);
     if (status === 'READY') this.io.to(`tenant_${tenantId}_hall`).emit('order:status_changed', event);
