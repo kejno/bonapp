@@ -5,6 +5,7 @@ test('adds a dish with a modifier and increments the cart counter', async ({ pag
     tenant: { id: 'tenant-1', name: 'Тестовый ресторан', currency: 'BYN' },
     table: { tableNumber: 5, areaName: 'Зал' }, activeOrder: null,
   } }))
+  await page.route('**/api/v1/guest/tenant/config?tenantId=tenant-1', (route) => route.fulfill({ json: { logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' } }))
   await page.route('**/api/v1/guest/menu?tenantId=tenant-1', (route) => route.fulfill({ json: [{
     id: 'category-1', name: 'Пицца', items: [{ id: 'pizza-1', name: 'Маргарита', priceByn: 20, modifierGroups: [{ modifierGroup: {
       id: 'size', name: 'Размер', isRequired: true, minSelection: 1, maxSelection: 1,
