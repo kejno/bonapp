@@ -517,8 +517,35 @@ function action(params) {
     try {
         const actualParams = params.ticket ? params : (params.jobParams || params);
         const ticketKey = actualParams.ticket.key;
-        const fixSummary = actualParams.response || '_(No fix summary generated)_';
         var config = configLoader.loadProjectConfig(params.jobParams || params);
+        let fixSummary = actualParams.response || '_(No fix summary generated)_';
+        // params.response (the dmtools runner's own read of the CLI's result) has
+        // been observed reporting "interrupted" even when the CLI transcript
+        // proves outputs/response.md was written and the CLI exited cleanly
+        // (turn.completed, no errors). Confirmed firsthand on BNP-156, BNP-165
+        // and BNP-141: each "Rework Interrupted" cycle's own CLI log showed the
+        // agent writing response.md/review_replies.json and reporting success,
+        // yet the ticket was bounced back to In Rework anyway — sometimes
+        // repeatedly, burning CI/token time on a false alarm and never reaching
+        // In Review. When that happens, prefer the real file (read through the
+        // same multi-cwd-aware fallback review_replies.json already trusts
+        // below — see outputFiles.js's own comment on why a file can land in
+        // one of three different cwds) over the runner's stale/wrong reading of
+        // it, so both the "is this actually interrupted?" check further down
+        // and the PR/Jira comments carry the agent's real summary instead of a
+        // bogus "interrupted" message.
+        if (isInterruptedReworkResponse(fixSummary)) {
+            var onDiskResponse = null;
+            try {
+                onDiskResponse = outputFiles.readOutputFile('response.md', { ticketKey: ticketKey, workingDir: config.workingDir || null });
+            } catch (e) {
+                console.warn('Could not check outputs/response.md on disk:', e && e.toString ? e.toString() : String(e));
+            }
+            if (onDiskResponse && onDiskResponse.trim().length > 50) {
+                console.log('params.response looked interrupted, but outputs/response.md exists on disk with real content — using the file instead.');
+                fixSummary = onDiskResponse;
+            }
+        }
         var scm = scmModule.createScm(config);
         const _customParams = resolveCustomParams(params, actualParams, config);
         const statuses = resolveStatuses(_customParams);

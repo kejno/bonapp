@@ -80,7 +80,7 @@ describe('MenuService', () => {
         },
       ],
     },
-    { id: 'category-2', items: [{ id: 'item-2', stopListItem: null, modifierGroups: [] }] },
+    { id: 'category-2', items: [{ id: 'item-2', modifierGroups: [] }] },
   ];
 
   let prisma: {
@@ -128,6 +128,23 @@ describe('MenuService', () => {
     delete item.posItemId;
   });
 
+  it('marks a dish stopped when the stop-list relation is active', async () => {
+    cache.getJson.mockResolvedValue(null);
+    prisma.menuCategory.findMany.mockResolvedValue([{
+      id: 'category-1',
+      menuItems: [{
+        id: 'item-1',
+        isInStopList: false,
+        stopListItem: { isStopped: true },
+        menuItemModifierGroups: [],
+      }],
+    }]);
+
+    const result = await service.getGuestMenu(tenantId) as Array<{ items: Array<Record<string, unknown>> }>;
+
+    expect(result[0].items[0]).toMatchObject({ isInStopList: true, stopListItem: { isStopped: true } });
+  });
+
   it('loads and caches all categories, items, and modifiers for 60 seconds on a miss', async () => {
     cache.getJson.mockResolvedValue(null);
     prisma.menuCategory.findMany.mockResolvedValue(rawCatalog);
@@ -140,11 +157,11 @@ describe('MenuService', () => {
     expect(prisma.forTenant).toHaveBeenCalledWith(tenantId);
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith({
       where: { tenantId, isActive: true },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         menuItems: {
           where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
           include: {
             menuItemModifierGroups: {
               orderBy: { sortOrder: 'asc' },

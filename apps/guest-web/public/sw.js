@@ -1,3 +1,4 @@
+/* global self, caches, URL, fetch, Response */
 const CACHE_NAME = 'bonapp-guest-shell-v1'
 const APP_SHELL = ['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/pwa-icon.svg']
 
@@ -9,7 +10,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(Promise.all([
     self.clients.claim(),
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('bonapp-guest-') && key !== CACHE_NAME).map((key) => caches.delete(key)))),
   ]))
 })
 

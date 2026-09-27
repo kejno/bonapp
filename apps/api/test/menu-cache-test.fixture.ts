@@ -9,11 +9,13 @@ import Redis from 'ioredis';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
+import { ShiftService } from '../src/staff/shift.service';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 
 export class MenuCacheTestFixture {
   readonly tenantId = `menu-cache-${randomUUID()}`;
+  readonly qrToken = `qr-${randomUUID()}`;
   readonly categoryId = `category-${randomUUID()}`;
   readonly itemId = `item-${randomUUID()}`;
   readonly modifierGroupId = `modifier-group-${randomUUID()}`;
@@ -90,7 +92,10 @@ export class MenuCacheTestFixture {
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(ShiftService)
+      .useValue({})
+      .compile();
     this.app = module.createNestApplication();
     this.app.setGlobalPrefix('api/v1');
     await this.app.init();
@@ -98,6 +103,12 @@ export class MenuCacheTestFixture {
     await this.redis.connect();
     await this.prisma.tenant.create({
       data: { id: this.tenantId, slug: this.tenantId, name: 'Menu cache E2E' },
+    });
+    const area = await this.prisma.diningArea.create({
+      data: { tenantId: this.tenantId, name: 'Main Hall' },
+    });
+    await this.prisma.table.create({
+      data: { tenantId: this.tenantId, areaId: area.id, tableNumber: 1, qrToken: this.qrToken },
     });
     await this.prisma.menuCategory.create({
       data: {
