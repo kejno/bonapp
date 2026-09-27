@@ -101,11 +101,48 @@ describe('HallsService', () => {
             where: { status: { notIn: ['PAID', 'CANCELLED'] } },
             orderBy: { createdAt: 'desc' },
             take: 1,
-            select: { id: true, status: true, totalAmountByn: true, guestSessionId: true },
+            select: {
+              id: true,
+              status: true,
+              totalAmountByn: true,
+              guestSessionId: true,
+              assignedWaiterId: true,
+            },
           },
         },
       });
       expect(result).toBe(tables);
+    });
+
+    it('returns only tables assigned to the requested waiter', async () => {
+      const allTables = [
+        { id: 'own-table', orders: [{ assignedWaiterId: 'waiter-1' }] },
+        { id: 'other-table', orders: [{ assignedWaiterId: 'waiter-2' }] },
+        { id: 'unassigned-table', orders: [] },
+      ];
+      prisma.table.findMany.mockImplementation((query: {
+        where?: { orders?: { some?: { assignedWaiterId?: string } } };
+        include?: { orders?: { where?: { assignedWaiterId?: string } } };
+      }) =>
+        Promise.resolve(allTables
+          .filter((table) => table.orders.some((order) =>
+            order.assignedWaiterId === query.where?.orders?.some?.assignedWaiterId,
+          ))
+          .map((table) => ({
+            ...table,
+            orders: table.orders.filter((order) =>
+              order.assignedWaiterId === query.include?.orders?.where?.assignedWaiterId,
+            ),
+          }))),
+      );
+
+      const result = await service.listTables('tenant-1', 'waiter-1');
+
+      expect(result).toEqual([{
+        id: 'own-table',
+        orders: [{ assignedWaiterId: 'waiter-1' }],
+        assignedWaiterId: 'waiter-1',
+      }]);
     });
   });
 
