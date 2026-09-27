@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
-import { INestApplication } from '@nestjs/common';
+import { forwardRef, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
@@ -10,6 +10,8 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
 import { ShiftService } from '../src/staff/shift.service';
+import { MenuModule } from '../src/menu/menu.module';
+import { GuestSessionModule } from '../src/guest-session/guest-session.module';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 
@@ -32,6 +34,17 @@ export class MenuCacheTestFixture {
   private previousEnvironment: Record<string, string | undefined> = {};
 
   async start(): Promise<void> {
+    // MenuModule and GuestSessionModule import each other. Preserve the production
+    // module graph while marking the back-reference as a forward reference for Nest.
+    const menuImports = Reflect.getMetadata('imports', MenuModule) as unknown[];
+    if (menuImports[1] === undefined) {
+      Reflect.defineMetadata(
+        'imports',
+        [menuImports[0], forwardRef(() => GuestSessionModule), ...menuImports.slice(2)],
+        MenuModule,
+      );
+    }
+
     this.postgresContainer = this.docker(
       'run',
       '--detach',

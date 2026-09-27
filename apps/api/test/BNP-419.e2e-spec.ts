@@ -12,6 +12,7 @@ describe('BNP-419: guest order room', () => {
     const auth = { Authorization: `Bearer ${fixture.token()}` };
     const order = await request(fixture.app.getHttpServer()).post('/api/v1/admin/orders').set(auth)
       .send({ tableId: fixture.tableId, phone: '+375291234570' }).expect(201) as unknown as { body: { id: string } };
+    await fixture.app.listen(0);
     const address = (fixture.app.getHttpServer() as unknown as Server).address();
     if (!address || typeof address === 'string') throw new Error('HTTP server address unavailable');
     const socket = createSocket(`http://127.0.0.1:${address.port}`, { transports: ['websocket'], auth: { qrToken: fixture.qrToken } });
