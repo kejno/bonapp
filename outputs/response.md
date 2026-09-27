@@ -2,29 +2,28 @@
 
 ## Issues/Notes
 
-- Разрешён конфликт `apps/admin-web/src/App.tsx`: сохранены маршруты шага 1 из `main` и полноценная страница шага 2 из PR; временная заглушка шага 2 удалена.
-- Все четыре inline review-треда в `input/BNP-136/pr_discussions_raw.json` разрешены; дополнительных открытых inline-тредов нет.
-- CI отчёты, `pr_files.txt` и отдельный `ticket.md` в предоставленном контексте отсутствуют; требования сверены с `request.md`.
-- В checkout обнаружены только конфликты в `App.tsx` и этом отчёте; конфликтов схемы, миграций и других файлов нет.
+- Исправлена проверка `logoUrl` при сохранении первого шага онбординга: сервер теперь принимает только URL публичного хранилища текущего заведения с именем файла в формате UUID и допустимым расширением.
+- В исходном контексте нет `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и отдельного `ticket.md`; требования сверены с `request.md`.
+- Четыре inline-треда с `threadId` и `rootCommentId` в `pr_discussions_raw.json` уже разрешены. Последнее замечание доступно только как текст без идентификаторов треда; адресный ответ для него сформировать нельзя.
 
 ## Approach
 
-- Объединил маршруты onboarding шагов 1 и 2, удалив дубликат маршрута и заглушку.
-- Удалил устаревший конфликтующий отчёт BNP-135, оставив сведения только о текущем PR.
-- Ответы на inline-треды не требуются, поскольку все четыре треда имеют `resolved: true`.
+- Сначала добавлен регрессионный тест: он воспроизводил принятие внешнего URL до исправления.
+- Проверку tenant-префикса и имени файла вынес в общий метод `TenantService` и применил как при сохранении настроек, так и при сохранении шага 1 онбординга.
+- Схема БД, миграции и публичные сигнатуры не менялись; дополнительная проверка blast radius не требовалась.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — объединены маршруты onboarding шагов 1 и 2.
-- `outputs/response.md` — записаны результаты разрешения конфликтов и проверок.
-- `outputs/review_replies.json` — пустой список ответов для закрытых тредов.
-- Удалён устаревший `outputs/review_replies/thread_1.md`, относящийся к другому PR.
+- `apps/api/src/tenant/tenant.service.ts` — общая проверка URL логотипа, подключённая к шагу 1 и существующему сохранению настроек.
+- `apps/api/src/tenant/tenant.service.spec.ts` — регрессионный тест для URL из внешнего домена.
+- `outputs/response.md` — результаты доработки и проверок.
+- `outputs/review_replies.json` — пустой список, так как открытых адресных inline-тредов нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена для проверки состава PR.
-- `git status --short` — проверен; изменения конфликта подготовлены к индексации.
-- `git diff --cached --check` — успешно; конфликтных маркеров не осталось.
-- `npx eslint apps/admin-web/src/App.tsx` — успешно.
+- RED/GREEN: `npm test --workspace @bonapp/api -- --runInBand src/tenant/tenant.service.spec.ts` — тест падал до исправления и прошёл после; всего 22 теста прошли.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; проверен исходный состав PR и текущие изменённые файлы.
+- `npx eslint apps/api/src/tenant/tenant.service.ts apps/api/src/tenant/tenant.service.spec.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 65 наборов / 567 тестов, admin-web 34 файла / 88 тестов, guest-web 8 файлов / 26 тестов; production-сборки и проверка design tokens также прошли.
+- `npm test` — успешно: API 65 наборов / 568 тестов, admin-web 34 файла / 88 тестов, guest-web 8 файлов / 26 тестов; проверки design tokens и сборки также завершились успешно.
+- `git diff --check` — успешно.

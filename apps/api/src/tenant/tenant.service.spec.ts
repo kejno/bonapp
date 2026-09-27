@@ -241,6 +241,15 @@ describe('TenantService', () => {
       mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe' });
     });
 
+    it('rejects a logo URL outside the current tenant storage namespace', async () => {
+      await expect(
+        service.saveOnboardingStep1('tenant-uuid', {
+          ...validProfile,
+          logoUrl: 'https://attacker.example/logo.png',
+        }),
+      ).rejects.toThrow('Invalid logo URL');
+    });
+
     it.each([
       ['name', { ...validProfile, name: '   ' }],
       ['legal name', { ...validProfile, legalName: '   ' }],

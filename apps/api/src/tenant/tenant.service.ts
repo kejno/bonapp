@@ -58,6 +58,19 @@ export class TenantService {
     );
   }
 
+  private validateLogoUrl(tenantId: string, logoUrl: string): void {
+    const keyPrefix = `tenants/${tenantId}/logos/`;
+    const fileName = logoUrl.split('/').pop() ?? '';
+    if (
+      !this.storage.isPublicUrlForKeyPrefix(logoUrl, keyPrefix) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp|svg)$/i.test(
+        fileName,
+      )
+    ) {
+      throw new BadRequestException('Invalid logo URL');
+    }
+  }
+
   async saveOnboardingStep1(tenantId: string, data: {
     name: string; slug: string; legalName: string; unp: string; address: string;
     brandColor: string; logoUrl?: string;
@@ -68,6 +81,7 @@ export class TenantService {
     if (!/^#[\da-f]{6}$/i.test(data.brandColor)) {
       throw new BadRequestException('Некорректный цвет бренда');
     }
+    if (data.logoUrl) this.validateLogoUrl(tenantId, data.logoUrl);
     if (!/^[a-z0-9-]{3,50}$/.test(data.slug)) {
       throw new ConflictException('Некорректный адрес заведения');
     }
@@ -126,16 +140,7 @@ export class TenantService {
     },
   ) {
     if (settings.logoUrl !== null) {
-      const keyPrefix = `tenants/${tenantId}/logos/`;
-      const fileName = settings.logoUrl.split('/').pop() ?? '';
-      if (
-        !this.storage.isPublicUrlForKeyPrefix(settings.logoUrl, keyPrefix) ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp|svg)$/i.test(
-          fileName,
-        )
-      ) {
-        throw new BadRequestException('Invalid logo URL');
-      }
+      this.validateLogoUrl(tenantId, settings.logoUrl);
     }
     const tenant = await this.prisma.db.tenant.update({
       where: { id: tenantId },
