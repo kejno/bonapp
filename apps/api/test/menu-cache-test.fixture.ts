@@ -80,6 +80,7 @@ export class MenuCacheTestFixture {
       DATABASE_URL: this.databaseUrl,
       REDIS_HOST: '127.0.0.1',
       REDIS_PORT: redisPort,
+      REDIS_URL: `redis://127.0.0.1:${redisPort}`,
       JWT_SECRET: 'menu-cache-e2e-secret',
       S3_ENDPOINT: 'http://localhost:9000',
       S3_BUCKET: 'bonapp',
