@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import type { AddressInfo } from 'node:net';
+import type { Server } from 'socket.io';
 import { io, type Socket } from 'socket.io-client';
 import { UserRole } from '@prisma/client';
 import { MenuGateway } from '../src/menu/menu.gateway';
@@ -62,11 +63,24 @@ describe('waiter:called tenant isolation', () => {
     otherTenantSocket = connectStaff('tenant-2');
     await Promise.all([waitForConnection(tenantSocket), waitForConnection(otherTenantSocket)]);
 
-    const tenantDelivery = new Promise<unknown>((resolve) => tenantSocket?.once('waiter:called', resolve));
-    const otherTenantEvents: unknown[] = [];
-    otherTenantSocket?.on('waiter:called', (event) => otherTenantEvents.push(event));
+    const gateway = app.get(MenuGateway);
+    const socketServer = (gateway as unknown as { io: Server }).io;
+    const tenantSocketId = tenantSocket.id;
+    const otherTenantSocketId = otherTenantSocket.id;
+    if (!tenantSocketId || !otherTenantSocketId) {
+      throw new Error('Connected staff sockets must have an id');
+    }
+    const tenantRoom = socketServer.sockets.adapter.rooms.get('tenant_tenant-1_hall');
+    const otherTenantRoom = socketServer.sockets.adapter.rooms.get('tenant_tenant-2_hall');
 
-    app.get(MenuGateway).emitWaiterCalled('tenant-1', {
+    expect(tenantRoom?.has(tenantSocketId)).toBe(true);
+    expect(tenantRoom?.has(otherTenantSocketId)).toBe(false);
+    expect(otherTenantRoom?.has(otherTenantSocketId)).toBe(true);
+    expect(otherTenantRoom?.has(tenantSocketId)).toBe(false);
+
+    const tenantDelivery = new Promise<unknown>((resolve) => tenantSocket?.once('waiter:called', resolve));
+
+    gateway.emitWaiterCalled('tenant-1', {
       tableId: 'table-4',
       tableNumber: 4,
       reason: 'NEED_BILL',
@@ -77,9 +91,18 @@ describe('waiter:called tenant isolation', () => {
       tableNumber: 4,
       reason: 'NEED_BILL',
     });
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(otherTenantSocket?.connected).toBe(true);
-    expect(otherTenantEvents).toHaveLength(0);
+
+    const otherTenantDelivery = new Promise<unknown>((resolve) => otherTenantSocket?.once('waiter:called', resolve));
+    gateway.emitWaiterCalled('tenant-2', {
+      tableId: 'table-8',
+      tableNumber: 8,
+      reason: 'CALL_STAFF',
+    });
+    await expect(otherTenantDelivery).resolves.toEqual({
+      tableId: 'table-8',
+      tableNumber: 8,
+      reason: 'CALL_STAFF',
+    });
   }, 10_000);
 });
 
