@@ -2,29 +2,27 @@
 
 ## Issues/Notes
 
-- Последнее ревью не выявило новых замечаний; четыре адресуемых inline-треда в подготовленном JSON помечены закрытыми.
-- Разрешены конфликты после обновления от `main`: сохранены маршруты регистрации и онбординга, экран шага 2, а также модули регистрации и POS-онбординга.
-- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt` и отдельный `ticket.md`; требования сверены с `request.md`.
+- Актуальное ревью в локальной истории не содержит новых замечаний по коду. Все четыре адресуемых inline-треда в `pr_discussions_raw.json` закрыты; общие комментарии ревью не являются открытыми inline-тредами.
+- В `input/BNP-136` нет `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и отдельного `ticket.md`. Требования сверены с `request.md`.
+- Код PR в этом раунде не менялся; checkout уже содержит проверенный head `c9a1d36d`.
 
 ## Approach
 
-- Объединил независимые импорты из обеих сторон конфликтов; существующие функциональные изменения не удалялись.
-- Проверил маркеры конфликтов и staged/unstaged diff; разрешённые файлы добавлены в индекс.
-- Проверил использования POS-полей и подключённых модулей поиском `rg` по `apps/` и `packages/` (CodeGraph недоступен).
-- Проверил миграции относительно `origin/main`: добавлена POS-миграция, регистрационная миграция из `main` сохранена; существующие миграции не изменялись.
+- Сверил список изменений PR относительно `origin/main`, состояние рабочей копии и последние обсуждения.
+- Проверил изменения POS-онбординга и тесты; повторный запуск импорта использует условный переход состояния, POS-запросы ограничены allowlist и проверенным публичным IPv4 без перенаправлений.
+- Проверил потребителей `dailyOrderNumberDate` и POS-полей поиском `rg` в `apps/` и `packages/` (CodeGraph недоступен).
+- Проверил миграции относительно `origin/main`: POS-миграция добавлена новой; существующие миграции не изменены.
 
 ## Files Modified
 
-- `apps/admin-web/src/App.tsx` — сохранены маршруты регистрации, базового онбординга и шага 2.
-- `apps/api/src/app.module.ts` — подключены модули публичной регистрации и POS-онбординга.
 - `outputs/response.md` — результаты повторной проверки.
 - `outputs/review_replies.json` — пустой список, поскольку открытых inline-тредов нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `git diff --check` и `git diff --cached --check` — успешно; конфликтных маркеров в разрешённых файлах нет.
-- `npx eslint apps/admin-web/src/App.tsx apps/api/src/app.module.ts` — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; до обновления отчёта рабочая копия была чистой.
+- `npx eslint` для изменённых TypeScript/TSX файлов PR — успешно, 0 ошибок и 2 предупреждения в `apps/api/src/onboarding/onboarding.service.ts`.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 67 наборов / 576 тестов, admin-web 35 файлов / 89 тестов, guest-web 8 файлов / 26 тестов; production-сборки и проверка design tokens также прошли.
-- Blast radius: поиском `rg` проверены все найденные потребители POS-полей и оба модуля; миграции проверены относительно `origin/main`, существующие не менялись.
+- `git diff --check origin/main...HEAD` — успешно.
+- Blast radius: поиском `rg` проверены потребители полей POS и `dailyOrderNumberDate`; единственное изменение миграций — новая `20260927000001_add_pos_onboarding/migration.sql`.
