@@ -9,14 +9,29 @@ import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('BNP-439: отклонение некорректной гостевой корзины', () => {
   let app: INestApplication;
+  const menuItemFindFirst = jest.fn();
+  const orderCreate = jest.fn();
+  const emitKitchenOrder = jest.fn();
+  const tx = {
+    tenant: {
+      findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC', dailyOrderNumber: 0, dailyOrderNumberDate: null, serviceMode: 'TABLE_SERVICE' }),
+      update: jest.fn(),
+    },
+    $executeRaw: jest.fn(),
+    menuItem: { findFirst: menuItemFindFirst },
+    order: { create: orderCreate },
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [GuestOrdersController],
       providers: [
         GuestSessionService,
-        { provide: PrismaService, useValue: {} },
-        { provide: MenuGateway, useValue: { emitKitchenOrder: jest.fn() } },
+        {
+          provide: PrismaService,
+          useValue: { transactionForTenant: (_tenantId: string, callback: (transaction: typeof tx) => unknown) => callback(tx) },
+        },
+        { provide: MenuGateway, useValue: { emitKitchenOrder } },
       ],
     })
       .overrideGuard(GuestSessionGuard)
@@ -37,21 +52,57 @@ describe('BNP-439: отклонение некорректной гостево�
     await app?.close();
   });
 
-  it('отклоняет пустую корзину и возвращает 400', async () => {
-    await request(app.getHttpServer() as never)
-      .post('/api/v1/guest/orders')
-      .set('X-QR-Token', 'qr-439')
-      .send({ qrToken: 'qr-439', comment: '', items: [] })
-      .expect(400)
-      .then((response) => expect((response.body as { message?: string }).message).toBe('Cart cannot be empty'));
+  beforeEach(() => {
+    menuItemFindFirst.mockReset();
+    orderCreate.mockClear();
+    emitKitchenOrder.mockClear();
   });
 
-  it('отклоняет некорректное количество позиции', async () => {
-    await request(app.getHttpServer() as never)
+  async function expectRejectedWithoutSideEffects(body: Record<string, unknown>, message: string) {
+    const response = await request(app.getHttpServer() as never)
       .post('/api/v1/guest/orders')
       .set('X-QR-Token', 'qr-439')
-      .send({ qrToken: 'qr-439', comment: '', items: [{ menuItemId: 'dish-1', quantity: 0, selectedModifiers: [] }] })
-      .expect(400)
-      .then((response) => expect((response.body as { message?: string }).message).toBe('Invalid order item'));
+      .send({ qrToken: 'qr-439', comment: '', ...body })
+      .expect(400);
+
+    expect((response.body as { message: string }).message).toBe(message);
+    expect(orderCreate).not.toHaveBeenCalled();
+    expect(emitKitchenOrder).not.toHaveBeenCalled();
+  }
+
+  it('отклоняет пустую корзину без создания заказа и события', async () => {
+    await expectRejectedWithoutSideEffects({ items: [] }, 'Cart cannot be empty');
+    expect(menuItemFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('отклоняет блюдо без обязательного модификатора без создания заказа и события', async () => {
+    menuItemFindFirst.mockResolvedValue({
+      id: 'dish-required-modifier',
+      name: 'Блюдо с обязательным модификатором',
+      priceByn: 12,
+      kitchenDepartment: 'HOT',
+      menuItemModifierGroups: [],
+      modifierGroups: [{
+        id: 'required-group',
+        isActive: true,
+        isRequired: true,
+        minSelection: 1,
+        maxSelection: 1,
+        modifierOptions: [{ id: 'modifier-option', extraPriceByn: 0, isActive: true }],
+      }],
+      stopListItem: { isStopped: false },
+    });
+
+    await expectRejectedWithoutSideEffects({
+      items: [{ menuItemId: 'dish-required-modifier', quantity: 1, selectedModifiers: [] }],
+    }, 'Required modifiers are missing for Блюдо с обязательным модификатором');
+  });
+
+  it('отклоняет блюдо из стоп-листа без создания заказа и события', async () => {
+    menuItemFindFirst.mockResolvedValue(null);
+
+    await expectRejectedWithoutSideEffects({
+      items: [{ menuItemId: 'dish-in-stop-list', quantity: 1, selectedModifiers: [] }],
+    }, 'One or more menu items are unavailable');
   });
 });
