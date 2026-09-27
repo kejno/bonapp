@@ -44,9 +44,13 @@ describe('OrdersService KDS', () => {
   ];
   const orderUpdate = jest.fn();
   const orderItemUpdate = jest.fn();
-  const findKitchenOrders = jest.fn((filter: KitchenOrdersFilter) =>
-    orders.filter((order) => filter.where.status.in.includes(order.status)),
-  );
+  const findKitchenOrders = jest
+    .fn<Promise<unknown[]>, [KitchenOrdersFilter]>()
+    .mockImplementation((filter) =>
+      Promise.resolve(
+        orders.filter((order) => filter.where.status.in.includes(order.status)),
+      ),
+    );
   const transaction = {
     order: {
       findFirst: jest.fn().mockResolvedValue(orders[0]),
@@ -164,4 +168,28 @@ describe('OrdersService KDS', () => {
 
     expect(lifecycle).toEqual(['commit', 'emit']);
   });
+
+  it('aggregates repeated items by menu item and kitchen department per order', async () => {
+    const activeOrders = [{
+      id: 'active-1',
+      status: OrderStatus.NEW,
+      items: [
+        { itemId: 'dish-1', quantity: 2, kitchenDepartment: 'HOT' },
+        { itemId: 'dish-1', quantity: 3, kitchenDepartment: 'HOT' },
+        { itemId: 'dish-1', quantity: 1, kitchenDepartment: 'COLD' },
+      ],
+    }];
+    prisma.db.order.findMany.mockResolvedValue(activeOrders);
+
+    const result = await service.findActive() as Array<{
+      id: string;
+      items: Array<{ itemId: string; name: string; quantity: number; kitchenDepartment: string }>;
+    }>;
+
+    expect(result[0].items).toEqual([
+      { itemId: 'dish-1', name: 'Суп', quantity: 5, kitchenDepartment: 'HOT' },
+      { itemId: 'dish-1', name: 'Суп', quantity: 1, kitchenDepartment: 'COLD' },
+    ]);
+  });
+
 });

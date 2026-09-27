@@ -45,15 +45,7 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     this.io.on('connection', (socket) => {
       this.registerHandlers(socket);
       const auth = record(socket.handshake.auth);
-      if (typeof auth['qrToken'] === 'string') {
-        void this.prisma.findTableByQrToken(auth['qrToken']).then((table) => {
-          if (table) return socket.join(`tenant:${table.tenantId}`);
-          socket.disconnect(true);
-        }).catch((error: unknown) => {
-          this.logger.warn(`Rejected QR menu connection: ${String(error)}`);
-          socket.disconnect(true);
-        });
-      } else if (typeof auth['accessToken'] === 'string') {
+      if (typeof auth['accessToken'] === 'string') {
         void this.joinTenantRoom(socket, {
           room: 'hall',
           authorization: `Bearer ${auth['accessToken']}`,
@@ -132,6 +124,7 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     const query = record(socket.handshake.query);
     const authorization = typeof data['authorization'] === 'string' ? data['authorization'] :
       typeof auth['authorization'] === 'string' ? auth['authorization'] :
+        typeof auth['accessToken'] === 'string' ? `Bearer ${auth['accessToken']}` :
         typeof auth['token'] === 'string' ? `Bearer ${auth['token']}` :
           typeof query['token'] === 'string' ? `Bearer ${query['token']}` :
             typeof query['authorization'] === 'string' ? query['authorization'] : headers.authorization;
@@ -146,6 +139,12 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     if (!user) throw new Error('Invalid staff session');
     const requested = data['room'];
     if (requested !== 'kitchen' && requested !== 'hall') throw new Error('Invalid tenant room');
+    if (
+      requested === 'kitchen' &&
+      user.role !== UserRole.CHEF &&
+      user.role !== UserRole.OWNER &&
+      user.role !== UserRole.MANAGER
+    ) throw new Error('Kitchen access required');
     const room = `tenant_${user.tenantId}_${requested}`;
     await socket.join(room);
     (socket.data as Record<string, unknown>)['staff'] = { tenantId: user.tenantId, userId: user.id, role: user.role };
