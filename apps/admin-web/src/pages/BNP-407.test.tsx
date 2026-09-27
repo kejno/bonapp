@@ -37,6 +37,19 @@ describe('BNP-407 создание сотрудника', () => {
     expect(screen.getByText('ivan@example.com')).toBeInTheDocument();
     expect(screen.getByText('+375291234567')).toBeInTheDocument();
     expect(screen.getByText('Кассир')).toBeInTheDocument();
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/admin/staff'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('ivan@example.com') })));
+    await waitFor(() => {
+      const createRequest = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+        String(url).endsWith('/admin/staff') && init?.method === 'POST',
+      );
+
+      expect(createRequest).toBeDefined();
+      expect(JSON.parse(String(createRequest?.[1]?.body))).toEqual({
+        fullName: 'Иван Петров',
+        email: 'ivan@example.com',
+        phone: '+375291234567',
+        role: 'CASHIER',
+        temporaryPassword: 'secure-pass',
+      });
+    });
   });
 });
