@@ -19,8 +19,7 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено.
-- `git status --short` — рабочее дерево было чистым до обновления этого отчёта.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; рабочее дерево чистое.
 - `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/orders/cart.store.ts apps/guest-web/src/orders/cart.store.test.ts` — успешно.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API 62 набора/547 тестов, admin-web 29 наборов/80 тестов, guest-web 5 наборов/19 тестов; сборки и проверка design tokens также завершились успешно.
