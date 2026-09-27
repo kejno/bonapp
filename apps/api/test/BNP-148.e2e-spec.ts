@@ -14,7 +14,7 @@ describe('BNP-148: stop-list update', () => {
 
   it('persists the stop-list flag and exposes it in the refreshed guest menu', async () => {
     await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
 
@@ -34,7 +34,7 @@ describe('BNP-148: stop-list update', () => {
     ).resolves.toEqual({ isInStopList: true });
 
     const guestMenu = (await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200)) as unknown as { body: unknown };
 

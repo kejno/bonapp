@@ -19,7 +19,7 @@ describe('BNP-364: update item stop-list state', () => {
     const authorization = { Authorization: `Bearer ${fixture.token()}` };
 
     await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set(authorization)
       .expect(200);
 
@@ -37,7 +37,7 @@ describe('BNP-364: update item stop-list state', () => {
     ).resolves.toEqual({ isInStopList: true });
 
     const guestMenu = await request(fixture.app.getHttpServer())
-      .get(`/api/v1/guest/menu?tenantId=${fixture.tenantId}`)
+      .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set(authorization)
       .expect(200);
     expect(hasStopListedItem(guestMenu.body, fixture.itemId)).toBe(true);

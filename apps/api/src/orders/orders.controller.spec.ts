@@ -1,13 +1,19 @@
 import { ForbiddenException } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { MenuGateway } from '../menu/menu.gateway';
 
 describe('OrdersController', () => {
   const ordersService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    updateStatus: jest.fn(),
   };
-  const controller = new OrdersController(ordersService as unknown as OrdersService);
+  const menuGateway = { emitOrderCreated: jest.fn(), emitOrderStatusChanged: jest.fn() };
+  const controller = new OrdersController(
+    ordersService as unknown as OrdersService,
+    menuGateway as unknown as MenuGateway,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -41,5 +47,12 @@ describe('OrdersController', () => {
         controller.findOne('other-tenant-order-id'),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+  });
+
+  it('does not allow the generic status endpoint to bypass payment processing', async () => {
+    await expect(controller.updateStatus('order-1', { status: 'PAID' })).rejects.toThrow(
+      'Valid unpaid order status is required',
+    );
+    expect(ordersService.updateStatus).not.toHaveBeenCalled();
   });
 });

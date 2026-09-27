@@ -1,0 +1,12 @@
+{
+  "name": "Bonapp — гостевой клиент",
+  "short_name": "Bonapp",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#e0533c",
+  "background_color": "#fff8f5",
+  "icons": [
+    { "src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

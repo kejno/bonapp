@@ -10,6 +10,8 @@ import { ConfigService } from '@nestjs/config';
 import { Job, Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
+import { requestPosMenu } from './pos-network';
+import { randomUUID } from 'node:crypto';
 
 interface PosSettings {
   posType: string;
@@ -18,18 +20,20 @@ interface PosSettings {
 }
 
 interface PosMenuItem { id: string; name: string; price: number; categoryId?: string; categoryName?: string }
-interface ImportJob { tenantId: string; items?: PosMenuItem[] }
+interface ImportJob { tenantId: string; items?: unknown[] }
 
 @Injectable()
 export class OnboardingService implements OnModuleInit, OnModuleDestroy {
   private readonly queue: Queue;
   private readonly worker: Worker<ImportJob>;
+  private readonly allowedPosHosts: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     config: ConfigService,
   ) {
+    this.allowedPosHosts = config.get<string>('POS_ALLOWED_HOSTS', '');
     this.queue = new Queue('pos-menu-import', {
       connection: {
         host: config.get<string>('REDIS_HOST', 'localhost'),
@@ -59,12 +63,7 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     this.validate(input, true);
     const started = Date.now();
     try {
-      const response = await fetch(`${input.url!.replace(/\/$/, '')}/api/v1/menu`, {
-        headers: { Authorization: `Bearer ${input.apiKey}` },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) throw new Error(`POS вернул HTTP ${response.status}`);
-      const data: unknown = await response.json();
+      const data = await requestPosMenu(new URL(input.url!), input.apiKey!, this.allowedPosHosts, 8000);
       const products = Array.isArray(data) ? data :
         data && typeof data === 'object' && Array.isArray((data as { items?: unknown }).items)
           ? (data as { items: unknown[] }).items : null;
@@ -104,9 +103,7 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     if (current && !['idle', 'failed'].includes(current.status ?? '')) {
       throw new ConflictException(current.status === 'completed' ? 'Меню уже импортировано' : 'Импорт уже запущен или ожидает повторной обработки ошибок');
     }
-    const job = await this.queue.add('import-menu', { tenantId }, { jobId: `menu-import-${tenantId}-${Date.now()}` });
-    await this.prisma.db.tenant.update({ where: { id: tenantId }, data: { posImportState: { status: 'queued', jobId: job.id, imported: 0, total: 0, failed: [] } } });
-    return { jobId: job.id! };
+    return this.enqueueImport(tenantId, tenant.posImportState, 'import-menu', { tenantId });
   }
 
   async retryImport(): Promise<{ jobId: string }> {
@@ -116,8 +113,27 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     if (!state || state.status !== 'completed_with_errors' || !state.failed?.length) {
       throw new ConflictException('Нет позиций для повторного импорта');
     }
-    const job = await this.queue.add('retry-menu-import', { tenantId, items: state.failed }, { jobId: `menu-import-retry-${tenantId}-${Date.now()}` });
-    return { jobId: job.id! };
+    return this.enqueueImport(tenantId, tenant!.posImportState, 'retry-menu-import', { tenantId, items: state.failed });
+  }
+
+  private async enqueueImport(tenantId: string, previousState: unknown, name: string, data: ImportJob): Promise<{ jobId: string }> {
+    const jobId = `menu-import-${tenantId}-${randomUUID()}`;
+    const queuedState = { status: 'queued', jobId, imported: 0, total: 0, failed: [] };
+    const result = await this.prisma.db.tenant.updateMany({
+      where: { id: tenantId, posImportState: { equals: previousState as never } },
+      data: { posImportState: queuedState },
+    });
+    if (result.count !== 1) throw new ConflictException('Импорт уже запущен или ожидает повторной обработки ошибок');
+    try {
+      await this.queue.add(name, data, { jobId });
+    } catch (error) {
+      await this.prisma.db.tenant.updateMany({
+        where: { id: tenantId, posImportState: { equals: queuedState } },
+        data: { posImportState: previousState as never },
+      });
+      throw error;
+    }
+    return { jobId };
   }
 
   async getImportStatus(): Promise<unknown> {
@@ -132,11 +148,7 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant?.posUrl || !tenant.posApiKey) throw new Error('Настройки POS не найдены');
     const state = tenant.posImportState as { imported?: number } | null;
-    const response = await fetch(`${tenant.posUrl.replace(/\/$/, '')}/api/v1/menu`, {
-      headers: { Authorization: `Bearer ${tenant.posApiKey}` }, signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) throw new Error(`POS вернул HTTP ${response.status}`);
-    const payload: unknown = await response.json();
+    const payload = await requestPosMenu(new URL(tenant.posUrl), tenant.posApiKey, this.allowedPosHosts, 15000);
     const items = job.data.items ?? (Array.isArray(payload) ? payload :
       payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown }).items)
         ? (payload as { items: unknown[] }).items : []);
