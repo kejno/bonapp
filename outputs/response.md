@@ -26,7 +26,7 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check` — выполнены; состав изменений и формат diff проверены.
-- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/OrderStatusPage.tsx apps/guest-web/src/OrderStatusPage.test.tsx` — успешно.
+- `npx eslint` по всем 15 изменённым исходным и тестовым файлам API и guest-web — успешно.
 - `npm run typecheck` — успешно для всех четырёх workspace.
 - `npm test` — успешно: API — 59 наборов и 535 тестов; admin-web — 29 файлов и 80 тестов; guest-web — 3 файла и 11 тестов.
 - В рамках `npm test` успешно выполнены сборки приложений и проверка `node scripts/verify-design-tokens.mjs`.
