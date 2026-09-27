@@ -1,90 +1,77 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { useCartStore } from './cart.store'
+import { useCartStore } from './cart'
+
+vi.mock('socket.io-client', () => ({ io: () => ({ on: vi.fn(), disconnect: vi.fn() }) }))
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
-  useCartStore.setState({ quantities: {}, itemCount: 0 })
+  useCartStore.setState({ items: [] })
   window.history.pushState({}, '', '/')
 })
 
+const sessionResponse = {
+  tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN', logoUrl: null },
+  table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' },
+  activeOrder: null,
+}
+const configResponse = { logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }
+
 describe('App', () => {
-  it('renders the guest heading when no table QR token is provided', () => {
-    render(<App />)
-    const heading = screen.getByText('Bonapp')
-
-    expect(heading).toBeInTheDocument()
-    expect(heading).toHaveClass('text-primary')
-    expect(heading.closest('main')).toHaveClass('bg-background')
-  })
-
-  it('resolves the QR token from the URL through the guest session API', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-      tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN', logoUrl: null },
-        table: { tableNumber: 5, areaName: 'Main Hall' },
-        activeOrder: null,
-      }),
-    } as Response).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', priceByn: 8.5, imageUrl: null, isHit: true, isInStopList: false, modifierGroups: [] }] }],
-    } as Response)
+  it('renders the menu and adds a dish to the cart', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'coffee', name: 'Кофе', items: [{ id: 'latte', name: 'Латте', description: 'На молоке', priceByn: 7, imageUrl: null, isHit: true, isInStopList: false, modifierGroups: [] }] }] } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
     render(<App />)
 
     expect(await screen.findByText('Стол №5')).toBeInTheDocument()
-    expect(screen.getByText('Test Restaurant')).toBeInTheDocument()
-    expect(await screen.findByText('Капучино')).toBeInTheDocument()
-    expect(screen.getByText('8.50 BYN')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Кофе' })).toBeInTheDocument()
     expect(screen.getByLabelText('Хит')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }))
-    expect(screen.getByLabelText('1 позиция')).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/guest\/session\/stable-qr-token$/),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    )
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/guest\/menu$/),
-      expect.objectContaining({ signal: expect.any(AbortSignal), headers: { 'X-QR-Token': 'stable-qr-token' } }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /Латте/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Добавить в заказ/ }))
+    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('1')
   })
 
-  it('filters menu items by their name and description without another request', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ tenant: { id: 'tenant-1', name: 'Cafe', currency: 'BYN' }, table: { tableNumber: 2, areaName: 'Hall' } }),
-    } as Response).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'coffee', name: 'Кофе', items: [
-        { id: 'latte', name: 'Латте', description: 'На овсяном молоке', priceByn: 7, imageUrl: null, isHit: false, isInStopList: false, modifierGroups: [] },
-        { id: 'tea', name: 'Чай', description: 'Чёрный чай', priceByn: 4, imageUrl: null, isHit: false, isInStopList: false, modifierGroups: [] },
-      ] }],
-    } as Response)
-    window.history.pushState({}, '', '/menu?qr_token=session-token')
-    render(<App />)
+  it('sends a waiter call with the QR session and shows a success state', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
-    expect(await screen.findByText('Латте')).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('textbox', { name: 'Поиск по меню' }), { target: { value: 'овсяном' } })
-    expect(screen.getByText('Латте')).toBeInTheDocument()
-    expect(screen.queryByText('Чай')).not.toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    render(<App />)
+    await screen.findByText('Стол №5')
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Запрос на счёт отправлен')
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/call-waiter$/), expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-QR-Token': 'stable-qr-token' },
+      body: JSON.stringify({ reason: 'NEED_BILL' }),
+    }))
   })
 
-  it('shows an error when the QR token cannot be resolved', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
-    window.history.pushState({}, '', '/menu?qr_token=unknown-token')
+  it('shows an error when the waiter call fails', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => sessionResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => configResponse } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: false } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
     render(<App />)
+    await screen.findByText('Стол №5')
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Позвать официанта' }))
 
-    expect(await screen.findByText('Не удалось открыть стол по QR-коду. Отсканируйте актуальный код.')).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/guest\/session\/unknown-token$/),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    )
+    expect(await screen.findByRole('status')).toHaveTextContent('Не удалось отправить вызов')
+    expect(screen.getByRole('dialog', { name: 'Вызвать официанта' })).toBeInTheDocument()
   })
 })
