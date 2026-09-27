@@ -24,9 +24,9 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — список файлов PR проверен; после подготовки этого отчёта изменён только `outputs/response.md`.
-- `npx prisma generate --schema prisma/schema.prisma` (из `apps/api`) — успешно. Генерация нужна, чтобы локальный Prisma Client соответствовал модели `Guest` из схемы ветки.
+- `npx prisma generate --schema prisma/schema.prisma` (из `apps/api`) — успешно. Первичный typecheck выявил устаревший локальный Prisma Client; после генерации клиента typecheck прошёл.
 - `npx eslint apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace.
+- `npm run typecheck` — успешно во всех четырёх workspace после генерации Prisma Client.
 - `npm test` — успешно: API — 61 suite / 542 теста; admin-web — 29 файлов / 80 тестов; guest-web — 3 файла / 11 тестов. Сборки и проверка design tokens прошли.
-- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест (включая проверку изоляции между столами).
 - `git diff --check origin/main...HEAD` и `git diff --check` — успешно. Проверены обращения к `guestId`, `tableSession` и `kitchenDepartment`; проверка миграций подтвердила, что затронута только новая миграция.
