@@ -2,34 +2,33 @@
 
 ## Issues/Notes
 
-- Реализованы экран `/order/checkout`, создание гостевого заказа и переход на экран статуса. Корзина хранится в Zustand с сохранением в `localStorage`, включая количества, модификаторы и комментарий.
-- API проверяет `qrToken` в теле и заголовке, непустую корзину, доступность блюд, количество, обязательные и доступные модификаторы, а также ограничение комментария в 255 символов. Цены рассчитываются сервером по меню; после создания заказа публикуется `order:created` в кухонную комнату.
-- Ежедневная нумерация общая для гостевых и штатных заказов: счётчик синхронизируется блокировкой tenant и сбрасывается по локальной дате ресторана. Операции открытия/закрытия смен больше его не сбрасывают.
-- В `input/BNP-143/` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `ticket.md`, `pr_files.txt` и отдельные файлы спецификаций; требования сверены с `request.md` и обсуждениями PR. Прочитаны `CLAUDE.md` и инструкции PR rework из `.dmtools/agents/instructions/pr_rework/`; `instruction.md` в корне отсутствует.
-- Подготовлены ответы для двух открытых inline-тредов. Сводный комментарий в `pr_discussions_raw.json` не имеет идентификаторов треда и отдельный ответ на него не создавался.
+- Закрыты замечания о незавершённом сценарии оформления заказа и отсутствии `qrToken` в JSON body. Ответы на оба открытых inline-треда подготовлены в `outputs/review_replies/`.
+- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и отдельные спецификации отсутствуют в `input/BNP-143`; требования сверены с `request.md` и обсуждениями. `instruction.md` и `AGENTS.md` в корне проекта отсутствуют; прочитаны `CLAUDE.md` и инструкции `.dmtools/agents/instructions/pr_rework/`.
+- Первый typecheck выявил устаревший локальный Prisma Client; после `npx prisma generate` typecheck прошёл. E2E сначала не нашёл таблицы в пустой локальной БД; после `prisma migrate deploy` интеграционный тест прошёл.
 
 ## Approach
 
-- Закрыл блокирующее замечание подключённым пользовательским сценарием checkout и API; добавлены UI- и интеграционные тесты.
-- Добавил `qrToken` в JSON тела запроса, сохранив заголовок `X-QR-Token`; проверка контракта добавлена в `guest-session.test.ts`.
-- Для ежедневного номера добавлены дата tenant и обратное заполнение текущей локальной даты. Проверены все места создания заказов, использования `dailyOrderNumber` и операции смен через `rg`; CodeGraph недоступен.
-- Добавлены две новые миграции с timestamp после последней миграции базы `20260926180001`; существующие миграции не изменялись.
+- Реализован подключённый checkout-сценарий: редактирование сохраняемой корзины, создание заказа через API и переход к статусу после успешного ответа.
+- Запрос передаёт `qrToken` в JSON body и сохраняет заголовок `X-QR-Token`. Сервер валидирует корзину, блюдо и модификаторы, рассчитывает цену по актуальному меню и публикует `order:created` в комнату кухни.
+- Ежедневная нумерация синхронизирована для гостевых и штатных заказов транзакционной блокировкой tenant; дата сброса соответствует локальному календарному дню ресторана.
+- CodeGraph недоступен, поэтому проверены поиском все обращения к `dailyOrderNumber` и точки `order.create` в `apps/` и `packages/`. Проверка миграций подтвердила, что добавлены только две новые миграции с timestamp после последней миграции базовой ветки.
 
 ## Files Modified
 
 - `apps/guest-web/src/App.tsx`, `CheckoutPage.tsx`, `orders/cart.store.ts` и связанные тесты — маршрут оформления, редактирование и сохранение корзины.
-- `apps/guest-web/src/guest-session.ts` и тест — токен QR в теле POST-запроса.
-- `apps/api/src/guest-session/guest-orders.controller.ts`, `guest-session.module.ts`, `guest-session.service.ts` и `apps/api/test/guest-orders.e2e-spec.ts` — endpoint создания заказа, валидация, расчёт суммы и событие кухни.
-- `apps/api/src/orders/daily-order-number.ts`, `orders.service.ts`, `staff/shift.service.ts` и связанные тесты — нумерация в течение локального дня.
-- `apps/api/prisma/schema.prisma` и две новые миграции — хранение и заполнение даты счётчика.
-- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md`, `outputs/review_replies/thread_2.md` — сводка и ответы на открытые замечания.
+- `apps/guest-web/src/guest-session.ts` и тест — `qrToken` в теле POST-запроса.
+- `apps/api/src/guest-session/`, `apps/api/test/guest-orders.e2e-spec.ts` — endpoint, проверки заказа, расчёт суммы и событие кухни.
+- `apps/api/src/orders/`, `apps/api/src/staff/shift.service.ts` и связанные тесты — единая ежедневная нумерация.
+- `apps/api/prisma/schema.prisma` и две новые миграции — хранение даты счётчика и заполнение существующих значений.
+- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md`, `outputs/review_replies/thread_2.md` — сводка и ответы на замечания.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — проверены; итоговый отчёт `outputs/response.md` является единственным незакоммиченным изменением.
-- `npx eslint` по 16 изменённым TypeScript-файлам — ошибок нет; показаны два предупреждения `no-unsafe-argument` в вызовах `nextDailyOrderNumber` из API-сервисов.
-- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно. Первая попытка typecheck до генерации завершилась ошибками из-за устаревшего локального Prisma Client; после генерации `npm run typecheck` прошёл для всех четырёх workspace.
-- `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; production build и проверка design tokens также прошли.
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно применены все миграции к локальной базе; затем `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
-- `git diff --check` — успешно. Проверены все вызовы `order.create` и потребители счётчика через `rg`; обе точки создания заказов используют блокировку tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` подтверждает, что добавлены только две новые миграции.
-- `outputs/review_replies.json` проверен на корректный JSON: для каждого из двух открытых тредов совпадают `threadId` и `inReplyToId`.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнен; итоговый `git status --short` показывает изменение только `outputs/response.md`.
+- `npx eslint` по 16 изменённым TypeScript-файлам — без ошибок; есть два предупреждения `no-unsafe-argument` в передачах даты счётчика в `apps/api/src/guest-session/guest-session.service.ts` и `apps/api/src/orders/orders.service.ts`.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
+- `npm run typecheck` — успешно для всех четырёх workspace.
+- `npm test` — успешно: API 60 наборов/538 тестов, admin-web 29 файлов/80 тестов, guest-web 5 файлов/16 тестов; сборки и проверка design tokens также прошли.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` — успешно; `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bonapp npm run test:e2e --workspace @bonapp/api -- --runInBand test/guest-orders.e2e-spec.ts` — успешно, 5 интеграционных сценариев.
+- `git diff --check origin/main...HEAD` — успешно. Проверены все потребители даты/номера и вызовы `order.create`; обе точки создания используют блокировку tenant. `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавленные миграции.
+- Формат `outputs/review_replies.json` проверен; каждая запись соответствует одному из двух открытых тредов по `threadId` и `inReplyToId`.
