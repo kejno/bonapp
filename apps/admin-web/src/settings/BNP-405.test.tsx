@@ -23,7 +23,10 @@ describe('BNP-405: сохранение настроек заведения', ()
     let persistedSettings = { ...initialSettings };
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'PUT') {
-        persistedSettings = JSON.parse(String(init.body)) as typeof persistedSettings;
+        persistedSettings = {
+          ...persistedSettings,
+          ...JSON.parse(String(init.body)) as Partial<typeof persistedSettings>,
+        };
         return { ok: true, json: async () => persistedSettings } as Response;
       }
       return { ok: true, json: async () => persistedSettings } as Response;
