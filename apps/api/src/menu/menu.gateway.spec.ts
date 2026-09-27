@@ -68,8 +68,8 @@ describe('MenuGateway event routing', () => {
     gateway.emitOrderStatusChanged('tenant-1', 'order-1', 'COOKING');
 
     expect(emissions).toEqual([
-      { room: 'order_order-1', event: 'order:status_changed', payload: { orderId: 'order-1', status: 'COOKING' } },
-      { room: 'tenant_tenant-1_kitchen', event: 'order:status_changed', payload: { orderId: 'order-1', status: 'COOKING' } },
+      { room: 'order_order-1', event: 'order:status_changed', payload: { id: 'order-1', orderId: 'order-1', status: 'COOKING' } },
+      { room: 'tenant_tenant-1_kitchen', event: 'order:status_changed', payload: { id: 'order-1', orderId: 'order-1', status: 'COOKING' } },
     ]);
   });
 

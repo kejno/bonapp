@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { io } from 'socket.io-client'
+import OrderStatusPage from './OrderStatusPage'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -12,12 +13,15 @@ type GuestSession = {
 type GuestMenu = Array<{
   id: string
   name: string
-  items: Array<{ id: string; name: string; description: string | null; price: string | number }>
+  items: Array<{ id: string; name: string; description: string | null; priceByn: string | number }>
 }>
 type TenantConfig = { logoUrl: string | null; brandColor: string; serviceMode: 'ORDER_AND_PAY' | 'VIEW_ONLY' | 'TAKEAWAY' }
 
 export default function App() {
+  const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
+  if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
   const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuLoaded, setMenuLoaded] = useState(false)
@@ -26,6 +30,23 @@ export default function App() {
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')
   const [tenantConfig, setTenantConfig] = useState<TenantConfig | null>(null)
+  const [orderItemMessage, setOrderItemMessage] = useState('')
+  const canAddToOrder = Boolean(orderId && session?.activeOrder?.id === orderId && ['NEW', 'COOKING'].includes(session.activeOrder.status))
+
+  async function addToOrder(itemId: string) {
+    if (!qrToken || !orderId || !canAddToOrder) return
+    try {
+      const response = await fetch(`${API_BASE}/guest/orders/${encodeURIComponent(orderId)}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-QR-Token': qrToken },
+        body: JSON.stringify({ itemId, quantity: 1 }),
+      })
+      if (!response.ok) throw new Error('Unable to add item')
+      setOrderItemMessage('Позиция добавлена в заказ')
+    } catch {
+      setOrderItemMessage('Не удалось добавить позицию в заказ')
+    }
+  }
 
   async function callWaiter(reason: 'NEED_BILL' | 'CALL_STAFF') {
     if (!qrToken) return
@@ -109,6 +130,9 @@ export default function App() {
             <button onClick={() => setCallModalOpen(false)}>Закрыть</button>
           </section>}
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
+          {canAddToOrder && <p role="status">Добавление к заказу #{session.activeOrder?.id}</p>}
+          {orderItemMessage && <p role="status">{orderItemMessage}</p>}
+          {session.activeOrder && <a href={`/order/${encodeURIComponent(session.activeOrder.id)}/status?qr_token=${encodeURIComponent(qrToken ?? '')}`}>Статус заказа</a>}
           {tenantConfig?.serviceMode === 'VIEW_ONLY' && <p>Заказы временно недоступны</p>}
           {tenantConfig?.serviceMode === 'TAKEAWAY' && <p>Доступен самовывоз</p>}
           <section aria-label="Меню">
@@ -121,7 +145,8 @@ export default function App() {
               <ul>{category.items.map((item) => <li key={item.id}>
                 <strong>{item.name}</strong>
                 {item.description && <p>{item.description}</p>}
-                <span>{item.price} {session.tenant.currency}</span>
+                <span>{item.priceByn} {session.tenant.currency}</span>
+                {canAddToOrder && <button onClick={() => void addToOrder(item.id)}>Добавить {item.name}</button>}
               </li>)}</ul>
             </section>)}
           </section>

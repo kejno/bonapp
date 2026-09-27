@@ -143,8 +143,8 @@ describe('BNP-154: administrator orders and status delivery', () => {
       .send({ status: 'COOKING' })
       .expect(200);
     await expect(Promise.all([guestEvent, kitchenEvent])).resolves.toEqual([
-      { orderId, status: 'COOKING' },
-      { orderId, status: 'COOKING' },
+      { id: orderId, orderId, status: 'COOKING' },
+      { id: orderId, orderId, status: 'COOKING' },
     ]);
     await expect(otherGuestEvent).resolves.toBeUndefined();
   }, 30_000);

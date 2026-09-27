@@ -33,7 +33,7 @@ describe('App', () => {
       json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }),
     } as Response).mockResolvedValueOnce({
       ok: true,
-      json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', price: 8.5 }] }],
+      json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: 'На молоке', priceByn: 8.5 }] }],
     } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
 
@@ -55,6 +55,29 @@ describe('App', () => {
       expect.stringMatching(/\/guest\/menu\?tenantId=tenant-1$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('adds a menu item to the order id carried back from the status screen', async () => {
+    window.sessionStorage.setItem('qrToken', 'stable-qr-token')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: { id: 'order-1', status: 'COOKING' } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat-1', name: 'Кофе', items: [{ id: 'item-1', name: 'Капучино', description: null, priceByn: 8.5 }] }] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'order-1' }) } as Response)
+    window.history.pushState({}, '', '/?qr_token=stable-qr-token&orderId=order-1')
+
+    render(<App />)
+
+    expect(await screen.findByRole('link', { name: 'Статус заказа' })).toHaveAttribute(
+      'href',
+      '/order/order-1/status?qr_token=stable-qr-token',
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить Капучино' }))
+
+    expect(await screen.findByText('Позиция добавлена в заказ')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringMatching(/\/guest\/orders\/order-1\/items$/), expect.objectContaining({
+      method: 'POST', headers: expect.objectContaining({ 'X-QR-Token': 'stable-qr-token' }), body: JSON.stringify({ itemId: 'item-1', quantity: 1 }),
+    }))
   })
 
   it('shows an error when the QR token cannot be resolved', async () => {

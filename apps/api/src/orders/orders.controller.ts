@@ -14,6 +14,7 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from '../auth/admin-role.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { OrderStatus } from '@prisma/client';
 import type { TenantRequest } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
 import { MenuGateway } from '../menu/menu.gateway';
@@ -47,7 +48,7 @@ export class OrdersController {
   @HttpCode(200)
   async pay(@Param('id') id: string) {
     const order = await this.ordersService.pay(id);
-    this.menuGateway.emitOrderStatusChanged(order.tenantId, order.id, order.status);
+    this.menuGateway.emitOrderStatusChanged(order.tenantId, order.id, order.status, order);
     await this.menuGateway.closeOrderSession(order.tenantId, order.tableId, order.id);
     return order;
   }
@@ -107,5 +108,23 @@ export class OrdersController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(AdminRoleGuard)
+  async updateStatus(@Param('id') id: string, @Body() body: unknown) {
+    const status = typeof body === 'object' && body !== null
+      ? (body as Record<string, unknown>)['status']
+      : undefined;
+    if (
+      typeof status !== 'string' ||
+      !Object.values(OrderStatus).includes(status as OrderStatus) ||
+      status === OrderStatus.PAID
+    ) {
+      throw new BadRequestException('Valid unpaid order status is required');
+    }
+    const order = await this.ordersService.updateStatus(id, status as OrderStatus);
+    this.menuGateway.emitOrderStatusChanged(order.tenantId, order.id, order.status, order);
+    return order;
   }
 }

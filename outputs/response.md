@@ -1,31 +1,34 @@
-# Проверка PR BNP-154
+# Повторная проверка PR BNP-154
 
 ## Issues/Notes
 
-- Единственный открытый inline-тред сообщал об утечке статуса и ID заказа гостям других столов. В HEAD доступ к `order_<id>` выдаётся только после проверки действующей table session и принадлежности активного заказа её столу. Статус гостю уходит только в комнату заказа; KDS получает событие в авторизованной комнате кухни.
-- Регрессионный E2E в `apps/api/test/admin-orders.e2e-spec.ts` проверяет создание двух заказов, запрет гостю другого стола присоединиться к комнате заказа, доставку события владельцу заказа и кухне, отсутствие события у постороннего гостя, а также агрегацию позиций по цехам.
-- В `pr_discussions_raw.json` найден один открытый inline-тред с `threadId` и `rootCommentId`; ответ на него подготовлен. Открытые сводные отзывы не содержат идентификаторов тредов и не являются inline-тредами. Другие inline-треды разрешены.
-- В `input/BNP-154` отсутствуют `instruction.md`, `pr_files.txt`, CI-логи, `merge_conflicts.md` и `ticket.md`. Прочитаны доступные материалы PR, `CLAUDE.md` и инструкции `agents/instructions/pr_rework/`.
-- Первая проверка ESLint выявила ошибки типов из-за устаревшего сгенерированного Prisma Client. После `npx prisma generate --schema apps/api/prisma/schema.prisma` ESLint прошёл без ошибок; файлы исходного кода для устранения этой локальной проблемы не менялись.
+- Закрыт открытый блокирующий inline-тред об утечке статуса заказа гостям других столов. Гость присоединяется к `order_<id>` только после проверки действующей table session и принадлежности активного заказа соответствующему столу. Статус отправляется в комнату заказа; KDS получает событие в авторизованной комнате кухни.
+- E2E проверяет отказ гостю другого стола, получение события гостем-заказчиком и кухней, отсутствие события у постороннего гостя и агрегацию позиций для KDS. Уточнено ожидаемое событие: payload содержит `id`, `orderId` и `status`.
+- Разрешены все три конфликтующих файла из `input/BNP-154/merge_conflicts.md`; разрешённые версии добавлены в индекс. Удалены не относящиеся к этому PR файлы ответов на чужие review-треды.
+- В `input/BNP-154` отсутствуют `instruction.md`, `pr_files.txt`, CI-логи и `ticket.md`. Прочитаны доступные материалы, корневой `CLAUDE.md` и инструкции `agents/instructions/pr_rework/`.
+- Первый ESLint-запуск обнаружил устаревший сгенерированный Prisma Client. После `npx prisma generate --schema apps/api/prisma/schema.prisma` ESLint прошёл. Первая целевая E2E-проверка выявила только неполное ожидание поля `id`; после уточнения ожидания она прошла.
 
 ## Approach
 
-- Проверил авторизацию гостей, комнаты Socket.io и вызовы публикации статуса в API. Гости не присоединяются к общей tenant-комнате; доступ в комнату заказа ограничен действующей table session и столом заказа.
-- Проверил потребителей `guestId`, `guest_id`, `tableSession` и `kitchenDepartment` поиском `rg` в `apps/api/src`, Prisma-схеме и миграциях. CodeGraph недоступен.
-- Проверил миграции: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только новую `20260926220000_admin_order_guests/migration.sql`; существующие миграции не изменены.
+- Проверил авторизацию гостей, присоединение к Socket.io-комнатам и публикацию статусов заказа.
+- Поиск `rg` по исходникам и Prisma-схеме использован для проверки обращений к данным гостя, table session и цеха; CodeGraph недоступен.
+- Проверил миграции: `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает новую миграцию `20260926220000_admin_order_guests/migration.sql`; существующие миграции не изменены.
 
 ## Files Modified
 
-- `apps/api/test/admin-orders.e2e-spec.ts` — E2E-проверка доступа в комнату заказа и изоляции статусного события.
-- `outputs/response.md` — результаты повторных проверок.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред.
+- `apps/api/src/guest-session/guest-orders.controller.ts`, `guest-session.module.ts`, `guest-session.service.ts` и `guest-session.service.spec.ts` — гостевые маршруты заказа и проверка сценариев.
+- `apps/api/src/menu/menu.gateway.ts` и `menu.gateway.spec.ts` — авторизация комнат и маршрутизация событий.
+- `apps/api/src/orders/orders.controller.ts`, `orders.controller.spec.ts` и `orders.service.ts` — API и обработка заказов.
+- `apps/api/test/admin-orders.e2e-spec.ts` — проверка доступа к комнате заказа, изоляции события и KDS.
+- `apps/guest-web/src/App.tsx`, `App.test.tsx`, `OrderStatusPage.tsx`, `OrderStatusPage.test.tsx`, `orders/orders.store.ts` и `orders/orders.store.test.ts` — просмотр статуса заказа гостем и обработка обновлений.
+- `outputs/response.md`, `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — результат rework и ответ на единственный открытый inline-тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; проверены состав PR и чистота рабочей копии.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npx eslint apps/api/src/menu/menu.gateway.spec.ts apps/api/src/menu/menu.gateway.ts apps/api/src/orders/admin-orders.controller.spec.ts apps/api/src/orders/admin-orders.controller.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/src/orders/orders.module.ts apps/api/src/orders/orders.service.spec.ts apps/api/src/orders/orders.service.ts apps/api/src/orders/phone-number.spec.ts apps/api/src/orders/phone-number.ts apps/api/src/tenant/tenant.module.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно после генерации Prisma Client.
+- `npx eslint` по изменённым исходным и тестовым файлам — успешно.
 - `npm run typecheck` — успешно во всех 4 workspace.
-- `npm test` — успешно: API — 60 наборов / 538 тестов; admin-web — 29 файлов / 80 тестов; guest-web — 1 файл / 5 тестов. Сборка приложений и проверка design tokens также прошли.
-- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 набор / 1 тест.
-- `git diff --check` — успешно. Проверка blast radius для схемы и миграции: просмотрены ссылки на гостя, сессии стола и цеха; добавлена только новая миграция, существующие миграции не изменены.
+- `npm test` — успешно: API — 61 suite / 542 теста; admin-web — 29 файлов / 80 тестов; guest-web — 3 файла / 11 тестов. Сборки и проверка design tokens также прошли.
+- `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест.
+- `git diff --check` — успешно. Blast-radius-проверка схемы и миграции: просмотрены обращения к полям гостя, сессии стола и цеха; изменена только новая миграция.
