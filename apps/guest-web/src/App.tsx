@@ -132,7 +132,7 @@ export default function App() {
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
           {canAddToOrder && <p role="status">Добавление к заказу #{session.activeOrder?.id}</p>}
           {orderItemMessage && <p role="status">{orderItemMessage}</p>}
-          {session.activeOrder && <a href={`/order/${encodeURIComponent(session.activeOrder.id)}/status`}>Статус заказа</a>}
+          {session.activeOrder && <a href={`/order/${encodeURIComponent(session.activeOrder.id)}/status?qr_token=${encodeURIComponent(qrToken ?? '')}`}>Статус заказа</a>}
           {tenantConfig?.serviceMode === 'VIEW_ONLY' && <p>Заказы временно недоступны</p>}
           {tenantConfig?.serviceMode === 'TAKEAWAY' && <p>Доступен самовывоз</p>}
           <section aria-label="Меню">

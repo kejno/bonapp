@@ -5,6 +5,7 @@
 - `PATCH /orders/:id/status` отклоняет `PAID`; фиксация оплаты остаётся в `pay()`, которая обновляет платёжные данные и освобождает стол.
 - WebSocket подтверждает вступление в комнату до повторной загрузки HTTP-снимка. Поле `updatedAt` и сравнение версий в Zustand не позволяют запоздавшему снимку перезаписать более новое событие.
 - Кнопка «Добавить ещё» сохраняет `orderId`; меню отправляет позицию в заказ через QR-защищённый endpoint, который проверяет активность заказа, стол и доступность блюда.
+- Ссылки на экран статуса передают QR-токен, а экран принимает его из URL или `sessionStorage`; это сохраняет авторизацию при переходе из меню и прямом открытии ссылки.
 - В `input/BNP-144/` нет `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md` и `pr_files.txt`; CI-ошибок и конфликтов по подготовленным материалам не обнаружено.
 - Файл `instruction.md` в корне репозитория отсутствует; изучен корневой `CLAUDE.md` с соглашениями проекта.
 
@@ -24,10 +25,10 @@
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; состав изменений проверен, незакоммиченных файлов нет.
-- `npx eslint` для 15 изменённых TypeScript-файлов — успешно.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check` — выполнены; состав изменений и формат diff проверены.
+- `npx eslint apps/guest-web/src/App.tsx apps/guest-web/src/App.test.tsx apps/guest-web/src/OrderStatusPage.tsx apps/guest-web/src/OrderStatusPage.test.tsx` — успешно.
 - `npm run typecheck` — успешно для всех четырёх workspace.
-- `npm test` — успешно: API — 59 наборов и 535 тестов; admin-web — 29 файлов и 80 тестов; guest-web — 3 файла и 10 тестов.
-- В рамках `npm test` успешно выполнены сборки приложений и `node scripts/verify-design-tokens.mjs`.
+- `npm test` — успешно: API — 59 наборов и 535 тестов; admin-web — 29 файлов и 80 тестов; guest-web — 3 файла и 11 тестов.
+- В рамках `npm test` успешно выполнены сборки приложений и проверка `node scripts/verify-design-tokens.mjs`.
 - Blast-radius проверка через `rg` охватила все вызовы `emitOrderStatusChanged`, обработчик `join_order_room` и поток добавления позиции; места вызовов найдены в API и guest-web. CodeGraph недоступен.
 - `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — миграций в PR нет; `git diff --check origin/main...HEAD` — успешно.

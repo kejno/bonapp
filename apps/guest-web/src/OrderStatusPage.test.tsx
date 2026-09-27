@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import OrderStatusPage from './OrderStatusPage'
+import { useOrdersStore } from './orders/orders.store'
 
 const { socket } = vi.hoisted(() => ({ socket: { handlers: new Map<string, (payload?: unknown) => void>(), on: vi.fn(), off: vi.fn(), emit: vi.fn(), disconnect: vi.fn() } }))
 vi.mock('socket.io-client', () => ({ io: () => socket }))
@@ -9,6 +10,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   window.sessionStorage.clear()
+  useOrdersStore.setState({ order: null })
 })
 
 describe('OrderStatusPage', () => {
@@ -23,6 +25,22 @@ describe('OrderStatusPage', () => {
 
     expect(await screen.findByText('Заказ #048')).toBeInTheDocument()
     expect(screen.getByText('Готовится на кухне')).toBeInTheDocument()
+  })
+
+  it('loads the order when opened directly with the QR token in the URL', async () => {
+    window.history.replaceState({}, '', '/order/order-1/status?qr_token=url-table-token')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'order-1', dailyOrderNumber: 48, status: 'NEW', estimatedReadyAt: null, updatedAt: '2026-09-26T12:00:00.000Z' }),
+    } as Response)
+
+    render(<OrderStatusPage orderId="order-1" />)
+
+    expect(await screen.findByText('Заказ #048')).toBeInTheDocument()
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/guest/orders/order-1'),
+      { headers: { 'X-QR-Token': 'url-table-token' } },
+    )
   })
 
   it('shows cancellation guidance and removes the reorder action for cancelled orders', async () => {

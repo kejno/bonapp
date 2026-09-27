@@ -68,6 +68,10 @@ describe('App', () => {
 
     render(<App />)
 
+    expect(await screen.findByRole('link', { name: 'Статус заказа' })).toHaveAttribute(
+      'href',
+      '/order/order-1/status?qr_token=stable-qr-token',
+    )
     fireEvent.click(await screen.findByRole('button', { name: 'Добавить Капучино' }))
 
     expect(await screen.findByText('Позиция добавлена в заказ')).toBeInTheDocument()

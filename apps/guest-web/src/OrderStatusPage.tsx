@@ -16,6 +16,7 @@ export default function OrderStatusPage({ orderId }: OrderStatusPageProps) {
   const [error, setError] = useState(false)
   const [countdown, setCountdown] = useState('--:--')
   const qrToken = window.sessionStorage.getItem('qrToken')
+    ?? new URLSearchParams(window.location.search).get('qr_token')
 
   const refreshOrder = useCallback(async () => {
     if (!qrToken) {
