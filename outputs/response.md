@@ -25,8 +25,8 @@
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
 - `npx prisma generate --schema apps/api/prisma/schema.prisma` — успешно.
-- `npx eslint` по изменённым исходным и тестовым файлам API — успешно после генерации Prisma Client.
+- `npx eslint apps/api/src/menu/menu.gateway.spec.ts apps/api/src/menu/menu.gateway.ts apps/api/src/orders/admin-orders.controller.spec.ts apps/api/src/orders/admin-orders.controller.ts apps/api/src/orders/kds-orders.service.spec.ts apps/api/src/orders/orders.module.ts apps/api/src/orders/orders.service.spec.ts apps/api/src/orders/orders.service.ts apps/api/src/orders/phone-number.spec.ts apps/api/src/orders/phone-number.ts apps/api/src/tenant/tenant.module.ts apps/api/test/admin-orders.e2e-spec.ts` — успешно после генерации Prisma Client.
 - `npm run typecheck` — успешно во всех четырёх workspace.
 - `npm test` — успешно: API — 61 suite / 542 теста; admin-web — 29 файлов / 80 тестов; guest-web — 3 файла / 11 тестов. Сборки и проверка design tokens также прошли.
 - `npm run test:e2e --workspace @bonapp/api -- --runInBand --forceExit test/admin-orders.e2e-spec.ts` — успешно: 1 suite / 1 тест.
-- `git diff --check origin/main...HEAD` — успешно. Для blast radius схемы просмотрены обращения к гостям, table session и цехам; для миграций проверено, что существующие файлы не менялись.
+- `git diff --check origin/main...HEAD` — успешно; `git status --short` после проверок пустой. Для blast radius схемы просмотрены обращения к гостям, table session и цехам; для миграций проверено, что существующие файлы не менялись.
