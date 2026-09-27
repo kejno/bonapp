@@ -6,10 +6,16 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
+import type { Server as HttpServer } from 'node:http';
+import type { Server } from 'socket.io';
+import type { Socket as NetSocket } from 'node:net';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/cache/cache.constants';
 import { ShiftService } from '../src/staff/shift.service';
+import { MenuGateway } from '../src/menu/menu.gateway';
+import { OnboardingService } from '../src/onboarding/onboarding.service';
+import { TableQrPdfService } from '../src/halls/table-qr-pdf.service';
 
 const repositoryRoot = resolve(__dirname, '../../..');
 
@@ -29,8 +35,10 @@ export class MenuCacheTestFixture {
   private redisContainer = '';
   private databaseUrl = '';
   private previousEnvironment: Record<string, string | undefined> = {};
+  private readonly serverConnections = new Set<NetSocket>();
 
-  async start(): Promise<void> {
+  async start(options: { redisAdapter?: boolean } = {}): Promise<void> {
+    const redisAdapter = options.redisAdapter ?? true;
     this.postgresContainer = this.docker(
       'run',
       '--detach',
@@ -80,6 +88,7 @@ export class MenuCacheTestFixture {
       DATABASE_URL: this.databaseUrl,
       REDIS_HOST: '127.0.0.1',
       REDIS_PORT: redisPort,
+      REDIS_URL: redisAdapter ? `redis://127.0.0.1:${redisPort}` : '',
       JWT_SECRET: 'menu-cache-e2e-secret',
       S3_ENDPOINT: 'http://localhost:9000',
       S3_BUCKET: 'bonapp',
@@ -95,8 +104,16 @@ export class MenuCacheTestFixture {
     })
       .overrideProvider(ShiftService)
       .useValue({})
+      .overrideProvider(OnboardingService)
+      .useValue({})
+      .overrideProvider(TableQrPdfService)
+      .useValue({})
       .compile();
     this.app = module.createNestApplication();
+    (this.app.getHttpServer() as HttpServer).on('connection', (connection: NetSocket) => {
+      this.serverConnections.add(connection);
+      connection.once('close', () => this.serverConnections.delete(connection));
+    });
     this.app.setGlobalPrefix('api/v1');
     await this.app.init();
     this.redis = this.app.get<Redis>(REDIS_CLIENT);
@@ -154,6 +171,8 @@ export class MenuCacheTestFixture {
   }
 
   async stop(): Promise<void> {
+    if (this.app) await prepareGatewayShutdown(this.app.get(MenuGateway));
+    for (const connection of this.serverConnections) connection.destroy();
     await this.app?.close();
     await this.prisma?.$disconnect();
     this.restoreEnvironment();
@@ -249,4 +268,22 @@ export class MenuCacheTestFixture {
       /* Cleanup must not hide an assertion failure. */
     }
   }
+}
+
+export async function prepareGatewayShutdown(gateway: MenuGateway): Promise<void> {
+  const internals = gateway as unknown as {
+    io?: Server;
+    pubClient?: Redis;
+    subClient?: Redis;
+  };
+  if (internals.io) {
+    internals.io.disconnectSockets(true);
+    await new Promise<void>((resolve) => {
+      const onClose = () => { resolve(); };
+      void internals.io!.close(onClose);
+    });
+  }
+  internals.pubClient?.disconnect();
+  internals.subClient?.disconnect();
+  gateway.onModuleDestroy = async () => {};
 }

@@ -57,7 +57,7 @@ describe('BNP-409 назначение роли', () => {
     expect.soft(screen.queryByRole('link', { name: 'Каталог меню' })).not.toBeInTheDocument();
     expect.soft(screen.queryByRole('link', { name: 'Настройки заведения' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('link', { name: 'Схема зала' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Мои столы' }));
     expect(await screen.findByRole('button', { name: 'Стол 4, Свободен' })).toBeInTheDocument();
     expect.soft(screen.queryByRole('button', { name: 'Стол 5, Свободен' })).not.toBeInTheDocument();
   });
