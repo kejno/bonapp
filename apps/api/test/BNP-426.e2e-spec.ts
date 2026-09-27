@@ -11,14 +11,14 @@ describe('BNP-426: order status changes', () => {
 
   it('advances a status, rejects a reverse transition, updates the table, and emits the guest event', async () => {
     const authorization = { Authorization: `Bearer ${fixture.token()}` };
+    await fixture.app.listen(0);
+    const address = (fixture.app.getHttpServer() as unknown as Server).address();
+    if (!address || typeof address === 'string') throw new Error('HTTP server address unavailable');
     const created = await request(fixture.app.getHttpServer())
       .post('/api/v1/admin/orders')
       .set(authorization)
       .send({ tableId: fixture.tableId, phone: '+375291234567' })
       .expect(201) as unknown as { body: { id: string } };
-    await fixture.app.listen(0);
-    const address = (fixture.app.getHttpServer() as unknown as Server).address();
-    if (!address || typeof address === 'string') throw new Error('HTTP server address unavailable');
     const socket = createSocket(`http://127.0.0.1:${address.port}`, {
       transports: ['websocket'], auth: { qrToken: fixture.qrToken },
     });
