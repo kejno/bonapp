@@ -66,6 +66,6 @@ export default function OnboardingStep4Page() {
     </section>
     {sessionTables.length > 0 && <section className="rounded-2xl border border-outline-variant bg-surface p-6"><h2 className="text-xl font-semibold">Предпросмотр тейбл-тента</h2>{preview.data ? <div className="mt-4 flex max-w-sm items-center gap-4 rounded-xl border border-outline-variant p-4"><img src={preview.data.qrDataUrl} alt={`QR-код стола ${preview.data.tableNumber}`} className="h-32 w-32" /><div><p className="font-semibold">{preview.data.restaurantName}</p><p>Стол {preview.data.tableNumber}</p></div></div> : <p className="mt-3">Загрузка QR-кода…</p>}<p className="mt-3 text-sm text-on-background/60">В PDF попадут только столы, добавленные в текущем сеансе.</p><button type="button" onClick={() => void downloadPdf()} className="mt-4 rounded-lg border border-outline-variant px-4 py-2">Скачать PDF</button></section>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-    <footer className="flex justify-end"><Link to="/dashboard" className="rounded-lg bg-primary px-5 py-3 font-semibold text-on-primary">Завершить онбординг</Link></footer>
+    <footer className="flex justify-end"><Link to="/welcome" className="rounded-lg bg-primary px-5 py-3 font-semibold text-on-primary">Завершить онбординг</Link></footer>
   </main>;
 }

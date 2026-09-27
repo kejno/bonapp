@@ -17,6 +17,9 @@ describe('App', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     render(<App />)
 
+    expect(screen.getByText('Bonapp')).toHaveClass('text-primary')
+    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
+    expect(screen.getByRole('main')).toHaveClass('bg-background')
     expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
     expect(fetchSpy).not.toHaveBeenCalled()
   })
