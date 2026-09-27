@@ -107,6 +107,9 @@ describe('BNP-154: administrator orders and status delivery', () => {
       joinOrderRoom(guestSocket, orderId),
       joinOrderRoom(otherGuestSocket, otherOrderId),
     ]);
+    await expect(joinOrderRoom(otherGuestSocket, orderId)).rejects.toThrow(
+      'Guest was not authorized for its order room',
+    );
 
     await fixture.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${fixture.tenantId}, true)`;
@@ -206,7 +209,7 @@ function waitForNoStatus(socket: Socket): Promise<void> {
     const timer = setTimeout(() => {
       socket.off('order:status_changed', onStatus);
       resolve();
-    }, 250);
+    }, 1000);
     socket.once('order:status_changed', onStatus);
   });
 }
