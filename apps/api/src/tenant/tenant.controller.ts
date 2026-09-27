@@ -5,13 +5,14 @@ import {
   Get,
   Post,
   Put,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ServiceMode } from '@prisma/client';
 import { TenantService } from './tenant.service';
 import { AuthGuard } from '../auth/auth.guard';
@@ -23,6 +24,10 @@ const MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2 MB
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
 
 interface AuthenticatedRequest extends Request {
+  user: { tenantId: string };
+}
+
+interface TenantRequest extends Request {
   user: { tenantId: string };
 }
 
@@ -85,6 +90,24 @@ export class TenantController {
   @UseGuards(AdminRoleGuard)
   savePaymentCredentials(@Body() credentials: unknown) {
     return this.tenantService.savePaymentCredentials(credentials);
+  }
+
+  @Get('onboarding/slug-availability')
+  async checkSlug(@Query('slug') slug: string, @Req() req: TenantRequest) {
+    return { available: await this.tenantService.isSlugAvailable(slug, req.user.tenantId) };
+  }
+
+  @Post('onboarding/logo-upload')
+  async createLogoUpload(@Body() body: { contentType: string }, @Req() req: TenantRequest) {
+    return this.tenantService.createLogoUpload(req.user.tenantId, body.contentType);
+  }
+
+  @Put('onboarding/step1')
+  async saveOnboardingStep1(@Body() body: {
+    name: string; slug: string; legalName: string; unp: string; address: string;
+    brandColor: string; logoUrl?: string;
+  }, @Req() req: TenantRequest) {
+    return this.tenantService.saveOnboardingStep1(req.user.tenantId, body);
   }
 
   @Post('logo')

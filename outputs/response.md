@@ -1,31 +1,34 @@
-# Повторная доработка PR #151 — BNP-143
+# Повторная доработка PR #159 — BNP-135
 
 ## Issues/Notes
 
-- Разрешён конфликт `apps/api/prisma/schema.prisma`: сохранены `dailyOrderNumber` и `dailyOrderNumberDate` из BNP-143 вместе с `paymentCredentials` из `main`.
-- Полный прогон выявил совпадающий timestamp у миграции BNP-143 и миграции credentials из `main`. Две миграции BNP-143 перенесены на `20260927010001` и `20260927010002`, после `20260927010000_welcome_dashboard`.
-- В `input/BNP-143/pr_discussions_raw.json` все пять inline-тредов помечены как resolved; более поздние записи — обзоры без идентификаторов тредов. Открытых тредов для ответа нет.
-- В `input/BNP-143` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt` и `ticket.md`. Требования сверены с `request.md` и локальной историей обсуждений.
+- Исправлена серверная проверка обязательных названия, юридического наименования и адреса, а также формата цвета бренда.
+- Конфликт уникальности slug от Prisma (`P2002`) возвращается как доменная ошибка `SLUG_TAKEN`.
+- Для timezone применено принятое продуктовое решение из `existing_questions.json` (BNP-280): в MVP поле скрыто, при сохранении используется `Europe/Minsk`.
+- Исправлены конфликты с `main` в `App.tsx`, `tenant.controller.ts`, `tenant.service.ts` и этом файле; функции шага 1 и текущие маршруты/методы сохранены.
+- Замечание о превью логотипа исправлено очисткой object URL при смене файла и размонтировании.
+- Файлы `ci_failures.md`, `ci_failures_full.log`, `ticket.md` и `pr_files.txt` в предоставленном контексте отсутствуют. Отдельный PR diff усечён; исходный код проверен в checkout.
 
 ## Approach
 
-- Объединил поля Tenant из конфликтующих версий схемы, сохранив обе функции.
-- Исправил порядок новых миграций после выявления тестом дублирующихся timestamp-ов; существующие миграции не редактировались.
-- Сохранил пустой список ответов, поскольку открытых inline-тредов нет.
+- Добавлены регрессионные проверки обязательных полей, некорректных цветов и гонки slug в существующий набор тестов `TenantService`.
+- Уникальное ограничение БД остаётся окончательным арбитром конкурентных запросов; Prisma `P2002` преобразуется в тот же ответ, что и предварительная проверка занятости.
+- В `pr_discussions_raw.json` открытым отмечен один inline-тред; на него подготовлен адресный ответ со ссылкой на принятое продуктовое решение BNP-280. Четыре прежних треда уже разрешены и не включены в список ответов.
+- Для поиска использования затронутых методов использован `rg` по `apps/` и `packages/` (CodeGraph недоступен).
 
 ## Files Modified
 
-- `apps/api/prisma/schema.prisma` — разрешён конфликт схемы Tenant.
-- `apps/api/prisma/migrations/20260927010001_daily_order_number_date/migration.sql` — миграция поля ежедневного номера заказа с уникальным timestamp после миграций `main`.
-- `apps/api/prisma/migrations/20260927010002_backfill_daily_order_number_date/migration.sql` — перенос существующих значений ежедневного номера на уникальный timestamp после миграций `main`.
-- `outputs/response.md` — результаты доработки и проверок.
-- `outputs/review_replies.json` — пустой список ответов для закрытых/отсутствующих тредов.
+- `apps/admin-web/src/App.tsx` — разрешены конфликты маршрутов с `main` и сохранены onboarding-маршруты.
+- `apps/admin-web/src/pages/OnboardingStep1Page.tsx` — временный URL предпросмотра освобождается при смене файла и размонтировании.
+- `apps/api/src/tenant/tenant.controller.ts` — объединены импорты и интерфейсы после разрешения конфликта.
+- `apps/api/src/tenant/tenant.service.ts` — объединены изменения с `main`; добавлены валидация профиля и преобразование конфликта уникальности.
+- `apps/api/src/tenant/tenant.service.spec.ts` — добавлены регрессионные проверки валидации и конкурентного конфликта.
+- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_1.md` — итог и адресный ответ на единственный открытый тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint` по изменённым TS/TSX-файлам — успешно.
-- `npm run typecheck` — успешно во всех четырёх workspace.
-- `npm test` — успешно: API 64 набора / 551 тест, guest-web 8 файлов / 26 тестов, admin-web 32 файла / 83 теста; production build и проверка design tokens также завершились успешно.
-- `git diff --check` — успешно; конфликтующих файлов не осталось.
-- Blast-radius: grep по `dailyOrderNumber`/`dailyOrderNumberDate` во всех `apps/*` и `packages/*` выполнен; все найденные обращения проверены. Проверка миграций показала, что миграции BNP-143 добавлены с timestamp-ами после миграций `main`, существующие миграции не изменены.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short` и `git diff --check` — выполнены; `git diff --check` прошёл, конфликтных маркеров в разрешённых файлах не осталось.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/OnboardingStep1Page.tsx apps/admin-web/src/pages/onboarding-validation.test.ts apps/admin-web/src/pages/onboarding-validation.ts apps/api/src/tenant/tenant.controller.ts apps/api/src/tenant/tenant.service.ts apps/api/src/tenant/tenant.service.spec.ts` — успешно.
+- `npm run typecheck` — успешно во всех 4 workspace.
+- `npm test` — успешно: API 64 набора / 558 тестов, guest-web 8 файлов / 26 тестов, admin-web 33 файла / 85 тестов; production build и проверка design tokens в составе команды также прошли.
+- Blast-radius: проверены вызовы `saveOnboardingStep1`, `isSlugAvailable` и `getSettings` поиском `rg` по `apps/` и `packages/`. Изменений схемы или миграций в этом исправлении нет.

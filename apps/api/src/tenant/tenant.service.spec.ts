@@ -230,6 +230,39 @@ describe('TenantService', () => {
     });
   });
 
+  describe('saveOnboardingStep1', () => {
+    const validProfile = {
+      name: 'Кафе', slug: 'cafe', legalName: 'ООО Кафе', unp: '123456789',
+      address: 'Минск', brandColor: '#e0533c',
+    };
+
+    beforeEach(() => {
+      mockPrismaService.db.tenant.findUnique.mockResolvedValue(null);
+      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe' });
+    });
+
+    it.each([
+      ['name', { ...validProfile, name: '   ' }],
+      ['legal name', { ...validProfile, legalName: '   ' }],
+      ['address', { ...validProfile, address: '   ' }],
+    ])('rejects an empty required %s before saving', async (_field, profile) => {
+      await expect(service.saveOnboardingStep1('tenant-uuid', profile)).rejects.toThrow();
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it.each(['red', '#12345', '#1234567'])('rejects invalid brand color %s', async (brandColor) => {
+      await expect(service.saveOnboardingStep1('tenant-uuid', { ...validProfile, brandColor })).rejects.toThrow();
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('maps a unique slug race from Prisma to the same SLUG_TAKEN conflict', async () => {
+      mockPrismaService.db.tenant.update.mockRejectedValue({ code: 'P2002' });
+      await expect(service.saveOnboardingStep1('tenant-uuid', validProfile)).rejects.toMatchObject({
+        response: { code: 'SLUG_TAKEN', message: 'Этот адрес уже занят' },
+      });
+    });
+  });
+
   describe('updateSettings', () => {
     it('rejects a logo URL outside the current tenant storage namespace', async () => {
       mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(false);
