@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const mockStorageService = {
   upload: jest.fn(),
+  isPublicUrlForKeyPrefix: jest.fn(),
 };
 
 const mockPrismaService = {
@@ -54,15 +55,25 @@ describe('TenantService', () => {
       mockStorageService.upload.mockResolvedValue(
         'http://s3/bucket/tenants/tenant-uuid/logo.png',
       );
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       await service.uploadLogo(tenantId, file);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        'tenants/tenant-uuid/logo.png',
+        expect.stringMatching(/^tenants\/tenant-uuid\/logos\/[0-9a-f-]+\.png$/),
         file.buffer,
         'image/png',
       );
+    });
+
+    it('uploads successive logos to distinct keys so an unsaved upload cannot replace the published logo', async () => {
+      mockStorageService.upload.mockResolvedValue('url');
+
+      await service.uploadLogo(tenantId, file);
+      const firstKey = (mockStorageService.upload.mock.calls as unknown as [string, Buffer, string][])[0][0];
+      await service.uploadLogo(tenantId, file);
+      const secondKey = (mockStorageService.upload.mock.calls as unknown as [string, Buffer, string][])[1][0];
+
+      expect(firstKey).not.toBe(secondKey);
     });
 
     it('uses the tenant returned by the scoped lookup for the storage key', async () => {
@@ -71,38 +82,27 @@ describe('TenantService', () => {
         name: 'Test Tenant',
       });
       mockStorageService.upload.mockResolvedValue('url');
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
+      mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
 
       await service.uploadLogo('untrusted-tenant-id', file);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        'tenants/tenant-from-context/logo.png',
+        expect.stringMatching(/^tenants\/tenant-from-context\/logos\/[0-9a-f-]+\.png$/),
         file.buffer,
         'image/png',
       );
-      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
-        where: { id: 'tenant-from-context' },
-        data: { logoUrl: 'url' },
-      });
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
     });
 
-    it('should persist logoUrl to database', async () => {
-      const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
-      mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
-
+    it('does not persist a logo until the settings form is saved', async () => {
+      mockStorageService.upload.mockResolvedValue('url');
       await service.uploadLogo(tenantId, file);
-
-      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
-        where: { id: tenantId },
-        data: { logoUrl: url },
-      });
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
     });
 
     it('should return the public URL', async () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockStorageService.upload.mockResolvedValue(url);
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
 
       const result = await service.uploadLogo(tenantId, file);
 
@@ -117,12 +117,10 @@ describe('TenantService', () => {
       } as Express.Multer.File;
 
       mockStorageService.upload.mockResolvedValue('url');
-      mockPrismaService.db.tenant.update.mockResolvedValue({});
-
       await service.uploadLogo(tenantId, webpFile);
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        'tenants/tenant-uuid/logo.webp',
+        expect.stringMatching(/^tenants\/tenant-uuid\/logos\/[0-9a-f-]+\.webp$/),
         expect.any(Buffer),
         'image/webp',
       );
@@ -153,6 +151,51 @@ describe('TenantService', () => {
         );
 
         expect(mockStorageService.upload).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('updateSettings', () => {
+    it('rejects a logo URL outside the current tenant storage namespace', async () => {
+      mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(false);
+      await expect(service.updateSettings('tenant-uuid', {
+        name: 'Cafe', address: null, unp: null, legalName: null,
+        brandColor: '#123456', logoUrl: 'https://attacker.example/logo.png', serviceMode: 'VIEW_ONLY',
+      })).rejects.toThrow('Invalid logo URL');
+      expect(mockPrismaService.db.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('persists only a URL for a versioned logo belonging to the current tenant', async () => {
+      mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
+      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe', name: 'Cafe', logoUrl: 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png', brandColor: '#123456', serviceMode: 'VIEW_ONLY' });
+      const logoUrl = 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png';
+
+      const result = await service.updateSettings('tenant-uuid', {
+        name: 'Cafe', address: null, unp: null, legalName: null,
+        brandColor: '#123456', logoUrl, serviceMode: 'VIEW_ONLY',
+      });
+
+      expect(mockStorageService.isPublicUrlForKeyPrefix).toHaveBeenCalledWith(
+        logoUrl,
+        'tenants/tenant-uuid/logos/',
+      );
+      expect(result.logoUrl).toBe(logoUrl);
+    });
+
+    it('updates only editable profile, branding, legal and service mode fields for the current tenant', async () => {
+      const settings = {
+        name: 'Cafe', address: 'Minsk', unp: '123456789', legalName: 'Cafe LLC',
+        brandColor: '#123456', logoUrl: 'https://cdn/bucket/tenants/tenant-uuid/logos/123e4567-e89b-42d3-a456-426614174000.png', serviceMode: 'VIEW_ONLY' as const,
+      };
+      mockStorageService.isPublicUrlForKeyPrefix.mockReturnValue(true);
+      mockPrismaService.db.tenant.update.mockResolvedValue({ id: 'tenant-uuid', slug: 'cafe', ...settings });
+
+      await service.updateSettings('tenant-uuid', settings);
+
+      expect(mockPrismaService.db.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-uuid' },
+        data: settings,
+        select: { id: true, name: true, slug: true, address: true, unp: true, legalName: true, logoUrl: true, brandColor: true, serviceMode: true },
       });
     });
   });

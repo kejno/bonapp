@@ -1,0 +1,1 @@
+Исправил сортировку стола в `apps/api/src/welcome/welcome.service.ts`: теперь сначала выбирается минимальный `tableNumber`, а `createdAt` используется дополнительным критерием. Добавил регрессионную проверку в `welcome.service.spec.ts`.

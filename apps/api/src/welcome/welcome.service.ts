@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { OrderStatus, Prisma, TableStatus } from '@prisma/client';
+import { OrderStatus, Prisma, ShiftStatus, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -13,7 +13,7 @@ export class WelcomeService {
       db.menuItem.count({ where: { isActive: true, isInStopList: false, category: { is: { isActive: true } } } }),
       db.table.count(),
       db.order.count(),
-      db.shift.findFirst({ where: { closedAt: null }, select: { id: true } }),
+      db.shift.findFirst({ where: { status: ShiftStatus.OPEN }, select: { id: true } }),
     ]);
     return {
       menuReady: menuCount > 0,
@@ -28,10 +28,10 @@ export class WelcomeService {
 
   async openShift(tenantId: string, userId: string) {
     const db = this.prisma.forTenant(tenantId);
-    const existing = await db.shift.findFirst({ where: { closedAt: null } });
+    const existing = await db.shift.findFirst({ where: { status: ShiftStatus.OPEN } });
     if (existing) return existing;
     try {
-      return await db.shift.create({ data: { id: randomUUID(), tenantId, openedById: userId } });
+      return await db.shift.create({ data: { id: randomUUID(), tenantId, cashierId: userId } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('A shift is already open');
@@ -48,7 +48,7 @@ export class WelcomeService {
       if (existing) return existing;
 
       const [table, item, tenant] = await Promise.all([
-        tx.table.findFirst({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { tableNumber: 'asc' }] }),
+        tx.table.findFirst({ where: { tenantId }, orderBy: [{ tableNumber: 'asc' }, { createdAt: 'asc' }] }),
         tx.menuItem.findFirst({
           where: { tenantId, isActive: true, isInStopList: false, category: { is: { isActive: true } } },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
