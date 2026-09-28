@@ -29,14 +29,25 @@ export default function App() {
   }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
-  const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
+  let routeQrToken: string | null = null
+  let invalidRouteQrToken = false
+  if (tableRouteMatch) {
+    try {
+      routeQrToken = decodeURIComponent(tableRouteMatch[1])
+    } catch {
+      invalidRouteQrToken = true
+    }
+  }
+  const queryQrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const qrToken = queryQrToken ?? routeQrToken
   if (qrToken) activateCartForQrToken(qrToken)
   const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuSearch, setMenuSearch] = useState('')
   const [menuLoaded, setMenuLoaded] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState(invalidRouteQrToken && !queryQrToken)
   const [menuError, setMenuError] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')
@@ -161,6 +172,7 @@ export default function App() {
     <main className="flex min-h-svh items-center justify-center bg-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as React.CSSProperties}>
       <section className="w-full max-w-2xl px-4 text-center">
         <header className="flex items-center justify-between"><h1 className="text-2xl font-semibold text-primary">Bonapp</h1><span aria-label="Количество товаров в корзине">Корзина · {cartCount}</span></header>
+        {!qrToken && <p>Сканируйте QR-код</p>}
         {qrToken && !session && !error && <p>Открываем стол…</p>}
         {session && tenantConfig && <>
           <div className="flex items-center justify-center gap-2">{tenantConfig?.logoUrl && <img src={tenantConfig.logoUrl} alt="Логотип заведения" className="h-10 w-10 object-contain" />}<h2>{session.tenant.name}</h2></div>
@@ -199,7 +211,7 @@ export default function App() {
           </section>
           {!canAddToOrder && cart.length > 0 && <a href={`/order/checkout?qr_token=${encodeURIComponent(qrToken ?? '')}`}>Оформить заказ ({cart.reduce((sum, item) => sum + item.quantity, 0)})</a>}
         </>}
-        {error && <p role="alert">Не удалось открыть стол по QR-коду</p>}
+        {error && <p role="alert">Стол не найден</p>}
       </section>
       {selectedItem && session && <div className="fixed inset-0 z-20 flex items-end bg-black/50" onClick={() => setSelectedItem(null)}>
         <section role="dialog" aria-modal="true" aria-labelledby="dish-title" onClick={(event) => event.stopPropagation()} className="max-h-[92svh] w-full overflow-y-auto rounded-t-2xl bg-surface p-5 pb-7 text-left shadow-xl">

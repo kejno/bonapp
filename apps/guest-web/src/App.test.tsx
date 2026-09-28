@@ -13,14 +13,15 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the guest heading and an empty cart when no table QR token is provided', () => {
+  it('asks the guest to scan a QR code without requesting a session when no token is provided', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     render(<App />)
-    const heading = screen.getByText('Bonapp')
 
-    expect(heading).toBeInTheDocument()
-    expect(heading).toHaveClass('text-primary')
+    expect(screen.getByText('Bonapp')).toHaveClass('text-primary')
     expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
     expect(screen.getByRole('main')).toHaveClass('bg-background')
+    expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
@@ -124,7 +125,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Не удалось открыть стол по QR-коду')).toBeInTheDocument()
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -157,6 +158,28 @@ describe('App', () => {
     expect(screen.getByText('Борщ')).toBeInTheDocument()
     expect(screen.getByText('Драники')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows a not found error when an unknown table token is opened from its route', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    window.history.pushState({}, '', '/t/unknown-token')
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/guest\/session\/unknown-token$/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('shows a not found error when a table route contains malformed percent encoding', () => {
+    window.history.pushState({}, '', '/t/%')
+
+    expect(() => render(<App />)).not.toThrow()
+    expect(screen.getByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
   })
 
   it('sends a waiter call using the QR session and selected reason', async () => {
