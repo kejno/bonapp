@@ -45,6 +45,7 @@ export default function App() {
   const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
+  const [menuSearch, setMenuSearch] = useState('')
   const [menuLoaded, setMenuLoaded] = useState(false)
   const [error, setError] = useState(invalidRouteQrToken && !queryQrToken)
   const [menuError, setMenuError] = useState(false)
@@ -59,6 +60,11 @@ export default function App() {
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [validationError, setValidationError] = useState(false)
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const normalizedSearch = menuSearch.trim().toLocaleLowerCase('ru')
+  const filteredMenu = useMemo(() => menu.map((category) => ({
+    ...category,
+    items: category.items.filter((item) => !normalizedSearch || `${item.name} ${item.description ?? ''}`.toLocaleLowerCase('ru').includes(normalizedSearch)),
+  })).filter((category) => category.items.length > 0), [menu, normalizedSearch])
   const groups = selectedItem?.modifierGroups?.map(({ modifierGroup }) => modifierGroup) ?? []
   const chosenModifiers = useMemo(() => groups.flatMap((group) => group.modifiers.filter((modifier) => selected[group.id]?.includes(modifier.id))), [groups, selected])
   const unitPrice = selectedItem ? Number(selectedItem.priceByn) + chosenModifiers.reduce((sum, modifier) => sum + Number(modifier.price), 0) : 0
@@ -190,7 +196,9 @@ export default function App() {
             {menuError && <p role="alert">Не удалось загрузить меню</p>}
             {!menuError && !menuLoaded && <p>Загружаем меню…</p>}
             {!menuError && menuLoaded && menu.length === 0 && <p>Меню пока пусто</p>}
-            {menu.map((category) => <section key={category.id}>
+            {!menuError && menuLoaded && menu.length > 0 && <input type="search" aria-label="Поиск блюд" placeholder="Поиск по названию или описанию" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} className="my-3 w-full rounded-xl border bg-surface px-4 py-3 text-left" />}
+            {!menuError && menuLoaded && menu.length > 0 && filteredMenu.length === 0 && <p>Ничего не найдено</p>}
+            {filteredMenu.map((category) => <section key={category.id}>
               <h4>{category.name}</h4>
               <ul>{category.items.map((item) => <li key={item.id}><button type="button" onClick={() => openDish(item)} className="text-left">
                 <strong>{item.name}</strong>
