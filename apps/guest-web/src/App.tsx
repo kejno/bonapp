@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getGuestSessionId } from './guest-session'
 import { io } from 'socket.io-client'
 import OrderStatusPage from './OrderStatusPage'
+import PayPage from './PayPage'
 import CheckoutPage from './CheckoutPage'
 import { activateCartForQrToken, useCartStore } from './orders/cart.store'
 
@@ -29,6 +30,8 @@ export default function App() {
   }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
+  const payMatch = window.location.pathname.match(/^\/order\/([^/]+)\/pay$/)
+  if (payMatch) return <PayPage orderId={decodeURIComponent(payMatch[1])} />
   const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
   let routeQrToken: string | null = null
   let invalidRouteQrToken = false
