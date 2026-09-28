@@ -56,9 +56,8 @@ describe('BNP-426: order status changes', () => {
         status: 'SUCCEEDED',
       } });
       await request(fixture.app.getHttpServer())
-        .patch(`/api/v1/admin/orders/${created.body.id}/status`)
+        .post(`/api/v1/orders/${created.body.id}/pay`)
         .set(authorization)
-        .send({ status: 'PAID' })
         .expect(200);
       await expect(fixture.prisma.order.findUnique({ where: { id: created.body.id }, select: { status: true } }))
         .resolves.toEqual({ status: 'PAID' });
