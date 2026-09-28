@@ -87,6 +87,10 @@ export class ShiftService {
           orderCount: totals._count._all,
         },
       });
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { dailyOrderNumber: 0 },
+      });
       this.logger.log(`[СКНО STUB] shift close – tenantId: ${tenantId}`);
       return { ...closed, report };
     });
