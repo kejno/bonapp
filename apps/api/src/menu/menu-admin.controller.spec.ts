@@ -195,6 +195,14 @@ describe('MenuAdminController', () => {
     expect(menuGateway.emitStopListChanged).toHaveBeenCalledWith('tenant-1', 'item-1', true);
   });
 
+  it('accepts the snake_case stop-list field used by the public API contract', async () => {
+    menuAdminService.updateItemStopList.mockResolvedValue({ id: 'item-1' } as never);
+    await controller.updateItemStopList(req, 'item-1', { is_in_stop_list: true });
+
+    expect(menuAdminService.updateItemStopList).toHaveBeenCalledWith('tenant-1', 'item-1', true);
+    expect(menuGateway.emitStopListChanged).toHaveBeenCalledWith('tenant-1', 'item-1', true);
+  });
+
   it('emits isInStopList false when removing from stop list', async () => {
     menuAdminService.updateItemStopList.mockResolvedValue({ id: 'item-1' } as never);
     await controller.updateItemStopList(req, 'item-1', { isInStopList: false });
@@ -215,6 +223,7 @@ describe('MenuAdminController', () => {
     {},
     { isInStopList: 'true' },
     { isInStopList: 1 },
+    { is_in_stop_list: 'true' },
   ])('rejects invalid stop-list body %p', async (body) => {
     await expect(controller.updateItemStopList(req, 'item-1', body)).rejects.toThrow(
       BadRequestException,
