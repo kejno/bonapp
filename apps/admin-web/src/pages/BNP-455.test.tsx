@@ -28,7 +28,7 @@ describe('BNP-455: завершение четвёртого шага онбор
         <QueryClientProvider client={new QueryClient()}>
           <Routes>
             <Route path="/onboarding/step-4" element={<OnboardingStep4Page />} />
-            <Route path="/dashboard" element={<h1>Welcome-дашборд</h1>} />
+            <Route path="/welcome" element={<h1>Welcome-дашборд</h1>} />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>,

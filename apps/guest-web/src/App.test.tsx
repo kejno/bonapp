@@ -13,14 +13,15 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders the guest heading and an empty cart when no table QR token is provided', () => {
+  it('asks the guest to scan a QR code without requesting a session when no token is provided', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     render(<App />)
-    const heading = screen.getByText('Bonapp')
 
-    expect(heading).toBeInTheDocument()
-    expect(heading).toHaveClass('text-primary')
+    expect(screen.getByText('Bonapp')).toHaveClass('text-primary')
     expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
     expect(screen.getByRole('main')).toHaveClass('bg-background')
+    expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
@@ -43,7 +44,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Стол 5 · Main Hall')).toBeInTheDocument()
+    expect(await screen.findByText(/Стол №/)).toHaveTextContent('Стол №5 · Main Hall')
     expect(screen.getByText('Test Restaurant')).toBeInTheDocument()
     expect(await screen.findByText('Капучино')).toBeInTheDocument()
     expect(localStorage.getItem('guest_session_id')).toBe('3f3b8e2c-4d63-4ba7-a52b-91ec5991c1a3')
@@ -63,6 +64,33 @@ describe('App', () => {
         signal: expect.any(AbortSignal),
       }),
     )
+  })
+
+  it('renders QR menu category navigation and hit and stop-list dish cards', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Кафе', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 7, areaName: 'Зал' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'drinks', name: 'Напитки', items: [
+        { id: 'coffee', name: 'Капучино', description: 'Кофе с молоком', priceByn: '8.50', imageUrl: '/coffee.jpg', isHit: true, isInStopList: false },
+        { id: 'tea', name: 'Чёрный чай', description: 'Листовой чай', priceByn: '4.00', imageUrl: '/tea.jpg', isHit: false, isInStopList: true },
+      ] }] } as Response)
+    window.history.pushState({}, '', '/?qr_token=table-token')
+
+    render(<App />)
+
+    expect(await screen.findByText(/Стол №/)).toHaveTextContent('Стол №7')
+    expect(screen.getByRole('link', { name: 'Напитки' })).toHaveAttribute('href', '#category-drinks')
+    expect(screen.getByRole('heading', { name: 'Напитки' }).closest('section')).toHaveAttribute('id', 'category-drinks')
+    expect(screen.getByRole('img', { name: 'Капучино' })).toHaveClass('h-24', 'w-24')
+    expect(screen.getByText('🔥')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Чёрный чай' })).toHaveClass('grayscale')
+    expect(screen.getByRole('button', { name: 'Выбрать · Чёрный чай' })).toBeDisabled()
+
+    const stopListImage = screen.getByRole('button', { name: 'Открыть Чёрный чай' })
+    expect(stopListImage).toBeDisabled()
+    fireEvent.click(stopListImage)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Количество товаров в корзине')).toHaveTextContent('0')
   })
 
   it('renders and enforces required modifier groups in the API response shape', async () => {
@@ -124,11 +152,66 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Не удалось открыть стол по QR-коду')).toBeInTheDocument()
+    expect(await screen.findByText('Стол не найден')).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/guest\/session\/unknown-token$/),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('filters the loaded menu by item name and description without another API request', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tenant: { id: 'tenant-1', name: 'Test Restaurant', currency: 'BYN' }, table: { id: 'table-1', tableNumber: 5, areaName: 'Main Hall' }, activeOrder: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ logoUrl: null, brandColor: '#123456', serviceMode: 'ORDER_AND_PAY' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'cat-1', name: 'Основное', items: [
+        { id: 'borscht', name: 'Борщ', description: 'Свёкла и говядина', priceByn: 12 },
+        { id: 'draniki', name: 'Драники', description: 'Картофель и сметана', priceByn: 10 },
+      ] }] } as Response)
+    window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
+
+    render(<App />)
+
+    const search = await screen.findByRole('searchbox', { name: 'Поиск блюд' })
+    expect(screen.getByText('Драники')).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'борщ' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.queryByText('Драники')).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: 'говядина' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.queryByText('Драники')).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: 'пицца' } })
+    expect(screen.getByText('Ничего не найдено')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Категории меню' })).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getByText('Борщ')).toBeInTheDocument()
+    expect(screen.getByText('Драники')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Категории меню' })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows a not found error when an unknown table token is opened from its route', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response)
+    window.history.pushState({}, '', '/t/unknown-token')
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/guest\/session\/unknown-token$/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('shows a not found error when a table route contains malformed percent encoding', () => {
+    window.history.pushState({}, '', '/t/%')
+
+    expect(() => render(<App />)).not.toThrow()
+    expect(screen.getByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
   })
 
   it('sends a waiter call using the QR session and selected reason', async () => {
@@ -142,7 +225,7 @@ describe('App', () => {
       .mockResolvedValueOnce({ ok: true } as Response)
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
     render(<App />)
-    await screen.findByText('Стол 5 · Main Hall')
+    await screen.findByText(/Стол №/)
     fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
     fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Официант уже идёт')
@@ -163,7 +246,7 @@ describe('App', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
     window.history.pushState({}, '', '/menu?qr_token=stable-qr-token')
     render(<App />)
-    await screen.findByText('Стол 5 · Main Hall')
+    await screen.findByText(/Стол №/)
     fireEvent.click(screen.getByRole('button', { name: 'Вызвать официанта' }))
     fireEvent.click(screen.getByRole('button', { name: 'Попросить счёт' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Не удалось отправить вызов')

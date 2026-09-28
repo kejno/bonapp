@@ -22,6 +22,7 @@ import OnboardingStep4Page from './pages/OnboardingStep4Page';
 import WaiterCallNotifications from './components/WaiterCallNotifications';
 import KdsPage from './kds/KdsPage';
 import { useAuthStore } from './auth/auth.store';
+import type { ReactNode } from 'react';
 import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
 import WelcomePage from './pages/WelcomePage';
@@ -30,13 +31,19 @@ const queryClient = new QueryClient();
 
 function KdsRoute() {
   const role = useAuthStore((state) => state.user?.role);
-  if (!['CHEF', 'OWNER', 'MANAGER'].includes(role ?? ''))
+  if (!['CHEF', 'OWNER', 'MANAGER', 'WAITER'].includes(role ?? ''))
     return <Navigate to="/dashboard" replace />;
   return (
     <ProtectedRoute>
       <KdsPage />
     </ProtectedRoute>
   );
+}
+
+function NonWaiterRoute({ children }: { children: ReactNode }) {
+  const role = useAuthStore((state) => state.user?.role);
+  if (role === 'WAITER') return <Navigate to="/dashboard" replace />;
+  return <ProtectedRoute>{children}</ProtectedRoute>;
 }
 
 function App() {
@@ -84,36 +91,20 @@ function App() {
           />
           <Route
             path="/menu"
-            element={
-              <ProtectedRoute>
-                <MenuPage />
-              </ProtectedRoute>
-            }
+            element={<NonWaiterRoute><MenuPage /></NonWaiterRoute>}
           />
           <Route
             path="/menu/editor"
-            element={
-              <ProtectedRoute>
-                <MenuEditorPage />
-              </ProtectedRoute>
-            }
+            element={<NonWaiterRoute><MenuEditorPage /></NonWaiterRoute>}
           />
           <Route path="/kds" element={<KdsRoute />} />
           <Route
             path="/staff"
-            element={
-              <ProtectedRoute>
-                <StaffPage />
-              </ProtectedRoute>
-            }
+            element={<NonWaiterRoute><StaffPage /></NonWaiterRoute>}
           />
           <Route
             path="/settings"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
-              </ProtectedRoute>
-            }
+            element={<NonWaiterRoute><SettingsPage /></NonWaiterRoute>}
           />
           <Route
             path="/tables"
@@ -125,11 +116,7 @@ function App() {
           />
           <Route
             path="/orders/:orderId"
-            element={
-              <ProtectedRoute>
-                <OrderPage />
-              </ProtectedRoute>
-            }
+            element={<NonWaiterRoute><OrderPage /></NonWaiterRoute>}
           />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
