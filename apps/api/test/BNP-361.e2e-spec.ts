@@ -36,12 +36,28 @@ describe('BNP-361: массовое создание столов и печат�
     expect(tokens.every((token) => token.length > 0)).toBe(true);
     expect(new Set(tokens).size).toBe(10);
 
-    const persisted = await fixture.prisma.table.findMany({
-      where: { tenantId: fixture.tenantId, areaId: area.id, tableNumber: { gte: 1, lte: 10 } },
-      orderBy: { tableNumber: 'asc' },
-    });
-    expect(persisted).toHaveLength(10);
-    expect(persisted.map((table) => table.seatsCount)).toEqual(Array(10).fill(4));
-    expect(persisted.map((table) => table.qrToken)).toEqual(tokens);
+    const listing = await request(fixture.app.getHttpServer())
+      .get('/api/v1/admin/tables')
+      .set('Authorization', `Bearer ${fixture.token()}`)
+      .expect(200);
+    const listedTables = (listing.body as Array<{
+      id: string;
+      areaId: string;
+      tableNumber: number;
+      seatsCount: number;
+      qrToken: string;
+    }>).filter(
+      (table) =>
+        table.areaId === area.id && table.tableNumber >= 1 && table.tableNumber <= 10,
+    );
+    expect(listedTables).toHaveLength(10);
+    expect(listedTables.map((table) => table.tableNumber)).toEqual(
+      Array.from({ length: 10 }, (_, index) => index + 1),
+    );
+    expect(listedTables.every((table) => table.seatsCount === 4)).toBe(true);
+    const listedTokens = listedTables.map((table) => table.qrToken);
+    expect(listedTokens.every((token) => token.length > 0)).toBe(true);
+    expect(new Set(listedTokens).size).toBe(10);
+    expect(listedTokens).toEqual(tokens);
   });
 });
