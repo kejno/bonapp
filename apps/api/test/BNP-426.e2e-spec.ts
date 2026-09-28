@@ -19,13 +19,6 @@ describe('BNP-426: order status changes', () => {
       .set(authorization)
       .send({ tableId: fixture.tableId, phone: '+375291234567' })
       .expect(201) as unknown as { body: { id: string } };
-    await fixture.prisma.payment.create({ data: {
-      tenantId: fixture.tenantId,
-      orderId: created.body.id,
-      amountByn: '0.00',
-      provider: 'test-provider',
-      status: 'SUCCEEDED',
-    } });
     await request(fixture.app.getHttpServer())
       .patch(`/api/v1/admin/orders/${created.body.id}/status`)
       .set(authorization)
@@ -78,6 +71,13 @@ describe('BNP-426: order status changes', () => {
         .patch(`/api/v1/admin/orders/${created.body.id}/status`).set(authorization).send({ status: 'SERVED' }).expect(200);
       await expect(fixture.prisma.table.findUnique({ where: { id: fixture.tableId }, select: { status: true } }))
         .resolves.toEqual({ status: 'OCCUPIED' });
+      await fixture.prisma.payment.create({ data: {
+        tenantId: fixture.tenantId,
+        orderId: created.body.id,
+        amountByn: '0.00',
+        provider: 'test-provider',
+        status: 'SUCCEEDED',
+      } });
       await request(fixture.app.getHttpServer())
         .patch(`/api/v1/admin/orders/${created.body.id}/status`)
         .set(authorization)

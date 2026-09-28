@@ -41,10 +41,7 @@ describe('BNP-423: administrator order creation', () => {
     expect(order?.guest).toMatchObject({ phone: '+375291234569' });
     const details = await request(fixture.app.getHttpServer()).get(`/api/v1/admin/orders/${response.body.id}`)
       .set('Authorization', `Bearer ${fixture.token()}`).expect(200) as unknown as {
-        body: {
-          items: Array<{ itemId: string; quantity: number }>;
-          totalAmountByn: number;
-        };
+        body: { items: Array<{ itemId: string; quantity: number }>; totalAmountByn: number };
       };
     expect(details.body).toMatchObject({ items: [
       { itemId: fixture.itemId, quantity: 2 },
