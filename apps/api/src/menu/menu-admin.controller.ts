@@ -68,10 +68,10 @@ function isValidUpdateOptionBody(body: unknown): body is UpdateModifierOptionDat
 
 function isValidStopListBody(
   body: unknown,
-): body is { isInStopList: boolean } {
+): body is { isInStopList?: boolean; is_in_stop_list?: boolean } {
   if (typeof body !== 'object' || body === null) return false;
-  const { isInStopList } = body as Record<string, unknown>;
-  return typeof isInStopList === 'boolean';
+  const { isInStopList, is_in_stop_list: isInStopListSnakeCase } = body as Record<string, unknown>;
+  return typeof (isInStopList ?? isInStopListSnakeCase) === 'boolean';
 }
 
 @Controller('admin/menu')
@@ -212,12 +212,13 @@ export class MenuAdminController {
     }
     const tenantId = req.user!.tenantId!;
     const trimmedItemId = itemId.trim();
+    const isInStopList = body.isInStopList ?? body.is_in_stop_list!;
     const result = await this.menuAdminService.updateItemStopList(
       tenantId,
       trimmedItemId,
-      body.isInStopList,
+      isInStopList,
     );
-    this.menuGateway.emitStopListChanged(tenantId, trimmedItemId, body.isInStopList);
+    this.menuGateway.emitStopListChanged(tenantId, trimmedItemId, isInStopList);
     return result;
   }
 }
