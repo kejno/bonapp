@@ -29,13 +29,24 @@ export default function App() {
   }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
-  const qrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
+  let routeQrToken: string | null = null
+  let invalidRouteQrToken = false
+  if (tableRouteMatch) {
+    try {
+      routeQrToken = decodeURIComponent(tableRouteMatch[1])
+    } catch {
+      invalidRouteQrToken = true
+    }
+  }
+  const queryQrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const qrToken = queryQrToken ?? routeQrToken
   if (qrToken) activateCartForQrToken(qrToken)
   const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuLoaded, setMenuLoaded] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState(invalidRouteQrToken && !queryQrToken)
   const [menuError, setMenuError] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')
@@ -192,7 +203,7 @@ export default function App() {
           </section>
           {!canAddToOrder && cart.length > 0 && <a href={`/order/checkout?qr_token=${encodeURIComponent(qrToken ?? '')}`}>Оформить заказ ({cart.reduce((sum, item) => sum + item.quantity, 0)})</a>}
         </>}
-        {error && <p role="alert">Не удалось открыть стол по QR-коду</p>}
+        {error && <p role="alert">Стол не найден</p>}
       </section>
       {selectedItem && session && <div className="fixed inset-0 z-20 flex items-end bg-black/50" onClick={() => setSelectedItem(null)}>
         <section role="dialog" aria-modal="true" aria-labelledby="dish-title" onClick={(event) => event.stopPropagation()} className="max-h-[92svh] w-full overflow-y-auto rounded-t-2xl bg-surface p-5 pb-7 text-left shadow-xl">
