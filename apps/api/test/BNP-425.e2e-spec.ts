@@ -1,6 +1,25 @@
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
+interface OrderDetailsResponse {
+  id: string;
+  items: Array<{
+    id: string;
+    orderId: string;
+    itemId: string;
+    quantity: number;
+    unitPriceByn: string;
+    status: string;
+  }>;
+  payments: Array<{
+    id: string;
+    orderId: string;
+    amountByn: string;
+    tipsAmountByn: string;
+    status: string;
+  }>;
+}
+
 describe('BNP-425: получать детали заказа вместе с позициями и платежами', () => {
   const fixture = new MenuCacheTestFixture();
 
@@ -43,17 +62,18 @@ describe('BNP-425: получать детали заказа вместе с п
       .get(`/api/v1/admin/orders/${orderId}`)
       .set('Authorization', `Bearer ${fixture.token()}`)
       .expect(200);
+    const body = response.body as unknown as OrderDetailsResponse;
 
-    expect(response.body.id).toBe(orderId);
-    expect(response.body.items).toHaveLength(2);
+    expect(body.id).toBe(orderId);
+    expect(body.items).toHaveLength(2);
     expect(
-      response.body.items.map((item: Record<string, unknown>) => ({
-        id: item['id'],
-        orderId: item['orderId'],
-        itemId: item['itemId'],
-        quantity: item['quantity'],
-        unitPriceByn: item['unitPriceByn'],
-        status: item['status'],
+      body.items.map((item) => ({
+        id: item.id,
+        orderId: item.orderId,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        unitPriceByn: item.unitPriceByn,
+        status: item.status,
       })),
     ).toEqual(
       expect.arrayContaining(
@@ -67,8 +87,8 @@ describe('BNP-425: получать детали заказа вместе с п
         })),
       ),
     );
-    expect(response.body.payments).toHaveLength(1);
-    expect(response.body.payments[0]).toMatchObject({
+    expect(body.payments).toHaveLength(1);
+    expect(body.payments[0]).toMatchObject({
       id: stored.payments[0].id,
       orderId: stored.payments[0].orderId,
       amountByn: stored.payments[0].amountByn.toString(),
