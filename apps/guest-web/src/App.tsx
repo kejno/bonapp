@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getGuestSessionId } from './guest-session'
 import { io } from 'socket.io-client'
 import OrderStatusPage from './OrderStatusPage'
+import PayPage from './PayPage'
 import CheckoutPage from './CheckoutPage'
 import { activateCartForQrToken, useCartStore } from './orders/cart.store'
 
@@ -29,6 +30,8 @@ export default function App() {
   }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
+  const payMatch = window.location.pathname.match(/^\/order\/([^/]+)\/pay$/)
+  if (payMatch) return <PayPage orderId={decodeURIComponent(payMatch[1])} />
   const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
   let routeQrToken: string | null = null
   let invalidRouteQrToken = false
@@ -198,7 +201,7 @@ export default function App() {
             {!menuError && menuLoaded && menu.length === 0 && <p>Меню пока пусто</p>}
             {!menuError && menuLoaded && menu.length > 0 && <input type="search" aria-label="Поиск блюд" placeholder="Поиск по названию или описанию" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} className="my-3 w-full rounded-xl border bg-surface px-4 py-3 text-left" />}
             {!menuError && menuLoaded && menu.length > 0 && filteredMenu.length === 0 && <p>Ничего не найдено</p>}
-            {menu.length > 0 && <nav aria-label="Категории меню" className="flex gap-3 overflow-x-auto">
+            {filteredMenu.length > 0 && <nav aria-label="Категории меню" className="flex gap-3 overflow-x-auto">
               {filteredMenu.map((category) => <a key={category.id} href={`#category-${category.id}`} className="whitespace-nowrap">{category.name}</a>)}
             </nav>}
             {filteredMenu.map((category) => <section key={category.id} id={`category-${category.id}`} className="scroll-mt-4">

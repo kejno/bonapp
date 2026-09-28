@@ -181,9 +181,14 @@ describe('App', () => {
     expect(screen.getByText('Борщ')).toBeInTheDocument()
     expect(screen.queryByText('Драники')).not.toBeInTheDocument()
 
+    fireEvent.change(search, { target: { value: 'пицца' } })
+    expect(screen.getByText('Ничего не найдено')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Категории меню' })).not.toBeInTheDocument()
+
     fireEvent.change(search, { target: { value: '' } })
     expect(screen.getByText('Борщ')).toBeInTheDocument()
     expect(screen.getByText('Драники')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Категории меню' })).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledTimes(3)
   })
 
