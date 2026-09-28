@@ -30,7 +30,7 @@ describe('BNP-469 добавление сотрудника', () => {
     fireEvent.change(screen.getByPlaceholderText('Имя'), { target: { value: employee.fullName } });
     fireEvent.change(screen.getByPlaceholderText('Электронная почта для входа'), { target: { value: employee.email } });
     fireEvent.change(screen.getByPlaceholderText('Телефон'), { target: { value: employee.phone } });
-    fireEvent.change(screen.getByPlaceholderText('Временный пароль (от 8 символов)'), { target: { value: 'secure-pass' } });
+    fireEvent.change(screen.getByPlaceholderText('PIN-код (4 цифры)'), { target: { value: '1234' } });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: employee.role } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 

@@ -24,7 +24,7 @@ describe('BNP-409 назначение роли', () => {
     expect(roleSelect).toHaveTextContent('Официант — Видит KDS и только свои столы');
     expect(roleSelect).toHaveTextContent('Кассир — Работает с кассой и сменами');
     expect(roleSelect).toHaveTextContent('Менеджер — Управляет меню, столами, отчётами, сотрудниками и сменами');
-    expect(roleSelect).toHaveTextContent('Администратор — Полный доступ, включая настройки ресторана');
+    expect(screen.queryByRole('option', { name: /Администратор/ })).not.toBeInTheDocument();
   });
 
   it('после входа WAITER получает только KDS и свои столы', async () => {
