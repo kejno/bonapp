@@ -262,7 +262,7 @@ export class OrdersService {
   async changeStatus(id: string, status: OrderStatus) {
     const tenantId = this.tenantContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
-    if (status === OrderStatus.PAID) throw new BadRequestException('PAID requires a successful payment');
+    if (status === OrderStatus.PAID) return this.pay(id);
     const updated = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const order = await tx.order.findFirst({ where: { id, tenantId } });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
