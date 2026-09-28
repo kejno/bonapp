@@ -1,9 +1,9 @@
 ## Root Cause Analysis
 
-**Bug:** связанный e2e-тест BNP-412 не мог проверить сброс PIN через API.
+**Bug:** PATCH stop-list возвращает 400 для запроса с полем `is_in_stop_list`, указанным в сценарии BNP-364.
 
-**Root cause:** `StaffTestFixture.adminRequest()` вызывал `.set('Authorization', ...)` на объекте, который возвращает `request(server)`. В supertest этот объект является фабрикой HTTP-запросов, а не отдельным запросом, поэтому тест завершался с `TypeError` до вызова endpoint. Реализация `StaffService.resetPin()` сохраняет bcrypt-хэш нового PIN.
+**Root cause:** `MenuAdminController.isValidStopListBody()` читает только `isInStopList`; snake_case поле из контракта тест-кейса не распознаётся. Из-за этого запрос отклоняется до обновления блюда, инвалидирования Redis и отправки WebSocket-события.
 
-**Impact:** проверка BNP-412 падала из-за ошибки тестовой обвязки и не подтверждала ни ответ endpoint, ни действительность нового PIN. По исходным данным фактический `Failed Reason` не был заполнен.
+**Impact:** клиент, отправляющий описанный в BNP-364 payload, не может изменить стоп-лист через admin endpoint. Для camelCase payload сервис уже обновляет запись меню, удаляет tenant cache key и отправляет событие в hall/kitchen rooms.
 
-**Fix approach:** создавать supertest agent и настраивать на нём Bearer-аутентификацию. Усилить BNP-412: подготовить известный прежний PIN и проверить, что вход с новым PIN успешен, а со старым — отклонён.
+**Fix approach:** принимать оба существующих стиля имени поля на границе admin API, нормализовать значение в boolean и проверить snake_case контракт сквозным тестом, включая состояние БД, кэш и событие.
