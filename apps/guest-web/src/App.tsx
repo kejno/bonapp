@@ -30,14 +30,23 @@ export default function App() {
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
   if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
   const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
-  const qrToken = new URLSearchParams(window.location.search).get('qr_token')
-    ?? (tableRouteMatch ? decodeURIComponent(tableRouteMatch[1]) : null)
+  let routeQrToken: string | null = null
+  let invalidRouteQrToken = false
+  if (tableRouteMatch) {
+    try {
+      routeQrToken = decodeURIComponent(tableRouteMatch[1])
+    } catch {
+      invalidRouteQrToken = true
+    }
+  }
+  const queryQrToken = new URLSearchParams(window.location.search).get('qr_token')
+  const qrToken = queryQrToken ?? routeQrToken
   if (qrToken) activateCartForQrToken(qrToken)
   const orderId = new URLSearchParams(window.location.search).get('orderId')
   const [session, setSession] = useState<GuestSession | null>(null)
   const [menu, setMenu] = useState<GuestMenu>([])
   const [menuLoaded, setMenuLoaded] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState(invalidRouteQrToken && !queryQrToken)
   const [menuError, setMenuError] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')

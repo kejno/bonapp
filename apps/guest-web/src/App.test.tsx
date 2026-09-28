@@ -145,6 +145,14 @@ describe('App', () => {
     )
   })
 
+  it('shows a not found error when a table route contains malformed percent encoding', () => {
+    window.history.pushState({}, '', '/t/%')
+
+    expect(() => render(<App />)).not.toThrow()
+    expect(screen.getByRole('alert')).toHaveTextContent('Стол не найден')
+    expect(screen.queryByText('Открываем стол…')).not.toBeInTheDocument()
+  })
+
   it('sends a waiter call using the QR session and selected reason', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => ({
