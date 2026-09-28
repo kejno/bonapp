@@ -19,6 +19,22 @@ describe('BNP-426: order status changes', () => {
       .set(authorization)
       .send({ tableId: fixture.tableId, phone: '+375291234567' })
       .expect(201) as unknown as { body: { id: string } };
+    await fixture.prisma.payment.create({ data: {
+      tenantId: fixture.tenantId,
+      orderId: created.body.id,
+      amountByn: '0.00',
+      provider: 'test-provider',
+      status: 'SUCCEEDED',
+    } });
+    await request(fixture.app.getHttpServer())
+      .patch(`/api/v1/admin/orders/${created.body.id}/status`)
+      .set(authorization)
+      .send({ status: 'PAID' })
+      .expect(409);
+    await expect(fixture.prisma.order.findUnique({ where: { id: created.body.id }, select: { status: true } }))
+      .resolves.toEqual({ status: 'NEW' });
+    await expect(fixture.prisma.table.findUnique({ where: { id: fixture.tableId }, select: { status: true } }))
+      .resolves.toEqual({ status: 'OCCUPIED' });
     const socket = createSocket(`http://127.0.0.1:${address.port}`, {
       transports: ['websocket'], auth: { qrToken: fixture.qrToken },
     });
@@ -39,22 +55,29 @@ describe('BNP-426: order status changes', () => {
         .resolves.toEqual({ status: 'COOKING' });
       await expect(event).resolves.toMatchObject({ orderId: created.body.id, status: 'COOKING' });
       await request(fixture.app.getHttpServer())
+        .patch(`/api/v1/admin/orders/${created.body.id}/status`)
+        .set(authorization)
+        .send({ status: 'PAID' })
+        .expect(409);
+      await expect(fixture.prisma.order.findUnique({ where: { id: created.body.id }, select: { status: true } }))
+        .resolves.toEqual({ status: 'COOKING' });
+      await request(fixture.app.getHttpServer())
         .patch(`/api/v1/admin/orders/${created.body.id}/status`).set(authorization).send({ status: 'NEW' }).expect(400);
       await expect(fixture.prisma.order.findUnique({ where: { id: created.body.id }, select: { status: true } }))
         .resolves.toEqual({ status: 'COOKING' });
       await request(fixture.app.getHttpServer())
         .patch(`/api/v1/admin/orders/${created.body.id}/status`).set(authorization).send({ status: 'READY' }).expect(200);
       await request(fixture.app.getHttpServer())
+        .patch(`/api/v1/admin/orders/${created.body.id}/status`)
+        .set(authorization)
+        .send({ status: 'PAID' })
+        .expect(409);
+      await expect(fixture.prisma.order.findUnique({ where: { id: created.body.id }, select: { status: true } }))
+        .resolves.toEqual({ status: 'READY' });
+      await request(fixture.app.getHttpServer())
         .patch(`/api/v1/admin/orders/${created.body.id}/status`).set(authorization).send({ status: 'SERVED' }).expect(200);
       await expect(fixture.prisma.table.findUnique({ where: { id: fixture.tableId }, select: { status: true } }))
         .resolves.toEqual({ status: 'OCCUPIED' });
-      await fixture.prisma.payment.create({ data: {
-        tenantId: fixture.tenantId,
-        orderId: created.body.id,
-        amountByn: '0.00',
-        provider: 'test-provider',
-        status: 'SUCCEEDED',
-      } });
       await request(fixture.app.getHttpServer())
         .patch(`/api/v1/admin/orders/${created.body.id}/status`)
         .set(authorization)
