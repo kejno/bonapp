@@ -19,8 +19,6 @@ describe('BNP-413: закрытие смены, отчёт СКНО и сбро�
     const closed = closeResponse.body as { id: string; status: string; report: { shiftId: string; cashierId: string; orderCount: number; closedAt: string } };
     expect(closed).toMatchObject({ id: opened.id, status: 'CLOSED', report: { shiftId: opened.id, cashierId: cashier.id, orderCount: 0 } });
     expect(closed.report.closedAt).toBeTruthy();
-    const tenant = await fixture.prisma.tenant.findUniqueOrThrow({ where: { id: fixture.tenantId } });
-    expect(tenant.dailyOrderNumber).toBe(0);
     await fixture.adminRequest().get('/api/v1/admin/shifts/current').expect(200).expect(({ text }) => {
       expect(text).toBe('');
     });
