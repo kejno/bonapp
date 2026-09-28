@@ -209,17 +209,17 @@
         },
         {
           "description": "In Review Test Cases → trigger pr_test_automation_review",
-          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('pr_approved'))",
+          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('pr_approved', 'test_pr_finalized'))",
           "configFile": "agents/pr_test_automation_review.json",
           "concurrencyKeyFromParent": true,
           "concurrencyKeyPrefix": "test-pr-",
-          "skipIfLabels": ["sm_test_review_triggered", "ai_pr_reviewed"],
+          "skipIfLabels": ["sm_test_review_triggered", "ai_pr_reviewed", "test_pr_finalized"],
           "addLabel": "sm_test_review_triggered",
           "enabled": true
         },
         {
           "description": "In Review Test Cases with dirty PR → move to In Rework",
-          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed')",
+          "jql": "project = {jiraProject} AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND (labels is EMPTY OR labels NOT IN ('test_pr_finalized'))",
           "configFile": "agents/recover_dirty_review_test_case.json",
           "localExecution": true,
           "enabled": true
