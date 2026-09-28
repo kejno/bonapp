@@ -27,6 +27,7 @@ export class MenuCacheTestFixture {
   readonly modifierGroupId = `modifier-group-${randomUUID()}`;
   readonly modifierId = `modifier-${randomUUID()}`;
   readonly cacheKey = `menu:tenant:${this.tenantId}`;
+  tableId!: string;
 
   app!: INestApplication<App>;
   prisma!: PrismaClient;
@@ -124,9 +125,10 @@ export class MenuCacheTestFixture {
     const area = await this.prisma.diningArea.create({
       data: { tenantId: this.tenantId, name: 'Main Hall' },
     });
-    await this.prisma.table.create({
+    const table = await this.prisma.table.create({
       data: { tenantId: this.tenantId, areaId: area.id, tableNumber: 1, qrToken: this.qrToken },
     });
+    this.tableId = table.id;
     await this.prisma.menuCategory.create({
       data: {
         id: this.categoryId,

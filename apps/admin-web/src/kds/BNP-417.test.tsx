@@ -37,6 +37,8 @@ describe('BNP-417: перемещение заказа в Live KDS', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><KdsPage /></QueryClientProvider>)
 
     const card = await screen.findByRole('article')
+    expect(screen.getByRole('region', { name: 'Готовятся' })).toContainElement(card)
+    expect(screen.getByRole('region', { name: 'Поданы' })).not.toContainElement(card)
     fireEvent.dragStart(card)
     fireEvent.drop(screen.getByRole('region', { name: 'Поданы' }))
 
@@ -48,6 +50,8 @@ describe('BNP-417: перемещение заказа в Live KDS', () => {
           body: JSON.stringify({ status: 'SERVED' }),
         }),
       )
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== 'PATCH')).toHaveLength(2)
+      expect(currentStatus).toBe('SERVED')
       expect(screen.getByRole('region', { name: 'Поданы' })).toContainElement(screen.getByRole('article'))
     })
     expect(screen.getByRole('region', { name: 'Готовятся' }).querySelector('article')).toBeNull()
