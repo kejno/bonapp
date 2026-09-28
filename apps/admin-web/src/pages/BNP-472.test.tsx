@@ -23,7 +23,7 @@ describe('BNP-472 валидация обязательных данных со�
     fireEvent.click(await screen.findByRole('button', { name: 'Добавить сотрудника' }));
     fireEvent.change(screen.getByPlaceholderText('Электронная почта для входа'), { target: { value: 'new.employee@example.com' } });
     fireEvent.change(screen.getByPlaceholderText('Телефон'), { target: { value: '+375291234567' } });
-    fireEvent.change(screen.getByPlaceholderText('Временный пароль (от 8 символов)'), { target: { value: 'valid-password' } });
+    fireEvent.change(screen.getByPlaceholderText('PIN-код (4 цифры)'), { target: { value: '1234' } });
   }
 
   it('не сохраняет сотрудника с пустым именем и показывает ошибку поля', async () => {
