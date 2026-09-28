@@ -338,6 +338,9 @@ export class OrdersService {
       if (order.isPaid || order.status === OrderStatus.PAID) {
         throw new ConflictException('Order is already paid');
       }
+      if (order.status !== OrderStatus.SERVED) {
+        throw new ConflictException('Only served orders can be paid');
+      }
       const payment = await tx.payment.findFirst({
         where: { orderId: id, tenantId, status: PaymentStatus.SUCCEEDED },
       });
