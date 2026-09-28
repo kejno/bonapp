@@ -16,7 +16,7 @@ type GuestSession = {
 
 type Modifier = { id: string; name: string; price: string | number }
 type ModifierGroup = { modifierGroup: { id: string; name: string; isRequired: boolean; minSelection: number; maxSelection: number | null; modifiers: Modifier[] } }
-type MenuItem = { id: string; name: string; description: string | null; priceByn: string | number; imageUrl?: string | null; weightGrams?: number | null; calories?: number | null; proteins?: number | string | null; fats?: number | string | null; carbs?: number | string | null; allergens?: string[]; modifierGroups?: ModifierGroup[] }
+type MenuItem = { id: string; name: string; description: string | null; priceByn: string | number; imageUrl?: string | null; isHit?: boolean; isInStopList?: boolean; weightGrams?: number | null; calories?: number | null; proteins?: number | string | null; fats?: number | string | null; carbs?: number | string | null; allergens?: string[]; modifierGroups?: ModifierGroup[] }
 type GuestMenu = Array<{ id: string; name: string; items: MenuItem[] }>
 const allergenLabels: Record<string, string> = { GLUTEN: 'Глютен', CRUSTACEANS: 'Ракообразные', EGGS: 'Яйца', FISH: 'Рыба', PEANUTS: 'Арахис', SOYBEANS: 'Соя', MILK: 'Молоко', NUTS: 'Орехи', CELERY: 'Сельдерей', MUSTARD: 'Горчица', SESAME: 'Кунжут', SULPHITES: 'Сульфиты', LUPIN: 'Люпин', MOLLUSCS: 'Моллюски' }
 const money = (value: number, currency: string) => `${value.toFixed(2)} ${currency}`
@@ -71,7 +71,7 @@ export default function App() {
   const groups = selectedItem?.modifierGroups?.map(({ modifierGroup }) => modifierGroup) ?? []
   const chosenModifiers = useMemo(() => groups.flatMap((group) => group.modifiers.filter((modifier) => selected[group.id]?.includes(modifier.id))), [groups, selected])
   const unitPrice = selectedItem ? Number(selectedItem.priceByn) + chosenModifiers.reduce((sum, modifier) => sum + Number(modifier.price), 0) : 0
-  const openDish = (item: MenuItem) => { setSelectedItem(item); setQuantity(1); setSelected({}); setValidationError(false) }
+  const openDish = (item: MenuItem) => { if (item.isInStopList) return; setSelectedItem(item); setQuantity(1); setSelected({}); setValidationError(false) }
   const toggleModifier = (group: typeof groups[number], modifier: Modifier) => {
     setSelected((current) => {
       const chosen = current[group.id] ?? []
@@ -83,7 +83,7 @@ export default function App() {
     setValidationError(false)
   }
   const submitDish = () => {
-    if (!selectedItem || groups.some((group) => (selected[group.id]?.length ?? 0) < Math.max(group.isRequired ? 1 : 0, group.minSelection))) { setValidationError(true); return }
+    if (!selectedItem || selectedItem.isInStopList || groups.some((group) => (selected[group.id]?.length ?? 0) < Math.max(group.isRequired ? 1 : 0, group.minSelection))) { setValidationError(true); return }
     addToCart({ id: selectedItem.id, name: selectedItem.name, quantity, priceByn: unitPrice, selectedModifiers: chosenModifiers.map((modifier) => modifier.id) })
     setSelectedItem(null)
   }
@@ -179,7 +179,7 @@ export default function App() {
         {qrToken && !session && !error && <p>Открываем стол…</p>}
         {session && tenantConfig && <>
           <div className="flex items-center justify-center gap-2">{tenantConfig?.logoUrl && <img src={tenantConfig.logoUrl} alt="Логотип заведения" className="h-10 w-10 object-contain" />}<h2>{session.tenant.name}</h2></div>
-          <p>Стол {session.table.tableNumber} · {session.table.areaName}</p>
+          <p>Стол №{session.table.tableNumber} · {session.table.areaName}</p>
           <button onClick={() => setCallModalOpen(true)}>Вызвать официанта</button>
           {callStatus && <p role="status">{callStatus}</p>}
           {callModalOpen && <section role="dialog" aria-modal="true" aria-label="Вызвать официанта">
@@ -201,14 +201,24 @@ export default function App() {
             {!menuError && menuLoaded && menu.length === 0 && <p>Меню пока пусто</p>}
             {!menuError && menuLoaded && menu.length > 0 && <input type="search" aria-label="Поиск блюд" placeholder="Поиск по названию или описанию" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} className="my-3 w-full rounded-xl border bg-surface px-4 py-3 text-left" />}
             {!menuError && menuLoaded && menu.length > 0 && filteredMenu.length === 0 && <p>Ничего не найдено</p>}
-            {filteredMenu.map((category) => <section key={category.id}>
+            {filteredMenu.length > 0 && <nav aria-label="Категории меню" className="flex gap-3 overflow-x-auto">
+              {filteredMenu.map((category) => <a key={category.id} href={`#category-${category.id}`} className="whitespace-nowrap">{category.name}</a>)}
+            </nav>}
+            {filteredMenu.map((category) => <section key={category.id} id={`category-${category.id}`} className="scroll-mt-4">
               <h4>{category.name}</h4>
-              <ul>{category.items.map((item) => <li key={item.id}><button type="button" onClick={() => openDish(item)} className="text-left">
-                <strong>{item.name}</strong>
-                {item.description && <p>{item.description}</p>}
-                <span>{money(Number(item.priceByn), session.tenant.currency)}</span></button>
-                {canAddToOrder && <button onClick={() => void addToOrder(item.id)}>Добавить {item.name}</button>}
-                {!canAddToOrder && tenantConfig?.serviceMode !== 'VIEW_ONLY' && <button type="button" onClick={() => openDish(item)}>Выбрать · {item.name}</button>}
+              <ul>{category.items.map((item) => <li key={item.id} className="flex items-center gap-3 border-b py-3 text-left">
+                <button type="button" disabled={item.isInStopList} onClick={() => openDish(item)} aria-label={`Открыть ${item.name}`} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg text-left disabled:cursor-not-allowed">
+                  {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className={`h-24 w-24 object-cover ${item.isInStopList ? 'grayscale' : ''}`} /> : <span aria-label="Фото отсутствует" className="flex h-24 w-24 items-center justify-center bg-surface-container-high">Фото</span>}
+                  {item.isInStopList && <span className="absolute inset-0 bg-black/20" aria-hidden="true" />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><strong>{item.name}</strong>{item.isHit && <span aria-label="Хит">🔥</span>}</div>
+                  {item.description && <p className="line-clamp-2">{item.description}</p>}
+                  <span>{money(Number(item.priceByn), session.tenant.currency)}</span>
+                  {item.isInStopList && <p role="status">Нет в наличии</p>}
+                  {canAddToOrder && <button disabled={item.isInStopList} onClick={() => void addToOrder(item.id)}>Добавить {item.name}</button>}
+                  {!canAddToOrder && tenantConfig?.serviceMode !== 'VIEW_ONLY' && <button type="button" disabled={item.isInStopList} onClick={() => openDish(item)}>Выбрать · {item.name}</button>}
+                </div>
               </li>)}</ul>
             </section>)}
           </section>
