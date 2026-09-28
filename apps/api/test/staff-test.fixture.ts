@@ -34,6 +34,6 @@ export class StaffTestFixture extends AuthTestFixture {
   }
 
   adminRequest() {
-    return request(this.app.getHttpServer()).set('Authorization', this.authorization);
+    return request.agent(this.app.getHttpServer()).set('Authorization', this.authorization);
   }
 }
