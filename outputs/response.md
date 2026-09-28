@@ -2,31 +2,26 @@
 
 ## Issues/Notes
 
-- Сброс `dailyOrderNumber` выполняется в транзакции закрытия смены.
-- Блокирующее замечание о реальных вызовах СКНО остаётся открытым: в кодовой базе есть только заглушки и хранение учётных данных, но нет описания API/SDK СКНО «Титан-Плюс». Реализация сетевого протокола без контракта и формата Z-отчёта была бы выдуманной.
-- Точечный e2e BNP-413 падает до новой проверки заказа: ответ на открытие смены содержит `cashierId`, отличный от ID переданного кассира. Нужна отдельная диагностика этого поведения.
-- Конфликтующие `outputs/rca.md` и `outputs/response.md` разрешены; сведения о BNP-412 из `origin/main` сохранены в соответствующем RCA/изменениях рабочей копии.
-- Входные `ci_failures.md`, `ci_failures_full.log` и `pr_files.txt` отсутствуют.
+- Сброс `dailyOrderNumber` и проверка следующего номера заказа через гостевой API уже добавлены в PR.
+- Блокирующее требование СКНО не закрыто: `ShiftService.open` и `ShiftService.close` по-прежнему не вызывают внешний сервис. В репозитории есть только настройки учётных данных, нет клиента, протокола, спецификации ответа или доступного тестового стенда. Без согласованного контракта нельзя достоверно реализовать открытие кассы, закрытие и Z-отчёт.
+- Для продолжения необходимы спецификация/SDK «Титан-Плюс», способ авторизации и тестовый контракт с ожидаемыми ответами и ошибками. Ответ на открытый тред фиксирует этот блокер.
+- В `input/BNP-481` отсутствуют `ci_failures.md`, `ci_failures_full.log` и `pr_files.txt`.
 
 ## Approach
 
-- Добавлена проверка, которая после закрытия смены создаёт заказ через публичный endpoint `/api/v1/guest/orders` и ожидает номер `1`.
-- Проверена доступная реализация СКНО по `apps/api` и `apps/admin-web`: найденные настройки не сопровождаются интеграционным клиентом или контрактом внешнего API.
-- Для комментария о прямом чтении БД сохранена подготовка состояния через Prisma, а итоговая нумерация проверяется через HTTP-ответ гостевого API.
+- Повторно проверены `ShiftService`, настройки СКНО и все совпадения по `СКНО`, `Титан`, `dailyOrderNumber` в API и admin-web. Интеграционного клиента и контракта в репозитории нет.
+- Новые изменения производственного кода не вносились: имитация успешного ответа без реального контракта не подтверждала бы ожидаемое поведение.
 
 ## Files Modified
 
-- `apps/api/test/BNP-413.e2e-spec.ts` — проверка следующего номера заказа через публичный API после закрытия смены.
-- `outputs/rca.md` — разрешён конфликт и описаны первопричины BNP-481.
-- `outputs/response.md` — этот отчёт.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ на открытый inline-тред.
-- Также сохранены изменения по конфликту ветки: `apps/api/src/guest-session/guest-session.module.ts`, `apps/api/src/menu/menu.module.ts`, `apps/api/src/staff/shift.service.ts`, `apps/api/test/BNP-412.e2e-spec.ts`, `apps/api/test/BNP-414.e2e-spec.ts`, `apps/api/test/staff-test.fixture.ts`.
+- `outputs/response.md` — результат проверки и необходимые входные данные для реализации интеграции.
+- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — ответ в единственный открытый inline-тред СКНО.
 
 ## Test Coverage
 
-- `npx jest --config apps/api/test/jest-e2e.json --runInBand apps/api/test/BNP-413.e2e-spec.ts` — НЕ ПРОЙДЕН: проверка обнаружила несовпадение `cashierId` в ответе на открытие смены; новый сценарий публичного заказа не был достигнут.
-- `git diff --check` — ПРОЙДЕН.
-- `npx eslint apps/api/src/guest-session/guest-session.module.ts apps/api/src/menu/menu.module.ts apps/api/src/staff/shift.service.ts apps/api/test/BNP-412.e2e-spec.ts apps/api/test/BNP-413.e2e-spec.ts apps/api/test/BNP-414.e2e-spec.ts apps/api/test/staff-test.fixture.ts` — ПРОЙДЕН.
-- `npm run typecheck` — ПРОЙДЕН для всех четырёх workspace.
-- `npm test` — ПРОЙДЕН: guest-web 32 теста, API 581 тест, admin-web 124 теста; сборки и проверка design tokens также завершились успешно.
-- Граф вызовов не менялся. Изменение счётчика затрагивает путь создания заказов: `apps/api/src/orders/orders.service.ts` и `apps/api/src/guest-session/guest-session.service.ts` используют `dailyOrderNumber`; тест проверяет гостевой путь через публичный API.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена для определения файлов ветки.
+- `git status --short` — выполнена.
+- `npx eslint` — не запускался: в этом раунде не менялись исходники или тесты, а ESLint не проверяет Markdown/JSON отчёты.
+- `npm run typecheck` — ПРОЙДЕН: все 4 workspace.
+- `npm test` — ПРОЙДЕН: 32 теста guest-web, 581 тест API и 124 теста admin-web; сборка и проверка design tokens также завершились успешно. E2E в `npm test` не входят и отдельно не запускались.
+- Проверка влияния: через `rg` просмотрены потребители `dailyOrderNumber` в `apps/api` и `apps/admin-web`. Новые вызовы публичных методов, схемы БД и миграции в этом раунде не менялись.
