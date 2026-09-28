@@ -1,14 +1,9 @@
 {
   "replies": [
     {
-      "inReplyToId": null,
-      "threadId": null,
+      "inReplyToId": 4118217062,
+      "threadId": "PRRT_kwDOUUbUMs6mheOt",
       "reply": "outputs/review_replies/thread_1.md"
-    },
-    {
-      "inReplyToId": null,
-      "threadId": null,
-      "reply": "outputs/review_replies/thread_2.md"
     }
   ]
 }
