@@ -17,7 +17,11 @@ describe('BNP-407 создание сотрудника', () => {
   it('сохраняет заданные данные и показывает созданную запись в таблице', async () => {
     const staff = [{ id: 'staff-1', fullName: 'Иван Петров', email: 'ivan@example.com', phone: '+375291234567', role: 'CASHIER', isActive: true, lastLoginAt: null }];
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.endsWith('/admin/staff') && init?.method === 'POST') return Promise.resolve({ ok: true, json: async () => staff[0] });
+      if (url.endsWith('/admin/staff') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        const validContract = body.full_name === 'Иван Петров' && body.pin_code === '1234';
+        return Promise.resolve({ ok: validContract, json: async () => validContract ? staff[0] : { message: 'Bad Request' } });
+      }
       if (url.endsWith('/admin/staff')) return Promise.resolve({ ok: true, json: async () => staff });
       if (url.endsWith('/admin/kitchen-staff')) return Promise.resolve({ ok: true, json: async () => [] });
       if (url.endsWith('/admin/shifts/current')) return Promise.resolve({ ok: true, json: async () => null });
@@ -29,7 +33,7 @@ describe('BNP-407 создание сотрудника', () => {
     fireEvent.change(screen.getByPlaceholderText('Имя'), { target: { value: 'Иван Петров' } });
     fireEvent.change(screen.getByPlaceholderText('Электронная почта для входа'), { target: { value: 'ivan@example.com' } });
     fireEvent.change(screen.getByPlaceholderText('Телефон'), { target: { value: '+375291234567' } });
-    fireEvent.change(screen.getByPlaceholderText('Временный пароль (от 8 символов)'), { target: { value: 'secure-pass' } });
+    fireEvent.change(screen.getByPlaceholderText('PIN-код (4 цифры)'), { target: { value: '1234' } });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'CASHIER' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
@@ -44,11 +48,11 @@ describe('BNP-407 создание сотрудника', () => {
 
       expect(createRequest).toBeDefined();
       expect(JSON.parse(String(createRequest?.[1]?.body))).toEqual({
-        fullName: 'Иван Петров',
+        full_name: 'Иван Петров',
         email: 'ivan@example.com',
         phone: '+375291234567',
         role: 'CASHIER',
-        temporaryPassword: 'secure-pass',
+        pin_code: '1234',
       });
     });
   });

@@ -1,9 +1,12 @@
+import { createHmac } from 'node:crypto';
+import type { Server as HttpServer } from 'node:http';
+import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
-import { MenuGateway } from '../src/menu/menu.gateway';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
 describe('BNP-364: update item stop-list state', () => {
   const fixture = new MenuCacheTestFixture();
+  let hallSocket: Socket | undefined;
 
   beforeAll(async () => {
     await fixture.start();
@@ -13,11 +16,36 @@ describe('BNP-364: update item stop-list state', () => {
     await fixture.stop();
   });
 
+  afterEach(() => {
+    hallSocket?.disconnect();
+    hallSocket = undefined;
+  });
+
   it('updates the database and guest menu and emits the tenant event', async () => {
-    const gateway = fixture.app.get(MenuGateway);
-    const emitStopListChanged = jest.spyOn(gateway, 'emitStopListChanged');
     const authorization = { Authorization: `Bearer ${fixture.token()}` };
 
+    const staff = await fixture.prisma.user.create({
+      data: {
+        tenantId: fixture.tenantId,
+        email: `hall-${fixture.tenantId}@test.local`,
+        passwordHash: 'unused',
+        fullName: 'Hall staff',
+        role: 'OWNER',
+        mustChangePassword: false,
+      },
+    });
+    await fixture.app.listen(0, '127.0.0.1');
+    const address = (fixture.app.getHttpServer() as HttpServer).address();
+    if (!address || typeof address === 'string') throw new Error('HTTP server did not start');
+    hallSocket = io(`http://127.0.0.1:${address.port}`, {
+      auth: { accessToken: accessToken(fixture.tenantId, staff.id) },
+      forceNew: true,
+      transports: ['websocket'],
+    });
+    await waitForConnect(hallSocket);
+    await joinTenantRoom(hallSocket, 'hall');
+
+    const stopListEvent = waitForStopListChanged(hallSocket);
     await request(fixture.app.getHttpServer())
       .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set(authorization)
@@ -43,9 +71,52 @@ describe('BNP-364: update item stop-list state', () => {
       .set(authorization)
       .expect(200);
     expect(hasStopListedItem(guestMenu.body, fixture.itemId)).toBe(true);
-    expect(emitStopListChanged).toHaveBeenCalledWith(fixture.tenantId, fixture.itemId, true);
+    await expect(stopListEvent).resolves.toEqual({ itemId: fixture.itemId, isInStopList: true });
   });
 });
+
+function accessToken(tenantId: string, userId: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    sub: userId,
+    tenantId,
+    userId,
+    role: 'OWNER',
+    sessionVersion: 0,
+    type: 'access',
+    jti: `test-${userId}`,
+    exp: Math.floor(Date.now() / 1000) + 300,
+  })).toString('base64url');
+  const signature = createHmac('sha256', 'menu-cache-e2e-secret')
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
+function waitForConnect(socket: Socket): Promise<void> {
+  if (socket.connected) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    socket.once('connect', () => resolve());
+    socket.once('connect_error', reject);
+  });
+}
+
+function joinTenantRoom(socket: Socket, room: 'hall'): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.emit('join_tenant_room', { room }, (result: { ok: boolean }) => {
+      if (result.ok) resolve();
+      else reject(new Error(`Staff client could not join the ${room} room`));
+    });
+  });
+}
+
+function waitForStopListChanged(
+  socket: Socket,
+): Promise<{ itemId: string; isInStopList: boolean }> {
+  return new Promise((resolve) => {
+    socket.once('menu:stop_list_changed', resolve);
+  });
+}
 
 function hasStopListedItem(menu: unknown, itemId: string): boolean {
   if (!Array.isArray(menu)) return false;

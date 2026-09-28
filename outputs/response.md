@@ -1,16 +1,27 @@
-### Root Cause
-- Контроллер admin endpoint валидировал только `isInStopList`, хотя сценарий BNP-364 отправляет `is_in_stop_list`.
-- Такой запрос завершался с `400` до сохранения состояния блюда, сброса Redis-кэша и отправки WebSocket-события.
+# Итог доработки PR
 
-### Fix
-- `menu-admin.controller.ts`: нормализовано snake_case и camelCase поле запроса; оба варианта ведут к одному boolean значению.
-- `menu-admin.controller.spec.ts`: добавлена проверка snake_case payload и его валидации.
-- `BNP-364.e2e-spec.ts`: воспроизводится payload из тикета и проверяются состояние меню и немедленное удаление tenant cache key.
+## Issues/Notes
 
-### Test Coverage
-- BNP-364 e2e: ПРОЙДЕН.
-- API unit: 69 наборов, 583 теста ПРОЙДЕНЫ.
-- Полный API e2e: набор запущен, но завершение блокируется посторонними проблемами окружения и существующих тестов (`DATABASE_URL` отсутствует в нескольких наборах, недоступен образ MinIO, есть несвязанные падения BNP-347/BNP-387 и зависание BNP-132).
+- Устранено замечание IMPORTANT: тест теперь проверяет получение события подключённым WebSocket-подписчиком в комнате `tenant_hall` и его payload.
+- В `pr_discussions_raw.json` обе записи имеют `rootCommentId` и `threadId` со значением `null`; точные данные для адресных ответов отсутствуют.
 
-### Notes
-- `isInStopList` продолжает поддерживаться для существующих клиентов.
+## Approach
+
+- В BNP-364 e2e создана реальная учетная запись сотрудника, подключен Socket.IO клиент, выполнен вход в `hall`, после чего проверено событие `menu:stop_list_changed` после PATCH.
+- Проверка проходит через публичный WebSocket интерфейс; проверка внутреннего вызова шлюза удалена.
+
+## Files Modified
+
+- `apps/api/test/BNP-364.e2e-spec.ts` — проверка подписки и payload события через Socket.IO.
+- `outputs/response.md` — этот отчет и разрешение конфликта отчета.
+
+## Test Coverage
+
+- `npm run test:e2e -- --runInBand test/BNP-364.e2e-spec.ts` — пройден: 1 набор, 1 тест.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена; подтверждены файлы PR.
+- `git status --short` — выполнена; проверены файлы изменений текущего раунда.
+- `npx eslint apps/api/test/BNP-364.e2e-spec.ts` — пройдена.
+- `npm run typecheck` — пройдена во всех четырёх пакетах.
+- `npm test` — пройдена: guest-web 10 наборов/32 теста, API 69/583, admin-web 63/124; также успешно выполнены сборка и проверка design tokens.
+- `git diff --check` — пройдена.
+- Проверка радиуса влияния не требовалась: изменён только e2e-тест, без глобальных провайдеров, схемы БД, миграций и публичных сигнатур.
