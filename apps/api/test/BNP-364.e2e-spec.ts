@@ -22,12 +22,14 @@ describe('BNP-364: update item stop-list state', () => {
       .get('/api/v1/guest/menu').set('X-QR-Token', fixture.qrToken)
       .set(authorization)
       .expect(200);
+    expect(await fixture.redis.get(fixture.cacheKey)).not.toBeNull();
 
     await request(fixture.app.getHttpServer())
       .patch(`/api/v1/admin/menu/items/${fixture.itemId}/stop-list`)
       .set(authorization)
-      .send({ isInStopList: true })
+      .send({ is_in_stop_list: true })
       .expect(200);
+    expect(await fixture.redis.get(fixture.cacheKey)).toBeNull();
 
     await expect(
       fixture.prisma.menuItem.findUnique({
