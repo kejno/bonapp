@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
+import { tenantLocalDate } from '../src/orders/daily-order-number';
 import { StaffTestFixture } from './staff-test.fixture';
 
 describe('BNP-413: закрытие смены, отчёт СКНО и сброс счётчика', () => {
@@ -10,7 +11,14 @@ describe('BNP-413: закрытие смены, отчёт СКНО и сбро�
 
   it('формирует отчёт при закрытии смены и сбрасывает daily_order_number', async () => {
     const cashier = await fixture.createStaff();
-    await fixture.prisma.tenant.update({ where: { id: fixture.tenantId }, data: { dailyOrderNumber: 17 } });
+    const tenant = await fixture.prisma.tenant.findUniqueOrThrow({
+      where: { id: fixture.tenantId },
+      select: { timezone: true },
+    });
+    await fixture.prisma.tenant.update({
+      where: { id: fixture.tenantId },
+      data: { dailyOrderNumber: 17, dailyOrderNumberDate: tenantLocalDate(tenant.timezone) },
+    });
     const openResponse = await fixture.adminRequest().post('/api/v1/admin/shifts/open').send({ cashier_id: cashier.id }).expect(201);
     const opened = openResponse.body as { id: string; status: string; cashierId: string };
     expect(opened).toMatchObject({ status: 'OPEN', cashierId: cashier.id });
