@@ -10,7 +10,7 @@ describe('BNP-510 successful payment webhook', () => {
     };
     const prisma = { forTenant: () => ({ payment: { findUnique: jest.fn().mockResolvedValue(payment) } }), transactionForTenant: jest.fn((_tenant: string, work: (trx: typeof tx) => unknown) => Promise.resolve(work(tx))) };
     const socket = { emitPaymentStatusChanged: jest.fn() };
-    const service = new PaymentsService(prisma as never, {} as never, { registerHandler: jest.fn() } as never, socket as never);
+    const service = new PaymentsService(prisma as never, { get: (_key: string, fallback?: string) => fallback } as never, {} as never, undefined, socket as never);
     await service.process('ERIP', { paymentId: 'p1', tenantId: 't1', status: 'confirmed' });
     expect(tx.payment.updateMany).toHaveBeenCalledWith({
       where: { id: 'p1', status: 'PENDING' },

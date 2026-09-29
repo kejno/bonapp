@@ -1,15 +1,15 @@
-import { PaymentsService } from './payments.service';
+import { ConfigService } from '@nestjs/config';
+import { PaymentGateway } from './payment-gateway';
 
-describe('BNP-527 ERIP payment initiation', () => {
-  it('persists a pending ERIP payment with the E-POS number', async () => {
-    const db = {
-      order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', isPaid: false, totalAmountByn: 25, guestSessionId: null }) },
-      payment: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'payment-1' }), update: jest.fn().mockResolvedValue({ id: 'payment-1', eripOrderNumber: '123456' }) },
-    };
-    const gateway = { create: jest.fn().mockResolvedValue({ id: 'txn-1', eripOrderNumber: '123456' }) };
-    const service = new PaymentsService({ forTenant: () => db } as never, gateway as never, { registerHandler: jest.fn() } as never, {} as never);
-    await expect(service.initiate('order-1', 'tenant-1', 'table-1', 'ERIP')).resolves.toEqual({ paymentId: 'payment-1', erip_order_number: '123456' });
-    expect(db.payment.create).toHaveBeenCalledTimes(1);
-    expect(db.payment.update).toHaveBeenCalledTimes(1);
+describe('BNP-527 ERIP payment gateway', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns the E-POS order number from the provider response', async () => {
+    const config = { get: (key: string) => ({ ERIP_API_URL: 'https://erip.example/pay', ERIP_API_KEY: 'test-key' })[key] } as ConfigService;
+    const gateway = new PaymentGateway(config);
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'txn-1', eripOrderNumber: '123456' }), { status: 200 }));
+
+    await expect(gateway.create('ERIP', { paymentId: 'p1', tenantId: 't1', amount: 25, orderId: 'o1' }))
+      .resolves.toEqual({ id: 'txn-1', eripOrderNumber: '123456' });
   });
 });

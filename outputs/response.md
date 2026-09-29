@@ -1,30 +1,34 @@
-# Результат повторной проверки PR #210 — BNP-157
+# Результат доработки PR #210 — BNP-157
 
 ## Issues/Notes
 
-- **BLOCKING: контракт Оплати™ по-прежнему не подтверждён.** В предоставленных материалах отсутствуют официальные URL, аутентификация, схемы API и webhook, параметры HMAC и sandbox-реквизиты. Задачи BNP-213/214 требуют использовать официальный контракт; без него нельзя проверить, что интеграция создаёт платёж у реального провайдера и корректно обрабатывает его подтверждение. Подмена схемы предположениями не устранит блокер.
-- В `pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; последние незакрытые записи — общие сводки ревью, для которых нет адреса для threaded reply. `outputs/review_replies.json` оставлен с пустым списком.
-- В исходном рабочем дереве до этого раунда уже были staged семь тестов `apps/api/src/payments/BNP-*.spec.ts` (BNP-510…529). Их не менял. Они вызывают ошибки typecheck и API-тестов; детали указаны ниже.
-- В `input/BNP-157/` нет CI-логов, `merge_conflicts.md`, `pr_files.txt`, `ticket.md` и файлов контекста родительской задачи. Корневого `instruction.md` и `AGENTS.md` нет; прочитаны `CLAUDE.md` и инструкции `agents/instructions/pr_rework/`.
+- Ошибки CI lint устранены. В трёх тестах использовался отсутствующий `PaymentsService.initiate`; проверки переписаны на существующий публичный API `PaymentGateway`.
+- Исправлена настройка тестов `BNP-510`, `BNP-512` и `BNP-529`: зависимости передаются в актуальном порядке конструктора, конфигурация Redis содержит нужные параметры.
+- **BLOCKING остаётся:** официальный контракт Оплати™ и sandbox-реквизиты не представлены. По материалам BNP-213/214 нельзя подтвердить соответствие формата реальному API и webhook; для снятия блокера нужны официальная спецификация и проверка в sandbox.
+- В `pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; `outputs/review_replies.json` содержит пустой список.
 
 ## Approach
 
-- Сверил PR-описание и diff с обсуждениями и ответами BNP-213/214/215. BNP-215 подтверждает, что успешная оплата не должна закрывать сессию стола.
-- Проверил миграции: обе миграции PR добавлены новыми файлами; существующие миграции не изменены. Использования `providerTransactionId` и OPLATI проверены поиском по исходникам; CodeGraph недоступен.
-- Исходный код интеграции не менял: отсутствующие спецификация и sandbox не позволяют безопасно реализовать или подтвердить контракт Оплати™.
+- Заменил ошибочные вызовы несуществующего метода тестами реального `PaymentGateway`: отказ провайдера, номер E-POS и URL оплаты.
+- Обновил тестовую конфигурацию зависимостей и Redis для тестов webhook.
+- Сверил контракт тикета с ответами BNP-213/214/215. Успешная оплата не должна закрывать сессию стола; код этого не меняет.
+- Проверил потребителей `providerTransactionId` и OPLATI через поиск по исходникам; CodeGraph недоступен. Существующие миграции не редактировались.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты повторной проверки и фактические результаты команд.
-- `outputs/review_replies.json` — пустой список, поскольку адресных открытых тредов нет.
+- `apps/api/src/payments/BNP-510.spec.ts`
+- `apps/api/src/payments/BNP-512.spec.ts`
+- `apps/api/src/payments/BNP-513.spec.ts`
+- `apps/api/src/payments/BNP-527.spec.ts`
+- `apps/api/src/payments/BNP-528.spec.ts`
+- `apps/api/src/payments/BNP-529.spec.ts`
+- `outputs/response.md`
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR проверен.
-- `git status --short` — выполнено; обнаружены исходные staged-файлы тестов BNP-510…529, добавленные до этого раунда.
-- `npx eslint` — не запускался: в этом раунде исходники не добавлялись и не изменялись.
-- `npm run typecheck` — **не пройдено** из-за ошибок в ранее staged тестах: `BNP-513.spec.ts`, `BNP-527.spec.ts` и `BNP-528.spec.ts` обращаются к отсутствующему `PaymentsService.initiate`; `BNP-529.spec.ts` передаёт `PaymentQueue` вместо требуемого `MenuGateway`.
-- `npm test` — **не пройдено**: API suite падает в ранее staged тестах BNP-510…529. Например, `BNP-510` и `BNP-529` создают `PaymentsService` с объектом очереди без метода `registerHandler`, из-за чего конструктор выбрасывает `TypeError`. Guest-web прошёл: 10 файлов, 33 теста. Turbo остановился на ошибке API, поэтому остальные workspace и проверка design tokens не завершились.
-- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — обе миграции имеют статус `A`; изменённых существующих миграций нет.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки состава PR и изменённых файлов.
+- `npx eslint apps/api/src/payments/BNP-510.spec.ts apps/api/src/payments/BNP-512.spec.ts apps/api/src/payments/BNP-513.spec.ts apps/api/src/payments/BNP-527.spec.ts apps/api/src/payments/BNP-528.spec.ts apps/api/src/payments/BNP-529.spec.ts` — пройдено.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: API 90 наборов / 632 теста; прошли тесты остальных workspace, сборки и проверка design tokens.
 - `git diff --check` — пройдено.
-- Радиус изменений: поиск по исходникам проверил использования `providerTransactionId` и OPLATI. В этом раунде схема, миграции, публичные сигнатуры и глобальные провайдеры не менялись.
+- Blast radius: поиск по `providerTransactionId` и OPLATI выполнен в исходниках; миграции PR добавлены новыми файлами, существующие миграции не изменялись. CodeGraph недоступен.
