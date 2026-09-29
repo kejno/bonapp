@@ -3,6 +3,13 @@ import { isIP } from 'node:net';
 import * as http from 'node:http';
 import * as https from 'node:https';
 
+export class PosOrderRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PosOrderRejectedError';
+  }
+}
+
 export function isPublicIpv4(address: string): boolean {
   if (isIP(address) !== 4) return false;
   const octets = address.split('.').map(Number);
@@ -79,7 +86,13 @@ export async function requestIikoOrder(
   payload: unknown,
   requestJson: PosJsonRequester = requestPosJson,
 ): Promise<string> {
-  const token = await requestIikoAccessToken(url, credentials, allowedHosts, timeoutMs, requestJson);
+  let token: string;
+  try {
+    token = await requestIikoAccessToken(url, credentials, allowedHosts, timeoutMs, requestJson);
+  } catch (error) {
+    // The order endpoint has not been called yet, so retrying cannot duplicate an order.
+    throw new PosOrderRejectedError(error instanceof Error ? error.message : 'Не удалось получить маркер доступа iiko');
+  }
   const response = await requestJson(url, allowedHosts, timeoutMs, 'POST', '/api/1/order/create', payload, token);
   return extractPosOrderId(response, 'orderInfo.id');
 }
@@ -138,12 +151,16 @@ async function requestPosJson(
       const chunks: Buffer[] = [];
       response.on('data', (chunk: Buffer) => chunks.push(chunk));
       response.on('end', () => {
-        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) {
+        const statusCode = response.statusCode;
+        if (statusCode && statusCode >= 300 && statusCode < 400) {
           reject(new Error('Перенаправления POS не поддерживаются'));
           return;
         }
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`POS вернул HTTP ${response.statusCode ?? 'неизвестный статус'}`));
+        if (!statusCode || statusCode < 200 || statusCode >= 300) {
+          const message = `POS вернул HTTP ${statusCode ?? 'неизвестный статус'}`;
+          reject(statusCode !== undefined && statusCode >= 400 && statusCode < 500
+            ? new PosOrderRejectedError(message)
+            : new Error(message));
           return;
         }
         try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown); }

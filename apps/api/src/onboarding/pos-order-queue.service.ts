@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
 import { requestIikoOrder, requestPosOrder } from './pos-network';
-import { claimPosOrderSubmission, isPosOrderEligible, recoverPendingPosOrders } from './pos-order-recovery';
+import { claimPosOrderSubmission, isPosOrderEligible, recoverPendingPosOrders, submitClaimedPosOrder } from './pos-order-recovery';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 
 interface PosOrderJob { tenantId: string; orderId: string }
@@ -112,6 +112,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     ]);
     if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
       (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) return;
+    const posUrl = tenant.posUrl;
     if (!order) throw new Error('Заказ не найден');
     if (order.posOrderId || order.posOrderSubmittedAt || !isPosOrderEligible(order.status, order.isPaid)) return;
     if (!['r_keeper', 'iiko'].includes(tenant.posType)) throw new Error(`Отправка заказов для POS ${tenant.posType} не реализована`);
@@ -135,18 +136,18 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       };
     if (!await claimPosOrderSubmission(this.prisma, tenantId, orderId)) return;
 
-    let externalId: string;
-    if (tenant.posType === 'r_keeper') {
-      externalId = await requestPosOrder(new URL(tenant.posUrl), tenant.posApiKey!, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
-    } else {
+    const externalId = await submitClaimedPosOrder(this.prisma, tenantId, orderId, async () => {
+      if (tenant.posType === 'r_keeper') {
+        return requestPosOrder(new URL(posUrl), tenant.posApiKey!, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
+      }
       const credentials = this.getIikoCredentials(tenant.posCredentials);
-      externalId = await requestIikoOrder(new URL(tenant.posUrl), {
+      return requestIikoOrder(new URL(posUrl), {
         apiKey: credentials.apiKey,
         appId: credentials.appId,
         clientSecret: credentials.clientSecret,
       }, this.allowedPosHosts, 15000,
       buildIikoOrderPayload(orderData, credentials.organizationId, credentials.terminalGroupId));
-    }
+    });
     await db.order.update({ where: { id_tenantId: { id: orderId, tenantId } }, data: { posOrderId: externalId } });
   }
 

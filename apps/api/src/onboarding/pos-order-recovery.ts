@@ -1,5 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { PosOrderRejectedError } from './pos-network';
 
 const ACTIVE_ORDER_STATUSES = ['NEW', 'COOKING', 'READY', 'SERVED'] as const;
 
@@ -20,6 +21,29 @@ export async function claimPosOrderSubmission(store: PrismaService, tenantId: st
     data: { posOrderSubmittedAt: new Date() },
   });
   return result.count === 1;
+}
+
+export async function releaseRejectedPosOrderSubmission(store: PrismaService, tenantId: string, orderId: string): Promise<void> {
+  await store.forTenant(tenantId).order.updateMany({
+    where: { id: orderId, tenantId, posOrderId: null, posOrderSubmittedAt: { not: null } },
+    data: { posOrderSubmittedAt: null },
+  });
+}
+
+export async function submitClaimedPosOrder<T>(
+  store: PrismaService,
+  tenantId: string,
+  orderId: string,
+  submit: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await submit();
+  } catch (error) {
+    if (error instanceof PosOrderRejectedError) {
+      await releaseRejectedPosOrderSubmission(store, tenantId, orderId);
+    }
+    throw error;
+  }
 }
 
 export async function recoverPendingPosOrders(

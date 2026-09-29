@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { claimPosOrderSubmission } from '../src/onboarding/pos-order-recovery';
+import { claimPosOrderSubmission, submitClaimedPosOrder } from '../src/onboarding/pos-order-recovery';
+import { PosOrderRejectedError } from '../src/onboarding/pos-network';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { TenantContextService } from '../src/tenant/tenant-context.service';
 
@@ -34,6 +35,21 @@ describe('POS order submission claim integration', () => {
     ]);
 
     expect(claims.sort()).toEqual([false, true]);
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(order.posOrderSubmittedAt).toBeInstanceOf(Date);
+  });
+
+  it('allows a retry after the POS definitively rejected the first submission', async () => {
+    expect(await claimPosOrderSubmission(prisma, tenantId, orderId)).toBe(true);
+    const submit = jest.fn<Promise<string>, []>()
+      .mockRejectedValueOnce(new PosOrderRejectedError('POS вернул HTTP 422'))
+      .mockResolvedValueOnce('pos-order-1');
+
+    await expect(submitClaimedPosOrder(prisma, tenantId, orderId, submit)).rejects.toThrow('HTTP 422');
+    expect(await claimPosOrderSubmission(prisma, tenantId, orderId)).toBe(true);
+    await expect(submitClaimedPosOrder(prisma, tenantId, orderId, submit)).resolves.toBe('pos-order-1');
+
+    expect(submit).toHaveBeenCalledTimes(2);
     const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
     expect(order.posOrderSubmittedAt).toBeInstanceOf(Date);
   });
