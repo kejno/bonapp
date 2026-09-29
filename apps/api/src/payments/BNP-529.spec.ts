@@ -1,14 +1,41 @@
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { createHmac, randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { WebhooksController } from './webhooks.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentQueue } from './payment-queue';
 
-const redisUrl = process.env.REDIS_URL;
-const describeWithRedis = redisUrl ? describe : describe.skip;
+let redisUrl: string;
+let redisContainer: string;
 
-describeWithRedis('BNP-529 failed payment webhook through BullMQ', () => {
+beforeAll(() => {
+  redisContainer = docker('run', '--detach', '--rm', '--publish', '127.0.0.1::6379', 'redis:7').trim();
+  const port = docker('port', redisContainer, '6379/tcp').trim().split(':').at(-1);
+  if (!port) throw new Error('Could not determine the BNP-529 Redis container port.');
+  redisUrl = `redis://127.0.0.1:${port}`;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      docker('exec', redisContainer, 'redis-cli', 'ping');
+      return;
+    } catch {
+      if (attempt === 29) throw new Error('BNP-529 Redis container did not become ready.');
+      execFileSync('sleep', ['1']);
+    }
+  }
+}, 40_000);
+
+afterAll(() => {
+  if (redisContainer) {
+    try {
+      docker('stop', redisContainer);
+    } catch {
+      // Cleanup must not hide a test failure.
+    }
+  }
+});
+
+describe('BNP-529 failed payment webhook through BullMQ', () => {
   it('processes an accepted signed webhook with the BullMQ worker and keeps its order unpaid', async () => {
     const paymentId = `bnp529-${randomUUID()}`;
     const orderId = `order-${paymentId}`;
@@ -77,4 +104,8 @@ function deferred<T>() {
     resolve = res;
   });
   return { promise, resolve };
+}
+
+function docker(...args: string[]): string {
+  return execFileSync('docker', args, { encoding: 'utf8', stdio: 'pipe', timeout: 120_000 });
 }
