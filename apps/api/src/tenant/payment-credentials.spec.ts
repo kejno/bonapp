@@ -42,5 +42,29 @@ describe('payment credentials encryption', () => {
         unp: '',
       }),
     ).toThrow();
+    expect(() => validateCredentials({
+      gateway: 'skno', cashRegisterSerial: 'serial', unp: '123456789',
+    })).toThrow();
+  });
+
+  it('requires a public signature key for bePaid while preserving Webpay credentials', () => {
+    expect(() => validateCredentials({
+      gateway: 'bepaid', provider: 'bepaid', shopId: 'shop', secret: 'secret', environment: 'TEST',
+    })).toThrow();
+    expect(validateCredentials({
+      gateway: 'bepaid', provider: 'bepaid', shopId: 'shop', secret: 'secret', publicKey: 'public-key', environment: 'TEST',
+    })).toEqual({
+      gateway: 'bepaid', provider: 'bepaid', shopId: 'shop', secret: 'secret', publicKey: 'public-key', environment: 'TEST',
+    });
+  });
+
+  it('accepts SKNO credentials only when the HTTP integration is fully configured', () => {
+    expect(validateCredentials({
+      gateway: 'skno', cashRegisterSerial: 'serial', host: 'http://cash.local',
+      username: 'service', password: 'secret', unp: '123456789',
+    })).toEqual({
+      gateway: 'skno', cashRegisterSerial: 'serial', host: 'http://cash.local',
+      username: 'service', password: 'secret', unp: '123456789',
+    });
   });
 });

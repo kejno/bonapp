@@ -1,11 +1,14 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { OrderStatus, Prisma, ShiftStatus, TableStatus } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShiftService } from '../staff/shift.service';
 
 @Injectable()
 export class WelcomeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shiftService: ShiftService,
+  ) {}
 
   async getReadiness(tenantId: string) {
     const db = this.prisma.forTenant(tenantId);
@@ -27,17 +30,7 @@ export class WelcomeService {
   }
 
   async openShift(tenantId: string, userId: string) {
-    const db = this.prisma.forTenant(tenantId);
-    const existing = await db.shift.findFirst({ where: { status: ShiftStatus.OPEN } });
-    if (existing) return existing;
-    try {
-      return await db.shift.create({ data: { id: randomUUID(), tenantId, cashierId: userId } });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('A shift is already open');
-      }
-      throw error;
-    }
+    return this.shiftService.open(tenantId, userId);
   }
 
   async simulateTestOrder(tenantId: string) {

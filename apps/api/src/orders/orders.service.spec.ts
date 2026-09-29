@@ -184,10 +184,13 @@ describe('OrdersService', () => {
       await expect(service.changeStatus('order-1', OrderStatus.NEW)).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('rejects direct PAID transition without payment processing', async () => {
+    it('requires a successful payment before transitioning to PAID', async () => {
       mockTenantContextService.getTenantId.mockReturnValue('tenant-a');
       transaction.order.findFirst.mockResolvedValue({ id: 'order-1', tenantId: 'tenant-a', status: OrderStatus.SERVED });
-      await expect(service.changeStatus('order-1', OrderStatus.PAID)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.changeStatus('order-1', OrderStatus.PAID)).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction.payment.findFirst).toHaveBeenCalledWith({
+        where: { orderId: 'order-1', tenantId: 'tenant-a', status: { in: ['SUCCEEDED', 'COMPLETED'] } },
+      });
     });
   });
 });

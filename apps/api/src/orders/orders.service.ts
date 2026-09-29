@@ -262,7 +262,7 @@ export class OrdersService {
   async changeStatus(id: string, status: OrderStatus) {
     const tenantId = this.tenantContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
-    if (status === OrderStatus.PAID) throw new BadRequestException('PAID requires a successful payment');
+    if (status === OrderStatus.PAID) return this.pay(id);
     const updated = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const order = await tx.order.findFirst({ where: { id, tenantId } });
       if (!order) throw new NotFoundException(`Order ${id} not found`);
@@ -287,7 +287,7 @@ export class OrdersService {
     return updated;
   }
 
-  async create(tableId: string, guestPhone?: string) {
+  async create(tableId: string, guestPhone?: string, requestedItems: Array<{ menuItemId: string; quantity: number; selectedModifiers: string[] }> = []) {
     const tenantId = this.tenantContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
     const phone = guestPhone === undefined ? undefined : normalizeBelarusPhone(guestPhone);
@@ -320,8 +320,43 @@ export class OrdersService {
         update: {},
         select: { id: true },
       });
+      const pricedItems = [];
+      for (const requested of requestedItems) {
+        const item = await tx.menuItem.findFirst({
+          where: { id: requested.menuItemId, tenantId, isActive: true, isInStopList: false },
+          include: {
+            menuItemModifierGroups: { include: { modifierGroup: { include: { modifiers: true, modifierOptions: true } } } },
+            modifierGroups: { include: { modifierOptions: true } },
+            stopListItem: { select: { isStopped: true } },
+          },
+        });
+        if (!item || item.stopListItem?.isStopped) throw new BadRequestException('One or more menu items are unavailable');
+        const legacyGroups = item.menuItemModifierGroups.map(({ modifierGroup }) => modifierGroup);
+        const groups = [...legacyGroups, ...item.modifierGroups]
+          .filter((group, index, all) => group.isActive && all.findIndex((entry) => entry.id === group.id) === index);
+        const allowed = [
+          ...legacyGroups.filter((group) => group.isActive).flatMap((group) => group.modifiers.map((modifier) => ({ id: modifier.id, groupId: group.id, price: Number(modifier.price) }))),
+          ...groups.flatMap((group) => group.modifierOptions.map((option) => ({ id: option.id, groupId: group.id, price: Number(option.extraPriceByn), active: option.isActive }))),
+        ].filter((option) => !('active' in option) || option.active);
+        if (new Set(requested.selectedModifiers).size !== requested.selectedModifiers.length || requested.selectedModifiers.some((id) => !allowed.some((option) => option.id === id))) {
+          throw new BadRequestException('Selected modifier is unavailable for this item');
+        }
+        for (const group of groups) {
+          const count = requested.selectedModifiers.filter((id) => allowed.some((option) => option.id === id && option.groupId === group.id)).length;
+          if (count < Math.max(group.isRequired ? 1 : 0, group.minSelection)) throw new BadRequestException(`Required modifiers are missing for ${item.name}`);
+          if (group.maxSelection !== null && count > group.maxSelection) throw new BadRequestException(`Too many modifiers selected for ${item.name}`);
+        }
+        const modifiersPrice = requested.selectedModifiers.reduce((sum, id) => sum + (allowed.find((option) => option.id === id)?.price ?? 0), 0);
+        pricedItems.push({ itemId: item.id, quantity: requested.quantity, unitPriceByn: Number((Number(item.priceByn) + modifiersPrice).toFixed(2)), selectedModifiers: requested.selectedModifiers, status: OrderStatus.NEW, kitchenDepartment: item.kitchenDepartment ?? 'HOT' });
+      }
       const order = await tx.order.create({
-        data: { tenantId, tableId, dailyOrderNumber, ...(guest && { guestId: guest.id }) },
+        data: {
+          tenantId, tableId, dailyOrderNumber, ...(guest && { guestId: guest.id }),
+          ...(pricedItems.length > 0 && {
+            totalAmountByn: Number(pricedItems.reduce((sum, item) => sum + item.unitPriceByn * item.quantity, 0).toFixed(2)),
+            items: { create: pricedItems },
+          }),
+        },
       });
       return order;
     });
@@ -338,8 +373,11 @@ export class OrdersService {
       if (order.isPaid || order.status === OrderStatus.PAID) {
         throw new ConflictException('Order is already paid');
       }
+      if (order.status !== OrderStatus.SERVED) {
+        throw new ConflictException('Only served orders can be paid');
+      }
       const payment = await tx.payment.findFirst({
-        where: { orderId: id, tenantId, status: PaymentStatus.SUCCEEDED },
+        where: { orderId: id, tenantId, status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED] } },
       });
       if (!payment) throw new ConflictException('A successful payment is required');
 

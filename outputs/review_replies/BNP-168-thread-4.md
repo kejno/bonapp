@@ -1,0 +1,1 @@
+Добавлен сквозной тест `apps/api/test/BNP-168.iiko-sync.e2e-spec.ts`: он запускает оба импорта через `POST /api/v1/admin/pos/sync-menu`, использует mock iiko API и проверяет по данным PostgreSQL, что один `pos_item_id` обновляется без создания дубля.

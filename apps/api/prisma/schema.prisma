@@ -27,6 +27,11 @@ enum VenueType {
   BAR
 }
 
+enum PosProvider {
+  IIKO
+  RKEEPER
+}
+
 enum TableStatus {
   AVAILABLE
   OCCUPIED
@@ -54,8 +59,10 @@ model Tenant {
   currency               String          @default("BYN")
   logoUrl                String?         @map("logo_url")
   brandColor             String?         @map("brand_color")
+  integrationSettings    Json?           @map("integration_settings")
   posType                String?         @map("pos_type")
   posApiKey              String?         @map("pos_api_key")
+  posCredentials         Json?           @map("pos_credentials")
   posUrl                 String?         @map("pos_url")
   posImportState         Json?           @map("pos_import_state")
   paymentCredentials     Json?           @map("payment_credentials")
@@ -76,6 +83,7 @@ model Tenant {
   payments               Payment[]
   menuCategories         MenuCategory[]
   menuItems              MenuItem[]
+  posIntegrationConfigs  PosIntegrationConfig[]
   modifierGroups         ModifierGroup[]
   modifiers              Modifier[]
   stopListItems          StopListItem[]
@@ -85,6 +93,19 @@ model Tenant {
   dailyOrderNumber       Int             @default(0) @map("daily_order_number")
   dailyOrderNumberDate   String?         @map("daily_order_number_date")
   @@map("tenants")
+}
+
+model PosIntegrationConfig {
+  id        String      @id @default(uuid())
+  tenantId  String      @map("tenant_id")
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider  PosProvider
+  config    Json
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([tenantId, provider])
+  @@map("pos_integration_configs")
 }
 
 model TenantRegistration {
@@ -221,6 +242,7 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   PENDING
+  COMPLETED
   SUCCEEDED
   FAILED
   CANCELLED
@@ -247,6 +269,7 @@ model Order {
   isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
+  posOrderSubmittedAt DateTime?   @map("pos_order_submitted_at")
   comment          String?
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
@@ -284,6 +307,7 @@ model Payment {
   amountByn             Decimal       @map("amount_byn") @db.Decimal(12, 2)
   tipsAmountByn         Decimal       @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   provider              String
+  method                PaymentMethod @default(BANK_CARD)
   providerTransactionId String?       @map("provider_transaction_id")
   eripOrderNumber       String?       @map("erip_order_number")
   status                PaymentStatus @default(PENDING)
@@ -440,6 +464,8 @@ model Shift {
   status    ShiftStatus  @default(OPEN)
   openedAt  DateTime     @default(now()) @map("opened_at")
   closedAt  DateTime?    @map("closed_at")
+  sknoStartZ Int?        @map("skno_start_z")
+  sknoCloseStartedAt DateTime? @map("skno_close_started_at")
   report    ShiftReport?
 
   @@unique([id, tenantId])
@@ -458,6 +484,7 @@ model ShiftReport {
   closedAt    DateTime @map("closed_at")
   totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
   orderCount  Int      @map("order_count")
+  zReportNumber Int    @map("z_report_number")
 
   @@unique([shiftId, tenantId])
   @@index([tenantId])
