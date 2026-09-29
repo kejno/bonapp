@@ -7,6 +7,21 @@ export function isPosOrderEligible(status: string, isPaid: boolean): boolean {
   return !isPaid && ACTIVE_ORDER_STATUSES.includes(status as (typeof ACTIVE_ORDER_STATUSES)[number]);
 }
 
+export async function claimPosOrderSubmission(store: PrismaService, tenantId: string, orderId: string): Promise<boolean> {
+  const result = await store.forTenant(tenantId).order.updateMany({
+    where: {
+      id: orderId,
+      tenantId,
+      posOrderId: null,
+      posOrderSubmittedAt: null,
+      isPaid: false,
+      status: { in: [...ACTIVE_ORDER_STATUSES] },
+    },
+    data: { posOrderSubmittedAt: new Date() },
+  });
+  return result.count === 1;
+}
+
 export async function recoverPendingPosOrders(
   store: PrismaService,
   enqueue: (tenantId: string, orderId: string) => Promise<void>,
@@ -28,6 +43,7 @@ export async function recoverPendingPosOrders(
           tenantId: tenant.id,
           guestSessionId: { not: null },
           posOrderId: null,
+          posOrderSubmittedAt: null,
           isPaid: false,
           status: { in: [...ACTIVE_ORDER_STATUSES] },
         },
