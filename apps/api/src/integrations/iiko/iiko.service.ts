@@ -32,7 +32,7 @@ export class IikoService implements OnModuleInit, OnModuleDestroy {
     const tenantId = this.requireTenant();
     const prior = await this.state(tenantId);
     if (prior?.status === 'PENDING' || prior?.status === 'RUNNING') throw new ConflictException('Синхронизация меню уже выполняется');
-    const config = await this.prisma.db.posIntegrationConfig.findFirst({ where: { provider: PosProvider.IIKO } });
+    const config = await this.prisma.forTenant(tenantId).posIntegrationConfig.findFirst({ where: { provider: PosProvider.IIKO } });
     if (!config) throw new BadRequestException('Для тенанта не настроено подключение iiko');
     await this.setState(tenantId, { status: 'PENDING', startedAt: null, completedAt: null, error: null });
     let job: Job<SyncJob>;

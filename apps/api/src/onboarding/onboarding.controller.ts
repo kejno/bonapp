@@ -8,12 +8,12 @@ export class OnboardingController {
   constructor(private readonly onboarding: OnboardingService) {}
 
   @Post('pos-check')
-  check(@Body() body: { posType: string; apiKey: string; url: string }) {
+  check(@Body() body: { posType: string; apiKey: string; appId?: string; clientSecret?: string; organizationId?: string; terminalGroupId?: string; url: string }) {
     return this.onboarding.checkPos(body);
   }
 
   @Post('pos')
-  save(@Body() body: { posType: string; apiKey?: string; url?: string }) {
+  save(@Body() body: { posType: string; apiKey?: string; appId?: string; clientSecret?: string; organizationId?: string; terminalGroupId?: string; url?: string }) {
     return this.onboarding.savePos(body);
   }
 

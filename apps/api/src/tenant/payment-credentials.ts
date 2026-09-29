@@ -26,7 +26,7 @@ export interface EncryptedCredentials {
 }
 
 export function encryptCredentials(
-  credentials: PaymentCredentialInput,
+  credentials: object,
   secret: string,
 ): EncryptedCredentials {
   const iv = randomBytes(12);
