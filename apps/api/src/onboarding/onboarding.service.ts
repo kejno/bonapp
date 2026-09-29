@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
 import { requestPosMenu } from './pos-network';
 import { randomUUID } from 'node:crypto';
+import { findMissingPosItemIds } from './pos-menu';
 
 interface PosSettings {
   posType: string;
@@ -151,8 +152,10 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     const payload = await requestPosMenu(new URL(tenant.posUrl), tenant.posApiKey, this.allowedPosHosts, 15000);
     const items = job.data.items ?? (Array.isArray(payload) ? payload :
       payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown }).items)
-        ? (payload as { items: unknown[] }).items : []);
+        ? (payload as { items: unknown[] }).items : null);
+    if (!items) throw new Error('POS вернул некорректный список товаров');
     const valid = items.filter((item): item is PosMenuItem => this.isMenuItem(item));
+    if (valid.length !== items.length) throw new Error('POS вернул некорректную позицию меню');
     let imported = state?.imported ?? 0;
     const failed: Array<{ name: string; reason: string; id: string; price: number; categoryId?: string; categoryName?: string }> = [];
     const total = imported + valid.length;
@@ -164,7 +167,14 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
           const category = item.categoryId ? await tx.menuCategory.findFirst({ where: { tenantId, posCategoryId: item.categoryId } }) : null;
           const targetCategory = category ?? await tx.menuCategory.create({ data: { tenantId, name: item.categoryName || 'Импортировано из POS', sortOrder: 0, posCategoryId: item.categoryId ?? null } });
           const existing = await tx.menuItem.findFirst({ where: { tenantId, posItemId: item.id } });
-          if (!existing) await tx.menuItem.create({ data: { tenantId, categoryId: targetCategory.id, name: item.name, priceByn: item.price, posItemId: item.id } });
+          if (existing) {
+            await tx.menuItem.update({
+              where: { tenantId_id: { tenantId, id: existing.id } },
+              data: { categoryId: targetCategory.id, name: item.name, priceByn: item.price, isActive: true },
+            });
+          } else {
+            await tx.menuItem.create({ data: { tenantId, categoryId: targetCategory.id, name: item.name, priceByn: item.price, posItemId: item.id } });
+          }
         });
         imported += 1;
       } catch (error) {
@@ -174,6 +184,24 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
       const status = processed === valid.length ? (failed.length ? 'completed_with_errors' : 'completed') : 'running';
       await db.tenant.update({ where: { id: tenantId }, data: { posImportState: { status, imported, total, failed } } });
       await job.updateProgress({ imported, total, failed: failed.length });
+    }
+    // Reconcile only a complete full-menu response. Retry jobs carry a subset,
+    // and a partially failed import must never hide valid menu items.
+    if (job.data.items === undefined && failed.length === 0) {
+      const linkedItems = await db.menuItem.findMany({
+        where: { tenantId, posItemId: { not: null } },
+        select: { id: true, posItemId: true },
+      });
+      const missingIds = findMissingPosItemIds(
+        linkedItems.filter((item) => item.posItemId !== null).map((item) => item.posItemId!),
+        valid.map((item) => item.id),
+      );
+      if (missingIds.length > 0) {
+        await db.menuItem.updateMany({
+          where: { tenantId, posItemId: { in: missingIds } },
+          data: { isActive: false },
+        });
+      }
     }
     if (!valid.length) await db.tenant.update({ where: { id: tenantId }, data: { posImportState: { status: 'completed', imported, total, failed: [] } } });
   }
