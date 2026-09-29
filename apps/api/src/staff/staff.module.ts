@@ -9,5 +9,6 @@ import { SKNO_CLIENT, TitanSknoClient } from './skno-client';
   imports: [AuthModule],
   controllers: [StaffController],
   providers: [StaffService, ShiftService, TitanSknoClient, { provide: SKNO_CLIENT, useExisting: TitanSknoClient }],
+  exports: [ShiftService],
 })
 export class StaffModule {}

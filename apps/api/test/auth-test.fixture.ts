@@ -91,7 +91,14 @@ export class AuthTestFixture {
     await this.app.init();
 
     this.redis = this.app.get<Redis>(REDIS_CLIENT);
-    await this.redis.connect();
+    if (this.redis.status === 'wait') {
+      await this.redis.connect();
+    } else if (this.redis.status !== 'ready') {
+      await new Promise<void>((resolve, reject) => {
+        this.redis.once('ready', resolve);
+        this.redis.once('error', reject);
+      });
+    }
 
     await this.prisma.tenant.create({
       data: { id: this.tenantId, slug: this.tenantId, name: 'Auth E2E Tenant' },
@@ -179,4 +186,3 @@ export class AuthTestFixture {
     }
   }
 }
-

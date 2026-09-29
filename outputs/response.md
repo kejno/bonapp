@@ -29,9 +29,9 @@
 ## Test Coverage
 
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- ESLint для всех изменённых TypeScript-файлов PR — пройден после генерации Prisma Client.
+- `npx eslint apps/api/src/onboarding/pos-order-queue.service.ts apps/api/src/onboarding/pos-order-recovery.ts apps/api/src/onboarding/pos-order-recovery.spec.ts` — пройден.
 - `npm run typecheck` — пройден во всех четырёх workspace.
 - `npm test` — пройден: API 77 наборов / 603 теста, guest-web 10 / 32, admin-web 63 / 124; сборка и проверка design tokens также завершились успешно.
-- `npm run test:e2e --workspace=apps/api -- --runInBand test/payments.e2e-spec.ts` — запуск заблокирован отсутствующей `DATABASE_URL`; оба сценария не смогли подключиться к PostgreSQL.
 - Миграционная проверка `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавление `20260929120001_payment_completed_status/migration.sql`; существующие миграции не менялись. Поиск вызовов `emitPaymentStatusChanged` и обращений к статусам платежа выполнен через `rg` в `apps/api/src` и `apps/api/test`.
-- `git diff --check` — пройден.
+- `npm run test:e2e --workspace=apps/api -- --runInBand test/payments.e2e-spec.ts` — запуск выполнен, но два сценария заблокированы отсутствующей `DATABASE_URL`; доступ к тестовой PostgreSQL не настроен.
+- `git diff --check` и `git diff --cached --check` — пройдены после разрешения конфликтов.
