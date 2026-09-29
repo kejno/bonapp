@@ -30,13 +30,7 @@ export class GuestSessionService {
     const db = this.prisma.forTenant(tenantId);
     const pending = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
     const paymentExpired = pending && pending.createdAt.getTime() <= Date.now() - 15 * 60_000;
-    if (paymentExpired) {
-      const expired = await db.payment.updateMany({
-        where: { id: pending.id, status: PaymentStatus.PENDING },
-        data: { status: PaymentStatus.CANCELLED },
-      });
-      if (!expired.count) throw new ConflictException('Текущий платёж уже обрабатывается');
-    }
+    if (paymentExpired) throw new ConflictException('Ожидается подтверждение статуса платежа от bePaid');
     const active = pending && !paymentExpired ? pending : null;
     let payment;
     try {
