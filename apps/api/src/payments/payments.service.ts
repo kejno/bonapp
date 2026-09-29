@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentStatus } from '@prisma/client';
@@ -7,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { decryptCredentials, EncryptedCredentials } from '../tenant/payment-credentials';
 import { verifyOplatiSignature } from './oplati-webhook-signature';
+import { createOplatiWebhookJobId } from './oplati-webhook-job-id';
 
 interface PaymentWebhook { providerTransactionId: string; eventId?: string; status: string }
 interface PaymentJob { body: PaymentWebhook }
@@ -101,7 +101,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     let body: PaymentWebhook;
     try { body = JSON.parse(rawBody.toString('utf8')) as PaymentWebhook; } catch { throw new BadRequestException('Некорректное тело вебхука'); }
     if (!body || typeof body.providerTransactionId !== 'string' || typeof body.status !== 'string') throw new BadRequestException('В вебхуке отсутствуют обязательные поля');
-    const jobId = createHash('sha256').update(body.eventId ?? body.providerTransactionId).digest('hex');
+    const jobId = createOplatiWebhookJobId(body.eventId);
     await this.queue.add('oplati-payment-update', { body }, { jobId, attempts: 5, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000 });
     return { accepted: true };
   }
