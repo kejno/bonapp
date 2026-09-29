@@ -1,11 +1,16 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 export async function recoverPendingPosOrders(
   store: PrismaService,
   enqueue: (tenantId: string, orderId: string) => Promise<void>,
 ): Promise<void> {
   const tenants = await store.db.tenant.findMany({
-    where: { posType: { in: ['iiko', 'r_keeper'] }, posApiKey: { not: null }, posUrl: { not: null } },
+    where: {
+      posType: { in: ['iiko', 'r_keeper'] },
+      posUrl: { not: null },
+      OR: [{ posApiKey: { not: null } }, { posCredentials: { not: Prisma.DbNull } }],
+    },
     select: { id: true },
   });
   for (const tenant of tenants) {

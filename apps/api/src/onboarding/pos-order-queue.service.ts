@@ -4,8 +4,9 @@ import { Job, Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
-import { requestPosOrder } from './pos-network';
+import { requestIikoOrder, requestPosOrder } from './pos-network';
 import { recoverPendingPosOrders } from './pos-order-recovery';
+import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 
 interface PosOrderJob { tenantId: string; orderId: string }
 
@@ -91,7 +92,9 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     const { tenantId, orderId } = job.data;
     const db = this.prisma.forTenant(tenantId);
     const [tenant, order] = await Promise.all([
-      db.tenant.findUnique({ where: { id: tenantId }, select: { posType: true, posApiKey: true, posUrl: true } }),
+      db.tenant.findUnique({ where: { id: tenantId }, select: {
+        posType: true, posApiKey: true, posUrl: true, posCredentials: true,
+      } }),
       db.order.findFirst({
         where: { id: orderId },
         select: {
@@ -104,7 +107,8 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
         },
       }),
     ]);
-    if (!tenant?.posUrl || !tenant.posApiKey || !tenant.posType || tenant.posType === 'none') return;
+    if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
+      (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) return;
     if (!order) throw new Error('Заказ не найден');
     if (order.posOrderId) return;
     if (!['r_keeper', 'iiko'].includes(tenant.posType)) throw new Error(`Отправка заказов для POS ${tenant.posType} не реализована`);
@@ -128,17 +132,23 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       };
     let externalId: string;
     if (tenant.posType === 'r_keeper') {
-      externalId = await requestPosOrder(new URL(tenant.posUrl), tenant.posApiKey, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
+      externalId = await requestPosOrder(new URL(tenant.posUrl), tenant.posApiKey!, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
     } else {
-      let credentials: { apiKey?: string; organizationId?: string; terminalGroupId?: string };
-      try { credentials = JSON.parse(tenant.posApiKey) as typeof credentials; }
-      catch { throw new Error('Для iiko укажите JSON с apiKey, organizationId и terminalGroupId'); }
-      if (!credentials.apiKey || !credentials.organizationId || !credentials.terminalGroupId) {
-        throw new Error('Для iiko укажите apiKey, organizationId и terminalGroupId');
-      }
-      externalId = await requestPosOrder(new URL(tenant.posUrl), credentials.apiKey, this.allowedPosHosts, 15000,
-        buildIikoOrderPayload(orderData, credentials.organizationId, credentials.terminalGroupId), '/api/1/order/create', 'orderInfo.id');
+      const credentials = this.getIikoCredentials(tenant.posCredentials);
+      externalId = await requestIikoOrder(new URL(tenant.posUrl), {
+        apiKey: credentials.apiKey,
+        appId: credentials.appId,
+        clientSecret: credentials.clientSecret,
+      }, this.allowedPosHosts, 15000,
+      buildIikoOrderPayload(orderData, credentials.organizationId, credentials.terminalGroupId));
     }
     await db.order.update({ where: { id_tenantId: { id: orderId, tenantId } }, data: { posOrderId: externalId } });
+  }
+
+  private getIikoCredentials(encrypted: unknown): { apiKey: string; appId: string; clientSecret: string; organizationId: string; terminalGroupId: string } {
+    if (!isEncryptedCredentials(encrypted)) throw new Error('Зашифрованные настройки iiko некорректны');
+    const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    if (!secret) throw new Error('PAYMENT_CREDENTIALS_SECRET is not configured');
+    return decryptCredentials(encrypted, secret);
   }
 }
