@@ -67,6 +67,7 @@ export default function OnboardingStep3Page() {
               'merchantId',
               'serviceId',
               'shopId',
+              'publicKey',
               'cashRegisterSerial',
               'unp',
             ].includes(key)
@@ -86,14 +87,25 @@ export default function OnboardingStep3Page() {
   const field = (name: string, label: string, type = 'text') => (
     <label className="block space-y-1 text-sm">
       {label}
-      <input
-        required
-        type={type}
-        value={values[name] ?? ''}
-        onChange={(event) => update(name, event.target.value)}
-        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2"
-        autoComplete={type === 'password' ? 'new-password' : 'off'}
-      />
+      {type === 'textarea' ? (
+        <textarea
+          required
+          value={values[name] ?? ''}
+          onChange={(event) => update(name, event.target.value)}
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2"
+          autoComplete="off"
+          rows={5}
+        />
+      ) : (
+        <input
+          required
+          type={type}
+          value={values[name] ?? ''}
+          onChange={(event) => update(name, event.target.value)}
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2"
+          autoComplete={type === 'password' ? 'new-password' : 'off'}
+        />
+      )}
     </label>
   );
   const card = (id: Gateway, name: string) => (
@@ -162,6 +174,7 @@ export default function OnboardingStep3Page() {
             </label>
             {field('shopId', 'Shop ID')}
             {field('secret', 'Секрет', 'password')}
+            {values.provider === 'bepaid' && field('publicKey', 'Публичный ключ bePaid', 'textarea')}
             <label className="block space-y-1 text-sm">
               Среда
               <select

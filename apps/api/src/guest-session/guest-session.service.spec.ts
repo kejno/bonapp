@@ -35,6 +35,27 @@ describe('GuestSessionService order status', () => {
   });
 });
 
+describe('GuestSessionService card payment status', () => {
+  it('exposes the server-side checkout expiry derived from payment creation time', async () => {
+    const createdAt = new Date('2026-09-29T12:00:00.000Z');
+    const prisma = {
+      forTenant: jest.fn(() => ({
+        order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', status: 'SERVED' }) },
+        payment: { findFirst: jest.fn().mockResolvedValue({ status: 'PENDING', createdAt }) },
+      })),
+      db: { tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: null }) } },
+    } as unknown as PrismaService;
+    const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never, { enqueue: jest.fn() });
+
+    await expect(service.getCardPaymentStatus('order-1', 'tenant-1', 'table-1')).resolves.toEqual({
+      orderStatus: 'SERVED',
+      paymentStatus: 'PENDING',
+      paymentExpiresAt: '2026-09-29T12:15:00.000Z',
+      paymentEnabled: false,
+    });
+  });
+});
+
 describe('GuestSessionService addOrderItem', () => {
   const lifecycle: string[] = [];
   const create = jest.fn();
