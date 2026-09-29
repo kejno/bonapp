@@ -1,7 +1,0 @@
-{
-  "status": "passed",
-  "passed": 3,
-  "failed": 0,
-  "skipped": 0,
-  "summary": "Пройдены 3 целевых теста: BNP-405 и BNP-406 в admin-web, BNP-406 в guest-web"
-}
