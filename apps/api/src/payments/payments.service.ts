@@ -8,6 +8,7 @@ import { decryptCredentials, EncryptedCredentials } from '../tenant/payment-cred
 import { verifyOplatiSignature } from './oplati-webhook-signature';
 import { createOplatiWebhookJobId } from './oplati-webhook-job-id';
 import { PaymentQueue } from './payment-queue';
+import { OPLATI_PAYMENT_WEBHOOK_QUEUE } from './payment-webhook-queues';
 import { PaymentMethodName } from './payment-gateway';
 
 interface PaymentWebhook { providerTransactionId: string; eventId?: string; status: string }
@@ -23,8 +24,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly gateway: MenuGateway, private readonly paymentQueue?: PaymentQueue, private readonly socket?: MenuGateway) {
     this.paymentQueue?.registerHandler((method, event) => this.process(method, event));
     const connection = { host: config.get<string>('REDIS_HOST', 'localhost'), port: Number(config.get<string>('REDIS_PORT', '6379')) };
-    this.queue = new Queue<PaymentJob>('payment-webhooks', { connection });
-    this.worker = new Worker<PaymentJob>('payment-webhooks', (job) => this.processWebhook(job), { connection });
+    this.queue = new Queue<PaymentJob>(OPLATI_PAYMENT_WEBHOOK_QUEUE, { connection });
+    this.worker = new Worker<PaymentJob>(OPLATI_PAYMENT_WEBHOOK_QUEUE, (job) => this.processWebhook(job), { connection });
     this.worker.on('failed', (job, error) => this.logger.error(`Payment webhook job ${job?.id ?? 'unknown'} failed: ${error.message}`));
   }
 
