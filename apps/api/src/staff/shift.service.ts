@@ -61,19 +61,35 @@ export class ShiftService {
   }
 
   async close(tenantId: string) {
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    const pending = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
-      const shift = await tx.shift.findFirst({
-        where: { tenantId, status: ShiftStatus.OPEN },
-      });
+      const shift = await tx.shift.findFirst({ where: { tenantId, status: ShiftStatus.OPEN } });
       if (!shift) throw new NotFoundException('No open shift for this tenant');
-      const credentials = await this.getSknoCredentials(tenantId);
-      const confirmation = await this.skno.close(credentials);
+      const started = !shift.sknoCloseStartedAt;
+      if (started) {
+        await tx.shift.update({
+          where: { id_tenantId: { id: shift.id, tenantId } },
+          data: { sknoCloseStartedAt: new Date() },
+        });
+      }
+      return { shift, started };
+    });
+
+    const credentials = await this.getSknoCredentials(tenantId);
+    const confirmation = pending.started
+      ? await this.skno.close(credentials)
+      : await this.skno.reconcileClose(credentials, pending.shift.sknoStartZ ?? 0);
+    if (!confirmation) {
+      throw new ConflictException('Результат Z-отчёта не подтверждён; требуется сверка с кассой, повторная команда не отправлялась');
+    }
+
+    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const shift = await tx.shift.findFirst({ where: { id: pending.shift.id, tenantId, status: ShiftStatus.OPEN } });
+      if (!shift) throw new ConflictException('Смена уже закрыта или изменилась');
       const closedAt = new Date();
       const totals = await tx.order.aggregate({
         where: { tenantId, createdAt: { gte: shift.openedAt, lte: closedAt } },
-        _sum: { totalAmountByn: true },
-        _count: { _all: true },
+        _sum: { totalAmountByn: true }, _count: { _all: true },
       });
       const closed = await tx.shift.update({
         where: { id_tenantId: { id: shift.id, tenantId } },
@@ -81,14 +97,10 @@ export class ShiftService {
       });
       const report = await tx.shiftReport.create({
         data: {
-          tenantId,
-          shiftId: shift.id,
-          cashierId: shift.cashierId,
-          openedAt: shift.openedAt,
-          closedAt,
+          tenantId, shiftId: shift.id, cashierId: shift.cashierId,
+          openedAt: shift.openedAt, closedAt,
           totalAmount: totals._sum.totalAmountByn ?? 0,
-          orderCount: totals._count._all,
-          zReportNumber: confirmation.zReportNumber,
+          orderCount: totals._count._all, zReportNumber: confirmation.zReportNumber,
         },
       });
       await tx.tenant.update({ where: { id: tenantId }, data: { dailyOrderNumber: 0 } });

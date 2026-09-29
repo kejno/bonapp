@@ -13,6 +13,7 @@ export interface SknoCredentials {
 export interface SknoShiftClient {
   open(credentials: SknoCredentials): Promise<{ zReportNumber: number }>;
   close(credentials: SknoCredentials): Promise<{ zReportNumber: number }>;
+  reconcileClose(credentials: SknoCredentials, startZ: number): Promise<{ zReportNumber: number } | null>;
 }
 
 type CashState = { serial?: string; currZ?: number; err?: unknown };
@@ -51,6 +52,20 @@ export class TitanSknoClient implements SknoShiftClient {
       throw new ServiceUnavailableException('Касса приняла Z-отчёт, но номер отчёта не удалось подтвердить');
     }
     return { zReportNumber: after };
+  }
+
+  async reconcileClose(credentials: SknoCredentials, startZ: number): Promise<{ zReportNumber: number } | null> {
+    const [state, rows] = await Promise.all([
+      this.read<CashState>(credentials, '/cgi/state'),
+      this.read<FiscalDay[]>(credentials, '/cgi/tbl/FDay'),
+    ]);
+    this.assertNoErrors(state.err);
+    if (state.serial !== credentials.cashRegisterSerial || !Array.isArray(rows)) return null;
+    const report = rows
+      .filter((row) => Number.isInteger(row.id) && row.id! > startZ)
+      .sort((a, b) => b.id! - a.id!)[0];
+    const zReportNumber = report?.id ?? (state.currZ !== undefined && state.currZ > startZ ? state.currZ : null);
+    return zReportNumber === null ? null : { zReportNumber };
   }
 
   private async readSnapshot(credentials: SknoCredentials): Promise<{ currZ: number; ids: Set<number> }> {

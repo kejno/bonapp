@@ -441,6 +441,7 @@ model Shift {
   openedAt  DateTime     @default(now()) @map("opened_at")
   closedAt  DateTime?    @map("closed_at")
   sknoStartZ Int?        @map("skno_start_z")
+  sknoCloseStartedAt DateTime? @map("skno_close_started_at")
   report    ShiftReport?
 
   @@unique([id, tenantId])

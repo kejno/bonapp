@@ -93,4 +93,11 @@ describe('TitanSknoClient', () => {
     await expect(client.close(credentials())).rejects.toThrow('Не удалось подтвердить результат Z-отчёта');
     expect(reportCalls).toBe(1);
   });
+
+  it('recovers a previously started close from fiscal memory without issuing another Z-report', async () => {
+    fiscalDays = [{ id: 10 }, { id: 11 }];
+    state.currZ = 11;
+    await expect(client.reconcileClose(credentials(), 10)).resolves.toEqual({ zReportNumber: 11 });
+    expect(reportCalls).toBe(0);
+  });
 });
