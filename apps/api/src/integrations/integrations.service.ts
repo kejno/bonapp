@@ -10,7 +10,11 @@ import { request as httpsRequest } from 'node:https';
 import { connect } from 'node:net';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
-import { encryptCredentials } from '../tenant/payment-credentials';
+import {
+  decryptCredentials,
+  encryptCredentials,
+  isEncryptedCredentials,
+} from '../tenant/payment-credentials';
 
 const PROVIDERS = ['iiko', 'r_keeper', 'oplati', 'erip', 'bePaid', 'skno'] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -18,7 +22,7 @@ type Settings = Record<string, unknown>;
 type IntegrationSettings = Record<Provider, Settings>;
 
 const EMPTY_SETTINGS = Object.fromEntries(PROVIDERS.map((key) => [key, {}])) as IntegrationSettings;
-const SECRET_FIELDS = new Set(['apiKey', 'apiSecret', 'password', 'token', 'secret', 'secretKey']);
+const SECRET_FIELDS = new Set(['apiKey', 'apiSecret', 'clientSecret', 'password', 'token', 'secret', 'secretKey']);
 const REQUIRED_FIELDS: Record<Provider, string[]> = {
   iiko: ['apiUrl', 'apiKey', 'appId', 'clientSecret', 'organizationId', 'terminalGroupId'],
   r_keeper: ['apiUrl', 'apiKey'],
@@ -46,7 +50,7 @@ function isPublicIpv4(address: string): boolean {
 function isConfigured(provider: Provider, settings: Settings): boolean {
   return REQUIRED_FIELDS[provider].every((key) => {
     const value = settings[key];
-    return (typeof value === 'string' && value.trim().length > 0) || typeof value === 'boolean';
+    return (typeof value === 'string' && value.trim().length > 0) || typeof value === 'boolean' || isEncryptedCredentials(value);
   });
 }
 
@@ -130,6 +134,14 @@ export class IntegrationsService {
       if (!isConfigured(provider, settings) || typeof apiUrl !== 'string' || typeof apiKey !== 'string') {
         throw new ConflictException('Заполните обязательные настройки POS-системы');
       }
+      const clientSecret = provider === 'iiko'
+        ? isEncryptedCredentials(settings['clientSecret'])
+          ? decryptCredentials<{ value: string }>(settings['clientSecret'], this.credentialsSecret()).value
+          : settings['clientSecret']
+        : undefined;
+      if (provider === 'iiko' && typeof clientSecret !== 'string') {
+        throw new ConflictException('Заполните обязательные настройки POS-системы');
+      }
       posData = provider === 'iiko'
         ? {
             posType: provider,
@@ -138,12 +150,15 @@ export class IntegrationsService {
             posCredentials: encryptCredentials({
               apiKey,
               appId: settings['appId'],
-              clientSecret: settings['clientSecret'],
+              clientSecret,
               organizationId: settings['organizationId'],
               terminalGroupId: settings['terminalGroupId'],
             }, this.credentialsSecret()),
           }
         : { posType: provider, posUrl: apiUrl, posApiKey: apiKey, posCredentials: Prisma.DbNull };
+      if (provider === 'iiko' && typeof settings['clientSecret'] === 'string') {
+        current.iiko.clientSecret = encryptCredentials({ value: clientSecret }, this.credentialsSecret());
+      }
     }
     const tenant = await this.prisma.forTenant(tenantId).tenant.update({
       where: { id: tenantId },

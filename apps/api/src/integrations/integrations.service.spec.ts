@@ -1,5 +1,6 @@
 import { IntegrationsService } from './integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 import * as https from 'node:https';
 
 jest.mock('node:https', () => {
@@ -75,6 +76,33 @@ describe('IntegrationsService', () => {
       data: { integrationSettings: Record<string, unknown> };
     };
     expect(saved.data.integrationSettings).toMatchObject({ bePaid: { secretKey: 'saved-secret' } });
+  });
+
+  it('encrypts iiko client secrets at rest and omits them from status responses', async () => {
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-integration-secret';
+    try {
+      findUnique.mockResolvedValue({ integrationSettings: null });
+      await service.updateSettings('tenant-1', 'iiko', {
+        apiUrl: 'https://iiko.example', apiKey: 'api-key', appId: 'app',
+        clientSecret: 'client-secret', organizationId: 'org', terminalGroupId: 'terminal',
+      });
+
+      const savedSettings = (writes[0] as { data: { integrationSettings: Record<string, Record<string, unknown>> } }).data.integrationSettings;
+      const stored = savedSettings.iiko.clientSecret;
+      expect(isEncryptedCredentials(stored)).toBe(true);
+      if (!isEncryptedCredentials(stored)) throw new Error('Expected encrypted iiko client secret');
+      expect(decryptCredentials<{ value: string }>(stored, process.env.PAYMENT_CREDENTIALS_SECRET).value).toBe('client-secret');
+      expect(JSON.stringify(stored)).not.toContain('client-secret');
+
+      findUnique.mockResolvedValue({ integrationSettings: savedSettings });
+      const status = await service.getStatus('tenant-1');
+      expect(JSON.stringify(status.integrations.iiko)).not.toContain('client-secret');
+      expect(status.integrations.iiko.settings['clientSecret']).toBe('');
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
   });
 
   it('starts the existing POS import for the requested provider', async () => {
