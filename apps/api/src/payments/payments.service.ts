@@ -1,12 +1,14 @@
 import { ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus, Prisma } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { decryptCredentials, EncryptedCredentials } from '../tenant/payment-credentials';
 import { verifyOplatiSignature } from './oplati-webhook-signature';
 import { createOplatiWebhookJobId } from './oplati-webhook-job-id';
+import { PaymentQueue } from './payment-queue';
+import { PaymentMethodName } from './payment-gateway';
 
 interface PaymentWebhook { providerTransactionId: string; eventId?: string; status: string }
 interface PaymentJob { body: PaymentWebhook }
@@ -18,7 +20,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly worker: Worker<PaymentJob>;
   private readonly logger = new Logger(PaymentsService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly gateway: MenuGateway) {
+  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly gateway: MenuGateway, private readonly paymentQueue?: PaymentQueue, private readonly socket?: MenuGateway) {
+    this.paymentQueue?.registerHandler((method, event) => this.process(method, event));
     const connection = { host: config.get<string>('REDIS_HOST', 'localhost'), port: Number(config.get<string>('REDIS_PORT', '6379')) };
     this.queue = new Queue<PaymentJob>('payment-webhooks', { connection });
     this.worker = new Worker<PaymentJob>('payment-webhooks', (job) => this.processWebhook(job), { connection });
@@ -104,6 +107,29 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const jobId = createOplatiWebhookJobId(body.eventId);
     await this.queue.add('oplati-payment-update', { body }, { jobId, attempts: 20, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000, removeOnFail: false });
     return { accepted: true };
+  }
+
+  async enqueue(method: PaymentMethodName, event: Record<string, unknown>) {
+    if (!this.paymentQueue) throw new ServiceUnavailableException('Payment webhook queue is unavailable');
+    await this.paymentQueue.add(method, event);
+  }
+
+  async process(method: PaymentMethodName, event: Record<string, unknown>) {
+    const paymentId = event['paymentId'];
+    const tenantId = event['tenantId'];
+    const outcome = typeof event['status'] === 'string' ? event['status'].toLowerCase() : '';
+    if (typeof paymentId !== 'string' || typeof tenantId !== 'string' || !['confirmed', 'success', 'completed', 'failed', 'declined', 'error'].includes(outcome)) return;
+    const payment = await this.prisma.forTenant(tenantId).payment.findUnique({ where: { id: paymentId }, include: { order: { select: { tableId: true, guestSessionId: true } } } });
+    const provider = method === 'ERIP' ? 'ERIP_EPOS' : 'BEPAID';
+    if (!payment || payment.status !== PaymentStatus.PENDING || payment.provider !== provider) return;
+    const completed = ['confirmed', 'success', 'completed'].includes(outcome);
+    const changed = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const result = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: completed ? PaymentStatus.COMPLETED : PaymentStatus.FAILED, payload: event as Prisma.InputJsonValue } });
+      if (!result.count) return false;
+      if (completed) await tx.order.update({ where: { id_tenantId: { id: payment.orderId, tenantId } }, data: { isPaid: true, paidAt: new Date() } });
+      return true;
+    });
+    if (changed) this.socket?.emitPaymentStatusChanged(tenantId, payment.order.tableId, payment.order.guestSessionId, { orderId: payment.orderId, paymentId: payment.id, status: completed ? 'COMPLETED' : 'FAILED', method });
   }
 
   private async processWebhook(job: Job<PaymentJob>): Promise<void> {

@@ -12,6 +12,7 @@ type GuestSession = {
   tenant: { id: string; name: string; currency: string }
   table: { id: string; tableNumber: number; areaName: string }
   activeOrder: { id: string; status: string } | null
+  tableSessionToken: string
 }
 
 type Modifier = { id: string; name: string; price: string | number }
@@ -56,6 +57,7 @@ export default function App() {
   const [callStatus, setCallStatus] = useState('')
   const [tenantConfig, setTenantConfig] = useState<TenantConfig | null>(null)
   const [orderItemMessage, setOrderItemMessage] = useState('')
+  const [paymentMessage, setPaymentMessage] = useState('')
   const cart = useCartStore((state) => state.items)
   const addToCart = useCartStore((state) => state.addItem)
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
@@ -136,6 +138,7 @@ export default function App() {
       .then(async (resolvedSession) => {
         sessionResolved = true
         window.sessionStorage.setItem('qrToken', qrToken)
+        window.sessionStorage.setItem('tableSessionToken', resolvedSession.tableSessionToken)
         getGuestSessionId()
         setSession(resolvedSession)
         const configResponse = await fetch(
@@ -164,12 +167,17 @@ export default function App() {
   useEffect(() => {
     if (!qrToken) return
     const socketOrigin = API_BASE.replace(/\/api\/v1\/?$/, '')
-    const socket = io(socketOrigin, { auth: { qrToken }, transports: ['websocket', 'polling'] })
+    const tableSessionToken = session?.tableSessionToken ?? window.sessionStorage.getItem('tableSessionToken')
+    const socket = io(socketOrigin, { auth: { qrToken, tableSessionToken }, transports: ['websocket', 'polling'] })
+    socket.on('connect', () => socket.emit('join_table_room'))
+    socket.on('payment.status_changed', (payload: { status: string }) => {
+      setPaymentMessage(payload.status === 'COMPLETED' ? 'Оплата заказа подтверждена' : 'Оплата не прошла')
+    })
     socket.on('tenant:service_mode_changed', (payload: { serviceMode: TenantConfig['serviceMode'] }) => {
       setTenantConfig((current) => current ? { ...current, serviceMode: payload.serviceMode } : current)
     })
     return () => { socket.disconnect() }
-  }, [qrToken])
+  }, [qrToken, session?.tableSessionToken])
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as React.CSSProperties}>
@@ -189,6 +197,7 @@ export default function App() {
             <button onClick={() => setCallModalOpen(false)}>Закрыть</button>
           </section>}
           {session.activeOrder && <p>Активный заказ: {session.activeOrder.status}</p>}
+          {paymentMessage && <p role="status">{paymentMessage}</p>}
           {canAddToOrder && <p role="status">Добавление к заказу #{session.activeOrder?.id}</p>}
           {orderItemMessage && <p role="status">{orderItemMessage}</p>}
           {session.activeOrder && <a href={`/order/${encodeURIComponent(session.activeOrder.id)}/status?qr_token=${encodeURIComponent(qrToken ?? '')}`}>Статус заказа</a>}

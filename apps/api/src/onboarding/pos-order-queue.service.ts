@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
 import { requestIikoOrder, requestPosOrder } from './pos-network';
-import { recoverPendingPosOrders } from './pos-order-recovery';
+import { claimPosOrderSubmission, isPosOrderEligible, recoverPendingPosOrders, submitClaimedPosOrder } from './pos-order-recovery';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 
 interface PosOrderJob { tenantId: string; orderId: string }
@@ -103,14 +103,18 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
           comment: true,
           totalAmountByn: true,
           posOrderId: true,
+          posOrderSubmittedAt: true,
+          status: true,
+          isPaid: true,
           items: { select: { itemId: true, quantity: true, unitPriceByn: true } },
         },
       }),
     ]);
     if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
       (tenant.posType === 'iiko' || tenant.posType === 'r_keeper' ? !tenant.posCredentials && !tenant.posApiKey : true)) return;
+    const posUrl = tenant.posUrl;
     if (!order) throw new Error('Заказ не найден');
-    if (order.posOrderId) return;
+    if (order.posOrderId || order.posOrderSubmittedAt || !isPosOrderEligible(order.status, order.isPaid)) return;
     if (!['r_keeper', 'iiko'].includes(tenant.posType)) throw new Error(`Отправка заказов для POS ${tenant.posType} не реализована`);
 
     const menuItems = await db.menuItem.findMany({
@@ -130,18 +134,20 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
         totalAmountByn: Number(order.totalAmountByn),
         items,
       };
-    let externalId: string;
-    if (tenant.posType === 'r_keeper') {
-      externalId = await requestPosOrder(new URL(tenant.posUrl), this.getRKeeperApiKey(tenant.posCredentials, tenant.posApiKey), this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
-    } else {
+    if (!await claimPosOrderSubmission(this.prisma, tenantId, orderId)) return;
+
+    const externalId = await submitClaimedPosOrder(this.prisma, tenantId, orderId, async () => {
+      if (tenant.posType === 'r_keeper') {
+        return requestPosOrder(new URL(posUrl), this.getRKeeperApiKey(tenant.posCredentials, tenant.posApiKey), this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
+      }
       const credentials = this.getIikoCredentials(tenant.posCredentials);
-      externalId = await requestIikoOrder(new URL(tenant.posUrl), {
+      return requestIikoOrder(new URL(posUrl), {
         apiKey: credentials.apiKey,
         appId: credentials.appId,
         clientSecret: credentials.clientSecret,
       }, this.allowedPosHosts, 15000,
       buildIikoOrderPayload(orderData, credentials.organizationId, credentials.terminalGroupId));
-    }
+    });
     await db.order.update({ where: { id_tenantId: { id: orderId, tenantId } }, data: { posOrderId: externalId } });
   }
 

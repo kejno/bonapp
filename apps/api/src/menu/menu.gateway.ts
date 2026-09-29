@@ -69,6 +69,12 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
         (error: unknown) => { this.logger.warn(`Rejected order room join: ${String(error)}`); acknowledge?.({ ok: false }); },
       );
     });
+    socket.on('join_table_room', (acknowledge?: (result: unknown) => void) => {
+      void this.joinTableRoom(socket).then(
+        (room) => acknowledge?.({ ok: true, room }),
+        (error: unknown) => { this.logger.warn(`Rejected table room join: ${String(error)}`); acknowledge?.({ ok: false }); },
+      );
+    });
     socket.on('join_tenant_room', (payload: unknown, acknowledge?: (result: unknown) => void) => {
       void this.joinTenantRoom(socket, payload).then(
         (room) => acknowledge?.({ ok: true, room }),
@@ -147,8 +153,45 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     ) throw new Error('Kitchen access required');
     const room = `tenant_${user.tenantId}_${requested}`;
     await socket.join(room);
+    await socket.join(`tenant:${user.tenantId}`);
     (socket.data as Record<string, unknown>)['staff'] = { tenantId: user.tenantId, userId: user.id, role: user.role };
     return room;
+  }
+
+  private async joinTableRoom(socket: Socket): Promise<string> {
+    const auth = record(socket.handshake.auth);
+    const token = auth['tableSessionToken'];
+    const qrToken = auth['qrToken'];
+    if (typeof token !== 'string' || typeof qrToken !== 'string') throw new Error('Table session required');
+    const table = await this.prisma.findTableByQrToken(qrToken);
+    if (!table) throw new Error('Invalid table');
+    const session = await this.prisma.forTenant(table.tenantId).tableSession.findFirst({
+      where: { tokenHash: hashToken(token), expiresAt: { gt: new Date() }, revokedAt: null },
+      select: { id: true },
+    });
+    if (!session) throw new Error('Invalid table session');
+    const room = `table:${session.id}`;
+    await socket.join(room);
+    return room;
+  }
+
+  emitPaymentStatusChanged(
+    tenantId: string,
+    tableId: string,
+    _guestSessionId: string | null,
+    payload: { orderId: string; paymentId: string; status: string; method: string },
+  ): void {
+    this.io.to(`tenant:${tenantId}`).emit('payment.status_changed', payload);
+    void this.prisma.forTenant(tenantId).tableSession.findMany({
+      where: {
+        tableId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    }).then((sessions) => {
+      for (const session of sessions) this.io.to(`table:${session.id}`).emit('payment.status_changed', payload);
+    }).catch((error: unknown) => this.logger.error(`Could not route payment update: ${String(error)}`));
   }
 
   private async updateOrderStatus(socket: Socket, value: unknown): Promise<void> {

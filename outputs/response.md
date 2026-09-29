@@ -1,29 +1,33 @@
-# Результат повторной проверки PR #210
+# Результат доработки PR #210 — BNP-157
 
 ## Issues/Notes
 
-- **BLOCKING остаётся:** официальная спецификация Оплати™ и sandbox-реквизиты отсутствуют. Код использует неподтверждённые форматы запроса, ответа и webhook, поэтому создание платежа у реального провайдера и выдачу его QR/deep link подтвердить нельзя. Ответы по BNP-213/214 требуют получить эти данные у владельца интеграции; без них менять контракт на очередной предполагаемый формат небезопасно.
-- В `pr_discussions_raw.json` все inline-треды с `threadId` помечены `resolved`. Открытые re-review записи не содержат `threadId` и `rootCommentId`, поэтому адресные threaded replies для них сформировать нельзя. `outputs/review_replies.json` оставлен с пустым списком.
-- Файлы `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `instruction.md` и `pr_files.txt` в подготовленном контексте отсутствуют. В качестве проектных инструкций прочитаны `CLAUDE.md` и правила `agents/instructions/pr_rework/`.
+- **BLOCKING остаётся:** в предоставленных материалах нет официального контракта Оплати™ и sandbox-реквизитов. Форматы запроса, ответа и webhook в текущей реализации нельзя подтвердить для реального провайдера. Этот вопрос уже поднимался в BNP-213/214; без спецификации нельзя безопасно подменять текущий формат новым предположением.
+- Разрешены все конфликтные файлы. В POS-очереди сохранены защита от повторной отправки и поддержка зашифрованных реквизитов `r_keeper`/`iiko`; для платёжного модуля соединены обработчики Оплати™ и webhook-контроллеры ERIP/bePaid.
+- `ci_failures.md` и `ci_failures_full.log` отсутствуют в `input/BNP-157/`, поэтому отдельных CI-ошибок из логов не было.
+- В `pr_discussions_raw.json` записи открытых повторных проверок не имеют `threadId` и `rootCommentId`. Форматированных открытых inline-тредов, для которых можно создать адресный ответ, нет; `review_replies.json` содержит пустой список.
 
 ## Approach
 
-- Сверил текущий код платежей и исправления предыдущих review с историей PR и ответами BNP-213/214/215.
-- Подтвердил, что несопоставленный webhook приводит к ошибке BullMQ job и повторной обработке; текущие исправления шифрования секретов, allowlist СКНО и настройки merchant ID присутствуют в HEAD.
-- Не менял код без подтверждённой спецификации Оплати™ и без регрессионного сценария для неизвестного внешнего контракта.
-- CodeGraph недоступен. Поиск влияния выполнен через `rg`; проверены потребители `providerTransactionId` и настройки OPLATI. Миграции в PR только добавлены; существующие миграции не изменялись.
+- Устранил конфликты в пяти исходных файлах и двух отчётных файлах; удалил конфликтные маркеры и проверил итоговый diff.
+- При разрешении конфликтов в `PaymentsService` сохранил поток BNP-157 и добавил обработку очереди и статусов ERIP/bePaid, необходимую контроллерам webhook из целевой ветки.
+- Исправил дублирование импорта и регистрации `PaymentsModule` в `app.module.ts`.
+- CodeGraph недоступен. Поиск влияния выполнен через `rg` и просмотр вызовов платёжного сервиса и POS-очереди.
 
 ## Files Modified
 
-- `outputs/response.md` — результат повторной проверки.
-- `outputs/review_replies.json` — пустой список, поскольку адресных открытых inline-тредов нет.
-- `outputs/review_replies/thread_12.md` удалён: соответствующий inline-тред уже разрешён.
+- `apps/api/src/app.module.ts` — удалены дубли `PaymentsModule`.
+- `apps/api/src/onboarding/pos-order-queue.service.ts` — объединены защита от повторной отправки и использование зашифрованных POS-реквизитов.
+- `apps/api/src/payments/payments.controller.ts`, `payments.module.ts`, `payments.service.ts`, `payments.service.spec.ts` — разрешены конфликты платёжного потока; модуль подключает доступные контроллеры webhook и очередь.
+- `outputs/response.md` — сводка доработки.
+- `outputs/review_replies.json` — пустой список адресных ответов, так как открытых inline-тредов с идентификаторами нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнен для проверки состава PR.
-- `git status --short` — выполнен до изменений отчёта; рабочее дерево было чистым.
-- `npx eslint` — не запускался: в этом раунде не изменялись исходные файлы, а ESLint не проверяет Markdown/JSON-отчёты.
-- `npm run typecheck` — пройден во всех 4 workspace.
-- `npm test` — пройден: API 81 suite / 622 теста, guest-web 10 файлов / 33 теста, admin-web 63 файла / 124 теста; сборки и проверка design tokens также прошли.
-- Проверка радиуса влияния: `rg` по `providerTransactionId` и OPLATI в `apps/api/src` и `apps/api/prisma`; `git diff --name-status origin/main...HEAD -- '*/migrations/*'` подтвердил, что в PR только добавленные миграции.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка состава PR.
+- `git status --short` — выполнен; исходно разрешённые изменения показаны в статусе.
+- `npx eslint apps/api/src/onboarding/pos-order-queue.service.ts apps/api/src/payments/payments.controller.ts apps/api/src/payments/payments.module.ts apps/api/src/payments/payments.service.spec.ts apps/api/src/payments/payments.service.ts apps/api/src/app.module.ts` — пройдено.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: API — 82 набора / 623 теста; guest-web — 10 файлов / 33 теста; admin-web — тесты пройдены. Сборки workspace и проверка design tokens также прошли.
+- `git diff --check` — пройдено.
+- Проверка радиуса влияния: поиском `rg` проверены обращения к обработчикам `PaymentsService` и POS-очереди. Изменения не затрагивают глобальные провайдеры. Миграции PR добавлены новыми файлами; существующие миграции не изменялись.
