@@ -1,4 +1,4 @@
-import { requestIikoOrder, type PosJsonRequester } from './pos-network';
+import { PosOrderRejectedError, requestIikoOrder, type PosJsonRequester } from './pos-network';
 
 describe('requestIikoOrder', () => {
   it('exchanges the iiko credentials for an access token before submitting an order', async () => {
@@ -40,5 +40,24 @@ describe('requestIikoOrder', () => {
       requestJson,
     )).rejects.toThrow('iiko не вернул маркер доступа');
     expect(requestJson).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([400, 408, 409])('keeps an HTTP %i order response retry-blocking because acceptance is unknown', async (status) => {
+    const requestJson: PosJsonRequester = jest.fn((_url, _allowedHosts, _timeoutMs, _method, path) => {
+      if (path === '/api/v2/access_token') return Promise.resolve({ token: 'short-lived-access-token' });
+      return Promise.reject(new PosOrderRejectedError(`POS вернул HTTP ${status}`));
+    });
+
+    const result = requestIikoOrder(
+      new URL('https://api-ru.iiko.services'),
+      { apiKey: 'tenant-api-key', appId: 'integration-app', clientSecret: 'integration-secret' },
+      'api-ru.iiko.services',
+      15000,
+      {},
+      requestJson,
+    );
+
+    await expect(result).rejects.toThrow(`POS вернул HTTP ${status}`);
+    await expect(result).rejects.not.toBeInstanceOf(PosOrderRejectedError);
   });
 });

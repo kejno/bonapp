@@ -242,6 +242,7 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   PENDING
+  COMPLETED
   SUCCEEDED
   FAILED
   CANCELLED
@@ -268,6 +269,7 @@ model Order {
   isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
+  posOrderSubmittedAt DateTime?   @map("pos_order_submitted_at")
   comment          String?
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")

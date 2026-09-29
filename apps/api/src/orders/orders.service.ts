@@ -377,7 +377,7 @@ export class OrdersService {
         throw new ConflictException('Only served orders can be paid');
       }
       const payment = await tx.payment.findFirst({
-        where: { orderId: id, tenantId, status: PaymentStatus.SUCCEEDED },
+        where: { orderId: id, tenantId, status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED] } },
       });
       if (!payment) throw new ConflictException('A successful payment is required');
 

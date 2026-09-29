@@ -189,7 +189,7 @@ describe('OrdersService', () => {
       transaction.order.findFirst.mockResolvedValue({ id: 'order-1', tenantId: 'tenant-a', status: OrderStatus.SERVED });
       await expect(service.changeStatus('order-1', OrderStatus.PAID)).rejects.toBeInstanceOf(ConflictException);
       expect(transaction.payment.findFirst).toHaveBeenCalledWith({
-        where: { orderId: 'order-1', tenantId: 'tenant-a', status: 'SUCCEEDED' },
+        where: { orderId: 'order-1', tenantId: 'tenant-a', status: { in: ['SUCCEEDED', 'COMPLETED'] } },
       });
     });
   });

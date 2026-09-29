@@ -5,8 +5,30 @@ interface CheckoutResponse {
   errors?: unknown;
 }
 
+interface CheckoutStatusResponse {
+  status?: string;
+  expired?: boolean;
+  checkout?: { token?: string };
+}
+
 @Injectable()
 export class BepaidClient {
+  async getCheckoutStatus(token: string): Promise<{ status: string; expired: boolean }> {
+    let response: Response;
+    try {
+      response = await fetch(`https://checkout.bepaid.by/ctp/api/checkouts/${encodeURIComponent(token)}`, {
+        signal: AbortSignal.timeout(10_000),
+        headers: { Accept: 'application/json', 'X-API-Version': '2' },
+      });
+    } catch {
+      throw new BadGatewayException('Не удалось проверить статус платежа');
+    }
+    const data = await response.json().catch(() => ({})) as CheckoutStatusResponse;
+    const status = data.status;
+    if (!response.ok || typeof status !== 'string') throw new BadGatewayException('Не удалось проверить статус платежа');
+    return { status, expired: data.expired === true };
+  }
+
   async createCheckout(input: {
     shopId: string;
     secret: string;
