@@ -93,7 +93,14 @@ export async function requestIikoOrder(
     // The order endpoint has not been called yet, so retrying cannot duplicate an order.
     throw new PosOrderRejectedError(error instanceof Error ? error.message : 'Не удалось получить маркер доступа iiko');
   }
-  const response = await requestJson(url, allowedHosts, timeoutMs, 'POST', '/api/1/order/create', payload, token);
+  let response: unknown;
+  try {
+    response = await requestJson(url, allowedHosts, timeoutMs, 'POST', '/api/1/order/create', payload, token);
+  } catch (error) {
+    // Once the order endpoint is called, an error cannot prove that no order was created.
+    if (error instanceof PosOrderRejectedError) throw new Error(error.message);
+    throw error;
+  }
   return extractPosOrderId(response, 'orderInfo.id');
 }
 
@@ -158,9 +165,7 @@ async function requestPosJson(
         }
         if (!statusCode || statusCode < 200 || statusCode >= 300) {
           const message = `POS вернул HTTP ${statusCode ?? 'неизвестный статус'}`;
-          reject(statusCode !== undefined && statusCode >= 400 && statusCode < 500
-            ? new PosOrderRejectedError(message)
-            : new Error(message));
+          reject(new Error(message));
           return;
         }
         try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown); }
