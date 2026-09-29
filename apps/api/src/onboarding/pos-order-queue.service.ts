@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
 import { requestIikoOrder, requestPosOrder } from './pos-network';
-import { recoverPendingPosOrders } from './pos-order-recovery';
+import { isPosOrderEligible, recoverPendingPosOrders } from './pos-order-recovery';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 
 interface PosOrderJob { tenantId: string; orderId: string }
@@ -103,6 +103,8 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
           comment: true,
           totalAmountByn: true,
           posOrderId: true,
+          status: true,
+          isPaid: true,
           items: { select: { itemId: true, quantity: true, unitPriceByn: true } },
         },
       }),
@@ -110,7 +112,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
       (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) return;
     if (!order) throw new Error('Заказ не найден');
-    if (order.posOrderId) return;
+    if (order.posOrderId || !isPosOrderEligible(order.status, order.isPaid)) return;
     if (!['r_keeper', 'iiko'].includes(tenant.posType)) throw new Error(`Отправка заказов для POS ${tenant.posType} не реализована`);
 
     const menuItems = await db.menuItem.findMany({

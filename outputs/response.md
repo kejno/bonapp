@@ -2,24 +2,25 @@
 
 ## Issues/Notes
 
-- Устранена гонка при смене способа оплаты: webhook больше не может быть перезаписан статусом `FAILED` после подтверждения платежа.
-- Уведомление `payment.status_changed` теперь отправляется во все действующие сессии стола, а также в комнату тенанта.
-- В подготовленном контексте отсутствуют `ci_failures.md` и `ci_failures_full.log`; CI-сбоев для разбора не предоставлено.
-- Интеграционный тест webhook добавлен, но локальный запуск требует `DATABASE_URL`. В текущем окружении переменная не задана, поэтому тест с реальной БД локально не выполнился.
+- Для восстановления POS-очереди отфильтрованы только неоплаченные активные заказы; перед отправкой worker повторно проверяет статус и `isPaid`.
+- Повторный запрос передаёт стабильный ID заказа как `externalId` для r_keeper и `externalNumber` для iiko. В доступном контракте интеграции нет подтверждения, что обе POS-системы дедуплицируют `POST` по этим полям; поэтому защита от дубля после принятого POS запроса и потерянного ответа требует подтверждённой поддержки со стороны шлюза.
+- Миграция статуса платежа переименована в `20260929120001_payment_completed_status`, чтобы её timestamp был уникальным рядом с другой миграцией в checkout.
+- Открытые сводные замечания о POS в `pr_discussions_raw.json` не содержат `threadId` и `rootCommentId`, поэтому адресные ответы для них сформировать нельзя. Ранее открытые inline-потоки отмечены resolved.
+- В подготовленном контексте отсутствуют `ci_failures.md` и `ci_failures_full.log`.
+- Интеграционный тест платежного webhook требует `DATABASE_URL`; локально он не запускается без тестовой PostgreSQL.
 
 ## Approach
 
-- Перед фиксацией отменённого платежа выполняется условный `updateMany` по `id` и `status=PENDING`. Если webhook уже обработал платеж, обновлено ноль строк и endpoint возвращает `409 Conflict`, не создавая новый платёж.
-- После изменения статуса платежа gateway загружает все действующие сессии стола и отправляет событие в каждую комнату `table:{tableSessionId}`.
-- Добавлены регрессионные проверки гонки и доставки события нескольким сессиям. Добавлены интеграционные сценарии обработки подтверждённого и неуспешного webhook с проверкой сохранённых статусов платежа и заказа.
+- Добавлена проверка допустимых состояний заказа. Восстановление выбирает `NEW`, `COOKING`, `READY` и `SERVED` с `isPaid=false`; worker повторно проверяет статус перед обращением к POS.
+- Существующие payload POS уже включают стабильный идентификатор заказа; сохраняется его передача обоим адаптерам.
+- Изменения платежного webhook, гонки статуса и WS-доставки, внесённые предыдущим проходом, сохранены.
 
 ## Files Modified
 
-- `apps/api/src/payments/payments.service.ts`
-- `apps/api/src/payments/payments.service.spec.ts`
-- `apps/api/src/menu/menu.gateway.ts`
-- `apps/api/src/menu/menu.gateway.spec.ts`
-- `apps/api/test/payments.e2e-spec.ts`
+- `apps/api/src/onboarding/pos-order-recovery.ts` — отбор активных неоплаченных заказов.
+- `apps/api/src/onboarding/pos-order-recovery.spec.ts` — проверки разрешённых и запрещённых состояний.
+- `apps/api/src/onboarding/pos-order-queue.service.ts` — повторная проверка заказа перед POS-вызовом.
+- `apps/api/prisma/migrations/20260929120001_payment_completed_status/migration.sql` — уникальный timestamp миграции.
 - `outputs/response.md`
 - `outputs/review_replies.json`
 - `outputs/review_replies/thread_1.md`
@@ -28,9 +29,9 @@
 
 ## Test Coverage
 
-- `npx eslint apps/api/src/payments/payments.service.ts apps/api/src/payments/payments.service.spec.ts apps/api/src/menu/menu.gateway.ts apps/api/src/menu/menu.gateway.spec.ts apps/api/test/payments.e2e-spec.ts` — пройден.
-- `npm run typecheck` — пройден для всех четырёх workspace.
-- `npm test` — пройден: API 75 наборов / 589 тестов, admin-web 63 файла / 124 теста, guest-web 10 файлов / 32 теста; сборка и проверка design tokens также пройдены.
-- `npm run test:e2e --workspace=apps/api -- --runInBand test/payments.e2e-spec.ts` — не запустился: отсутствует `DATABASE_URL`. Требуется повторный запуск в окружении с тестовой PostgreSQL.
-- Гонка воспроизведена новым модульным тестом до исправления: тест падал, так как старый код создавал новый платёж после параллельного завершения webhook. После исправления тест проходит.
-- Изменения затрагивают Prisma-запросы и новый статус схемы не добавляют; миграции и публичные сигнатуры не менялись. Проверен путь доставки уведомления по всем активным сессиям через новый тест gateway.
+- RED: `npm test --workspace=apps/api -- --runInBand src/onboarding/pos-order-recovery.spec.ts` — новый сценарий сначала упал, затем прошёл после исправления.
+- `npx eslint apps/api/src/onboarding/pos-order-queue.service.ts apps/api/src/onboarding/pos-order-recovery.ts apps/api/src/onboarding/pos-order-recovery.spec.ts` — пройден.
+- `npm run typecheck` — пройден для четырёх workspace.
+- `npm test` — пройден: 76 API suites / 601 tests, 63 admin-web suites / 124 tests, 10 guest-web suites / 32 tests; сборка и проверка design tokens также прошли.
+- `npm run test:e2e --workspace=apps/api -- --runInBand test/payments.e2e-spec.ts` — не запускался; `DATABASE_URL` для тестовой PostgreSQL не предоставлен.
+- Blast-radius: миграции, глобальные провайдеры и публичные сигнатуры в этой доработке не менялись.

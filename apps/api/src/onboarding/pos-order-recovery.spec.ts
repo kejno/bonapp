@@ -1,7 +1,14 @@
-import { recoverPendingPosOrders } from './pos-order-recovery';
+import { isPosOrderEligible, recoverPendingPosOrders } from './pos-order-recovery';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('recoverPendingPosOrders', () => {
+  it('allows only unpaid orders that remain active', () => {
+    expect(isPosOrderEligible('NEW', false)).toBe(true);
+    expect(isPosOrderEligible('CANCELLED', false)).toBe(false);
+    expect(isPosOrderEligible('PAID', false)).toBe(false);
+    expect(isPosOrderEligible('SERVED', true)).toBe(false);
+  });
+
   it('requeues persisted guest orders on a later pass after the queue was unavailable', async () => {
     const persisted = [{ id: 'order-1' }, { id: 'order-2' }];
     const store = {

@@ -1,6 +1,12 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
+const ACTIVE_ORDER_STATUSES = ['NEW', 'COOKING', 'READY', 'SERVED'] as const;
+
+export function isPosOrderEligible(status: string, isPaid: boolean): boolean {
+  return !isPaid && ACTIVE_ORDER_STATUSES.includes(status as (typeof ACTIVE_ORDER_STATUSES)[number]);
+}
+
 export async function recoverPendingPosOrders(
   store: PrismaService,
   enqueue: (tenantId: string, orderId: string) => Promise<void>,
@@ -18,7 +24,13 @@ export async function recoverPendingPosOrders(
     let pending: Array<{ id: string }>;
     do {
       pending = await store.forTenant(tenant.id).order.findMany({
-        where: { tenantId: tenant.id, guestSessionId: { not: null }, posOrderId: null },
+        where: {
+          tenantId: tenant.id,
+          guestSessionId: { not: null },
+          posOrderId: null,
+          isPaid: false,
+          status: { in: [...ACTIVE_ORDER_STATUSES] },
+        },
         select: { id: true },
         orderBy: { createdAt: 'asc' },
         take: 100,
