@@ -7,7 +7,12 @@ const mockWorkerListeners: Record<string, (...args: unknown[]) => void> = {};
 let mockWorkerProcessor: ((job: { data: { tenantId: string; orderId: string } }) => Promise<void>) | undefined;
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ add: jest.fn(), close: jest.fn() })),
+  Queue: jest.fn().mockImplementation(() => ({
+    add: jest.fn(async (_name: string, data: { tenantId: string; orderId: string }) => {
+      await mockWorkerProcessor?.({ data });
+    }),
+    close: jest.fn(),
+  })),
   Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor) => {
     mockWorkerProcessor = processor;
     return {
@@ -69,7 +74,9 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       }) },
       order: { create: orderCreate },
     };
-    const queueAdd = jest.fn().mockResolvedValue(undefined);
+    const queueAdd = jest.fn(async (_name: string, data: { tenantId: string; orderId: string }) => {
+      await mockWorkerProcessor?.({ data });
+    });
     const jobData = { tenantId: 'tenant-519', orderId: order.id };
     const tenantDb = {
       tenant: { findUnique: jest.fn().mockResolvedValue({ posType: 'r_keeper', posApiKey: 'rk-key', posUrl: 'https://keeper.example/orders' }) },
@@ -107,8 +114,6 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       jobId: `pos-order-tenant-519-${order.id}`, attempts: 5,
     }));
     expect(mockWorkerProcessor).toBeDefined();
-
-    await mockWorkerProcessor!({ data: jobData });
 
     expect(posNetwork.requestPosOrder).toHaveBeenCalledWith(
       new URL('https://keeper.example/orders'), 'rk-key', 'keeper.example', 15000,

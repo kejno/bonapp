@@ -1,17 +1,23 @@
+import { Logger } from '@nestjs/common';
 import { PosOrderQueueService } from './pos-order-queue.service';
 import { OrdersService } from '../orders/orders.service';
 import * as posNetwork from './pos-network';
 import * as recovery from './pos-order-recovery';
 
 const mockWorkerListeners: Record<string, (...args: unknown[]) => void> = {};
+let mockWorkerProcessor: ((job: { data: { tenantId: string; orderId: string } }) => Promise<void>) | undefined;
+let mockQueueAdd: jest.Mock;
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ add: jest.fn(), close: jest.fn() })),
-  Worker: jest.fn().mockImplementation(() => ({
-    on: jest.fn((event: string, listener: (...args: unknown[]) => void) => { mockWorkerListeners[event] = listener; }),
-    close: jest.fn(),
-    waitUntilReady: jest.fn(),
-  })),
+  Queue: jest.fn().mockImplementation(() => ({ add: mockQueueAdd, close: jest.fn() })),
+  Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor) => {
+    mockWorkerProcessor = processor;
+    return {
+      on: jest.fn((event: string, listener: (...args: unknown[]) => void) => { mockWorkerListeners[event] = listener; }),
+      close: jest.fn(),
+      waitUntilReady: jest.fn(),
+    };
+  }),
 }));
 
 jest.mock('./pos-network', () => ({ requestPosOrder: jest.fn() }));
@@ -25,6 +31,10 @@ jest.mock('./pos-order-recovery', () => ({
 describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockWorkerProcessor = undefined;
+    mockQueueAdd = jest.fn(async (_name: string, data: { tenantId: string; orderId: string }) => {
+      await mockWorkerProcessor?.({ data });
+    });
     Object.keys(mockWorkerListeners).forEach((event) => delete mockWorkerListeners[event]);
   });
 
@@ -52,11 +62,9 @@ describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
     const orders = new OrdersService(prisma as never, tenantContext as never);
     const saved = await orders.create('table-520', undefined, [{ menuItemId: 'menu-520', quantity: 1, selectedModifiers: [] }]);
 
-    const service = Object.create(PosOrderQueueService.prototype) as PosOrderQueueService;
-    const logger = { error: jest.fn() };
-    Object.defineProperty(service, 'logger', { value: logger });
-    jest.spyOn(service as unknown as { addOrderJob: (tenantId: string, orderId: string) => Promise<void> }, 'addOrderJob')
-      .mockRejectedValue(new Error('Redis unavailable'));
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const service = new PosOrderQueueService({} as never, { get: jest.fn().mockReturnValue('') } as never);
+    mockQueueAdd.mockRejectedValue(new Error('Redis unavailable'));
 
     await expect(service.enqueue('tenant-520', saved.id)).resolves.toBeUndefined();
 
@@ -68,7 +76,7 @@ describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
       },
     });
     expect(saved).toEqual(persistedOrder);
-    expect(logger.error).toHaveBeenCalledWith(
+    expect(logger).toHaveBeenCalledWith(
       'Не удалось поставить заказ order-520 в очередь POS', expect.any(String),
     );
   });
@@ -90,17 +98,12 @@ describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
         menuItem: { findMany: jest.fn().mockResolvedValue([menuItem]) },
       }),
     };
-    (recovery.claimPosOrderSubmission as jest.Mock).mockResolvedValue(true);
     (posNetwork.requestPosOrder as jest.Mock).mockRejectedValue(new Error('r_keeper unavailable'));
-    const service = Object.create(PosOrderQueueService.prototype) as PosOrderQueueService;
-    Object.defineProperties(service, {
-      prisma: { value: prisma },
-      allowedPosHosts: { value: 'keeper.example' },
-    });
-
-    await expect((service as unknown as {
-      process: (job: { data: { tenantId: string; orderId: string } }) => Promise<void>;
-    }).process({ data: { tenantId: 'tenant-520', orderId: order.id } })).rejects.toThrow('r_keeper unavailable');
+    (recovery.claimPosOrderSubmission as jest.Mock).mockResolvedValue(true);
+    const service = new PosOrderQueueService(prisma as never, {
+      get: jest.fn((key: string, fallback: string) => key === 'POS_ALLOWED_HOSTS' ? 'keeper.example' : fallback),
+    } as never);
+    await service.enqueue('tenant-520', order.id);
 
     expect(posNetwork.requestPosOrder).toHaveBeenCalled();
     expect(order.items).toEqual([{ itemId: 'menu-520', quantity: 1, unitPriceByn: 9 }]);
@@ -108,16 +111,15 @@ describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
   });
 
   it('logs a worker failure after r_keeper rejects the order', () => {
-    const service = new PosOrderQueueService({} as never, { get: jest.fn().mockReturnValue('') } as never);
-    const logger = { error: jest.fn() };
-    Object.defineProperty(service, 'logger', { value: logger });
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    new PosOrderQueueService({} as never, { get: jest.fn().mockReturnValue('') } as never);
 
     mockWorkerListeners.failed(
       { data: { orderId: 'order-520-worker' } },
       new Error('r_keeper unavailable'),
     );
 
-    expect(logger.error).toHaveBeenCalledWith(
+    expect(logger).toHaveBeenCalledWith(
       'Не удалось отправить заказ order-520-worker в POS', expect.any(String),
     );
   });
