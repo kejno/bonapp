@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -149,7 +150,14 @@ export class TablesController {
 
   @Get()
   list(@Req() req: TenantRequest) {
-    return this.hallsService.listTables(req.user!.tenantId!);
+    const user = req.user!;
+    if (user.role === 'WAITER' && !user.userId) {
+      throw new ForbiddenException('Authenticated waiter identity is required');
+    }
+    return this.hallsService.listTables(
+      user.tenantId!,
+      user.role === 'WAITER' ? user.userId : undefined,
+    );
   }
 
   @Post()

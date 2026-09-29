@@ -1,10 +1,13 @@
 import { createHmac } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
+import { Module } from '@nestjs/common';
 
-jest.mock('../src/guest-session/guest-session.module', () => ({
-  GuestSessionModule: class GuestSessionModule {},
-}));
+jest.mock('../src/guest-session/guest-session.module', () => {
+  @Module({})
+  class GuestSessionModule {}
+  return { GuestSessionModule };
+});
 
 import { MenuGateway } from '../src/menu/menu.gateway';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';

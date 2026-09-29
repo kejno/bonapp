@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ShiftStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
@@ -13,7 +14,7 @@ export class ShiftService {
   private readonly logger: Pick<Logger, 'log'>;
   constructor(
     private readonly prisma: PrismaService,
-    logger?: Pick<Logger, 'log'>,
+    @Optional() logger?: Pick<Logger, 'log'>,
   ) {
     this.logger = logger ?? new Logger(ShiftService.name);
   }
