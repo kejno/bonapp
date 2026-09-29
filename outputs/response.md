@@ -2,36 +2,25 @@
 
 ## Issues/Notes
 
-- **Блокирующий риск повторной отправки в POS не устранён.** После неопределённого результата `POST` (таймаут или потеря ответа) повтор BullMQ может создать дубль. Текущий код обоих адаптеров передаёт внешний ID заказа, но используемые POS endpoint произвольны; доступный контракт не подтверждает дедупликацию по этим полям и не предоставляет общего поиска заказа. Локальная отметка до запроса предотвратила бы повтор, но оставила бы заказ неотправленным после сбоя до фактической отправки. Для безопасного исправления нужен подтверждённый контракт идемпотентности или сверки для обоих шлюзов.
-- iiko-интеграция больше не входит в diff BNP-158 относительно `origin/main`: она уже находится в базовой ветке.
-- В `pr_discussions_raw.json` идентификаторы имеют только inline-потоки 1–4, и все они помечены resolved. Последняя сводка и inline-замечание об iiko не содержат `threadId`/`rootCommentId`, поэтому адресные ответы сформировать нельзя. `outputs/review_replies.json` оставлен пустым.
-- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и `instruction.md` в подготовленных материалах отсутствуют. Требования сверены по `request.md`; инструкции репозитория прочитаны из `CLAUDE.md`.
+- **Блокирующий риск повторного создания заказа в POS остаётся.** Текущий код отправляет `POST` на настраиваемые endpoint r_keeper и iiko, но доступные контракты проекта не подтверждают дедупликацию по `externalId`/`externalNumber` и не задают операцию поиска уже созданного заказа. После таймаута или потери ответа безопасно отличить «POS принял заказ» от «POS не получил заказ» невозможно. Локальная отметка до запроса могла бы исключить повтор, но оставляла бы заказ неотправленным после сбоя в промежутке до фактического запроса. Не стал добавлять неподтверждённую гарантию или скрывать этот риск.
+- В `pr_discussions_raw.json` единственный inline-поток по POS (поток 4) отмечен как resolved. Последние сводки ревью не содержат `threadId` и `rootCommentId`, поэтому адресный ответ на них сформировать нельзя.
+- Файлы CI-ошибок, `pr_files.txt`, `ticket.md` и `instruction.md` в `input/BNP-158` отсутствуют. Критерии сверены с `request.md`; инструкции rework прочитаны из `.dmtools/agents/instructions/pr_rework/`.
 
 ## Approach
 
-- Сохранено восстановление POS-очереди только для неоплаченных заказов в активных статусах `NEW`, `COOKING`, `READY`, `SERVED`; worker повторно проверяет пригодность заказа перед обращением к POS.
-- Сохранены исправления гонки отмены платежа, доставки WS-события во все активные сессии стола, интеграционного покрытия двух исходов webhook и уникального timestamp миграции.
-- POS-дедупликация остаётся блокирующей: ни один тест не может доказать её для удалённой системы без контракта шлюза. Вносить неподтверждённую гарантию в запрос или заменять повтор потерей заказа небезопасно.
+- Повторно проверены используемые адаптеры и формирование POS payload. В коде нет контракта идемпотентности или API-поиска для настроенных endpoint.
+- Не вносил production-изменения: без подтверждённого поведения POS нельзя гарантировать исправление, не заменив потенциальный дубль риском потери заказа.
+- Для закрытия блокера нужен контракт каждого подключаемого POS: дедупликация повторного создания по стабильному ключу с возвратом исходного заказа либо поиск заказа по стабильному внешнему ID до повторного `POST`.
 
 ## Files Modified
 
-- `apps/api/.env.example` — переменные шлюзов оплаты.
-- `apps/api/prisma/migrations/20260929120001_payment_completed_status/migration.sql` и `apps/api/prisma/schema.prisma` — статус завершённого платежа и ограничение активного платежа.
-- `apps/api/src/app.module.ts`, `apps/api/src/main.ts` — регистрация модуля оплаты и сохранение raw body webhook.
-- `apps/api/src/menu/menu.gateway.ts`, `apps/api/src/menu/menu.gateway.spec.ts` — WS-уведомления персоналу и активным сессиям стола.
-- `apps/api/src/onboarding/pos-order-queue.service.ts`, `apps/api/src/onboarding/pos-order-recovery.ts`, `apps/api/src/onboarding/pos-order-recovery.spec.ts` — отбор активных неоплаченных заказов для восстановления.
-- `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.service.spec.ts` — учёт `COMPLETED` при чтении платежей.
-- `apps/api/src/payments/` — шлюз, очередь, API и обработка webhook с проверкой гонок.
-- `apps/api/test/payments.e2e-spec.ts` — интеграционные сценарии подтверждённого и неуспешного webhook.
-- `apps/guest-web/src/App.tsx` — подключение гостевой сессии к WS-комнате.
-- `outputs/response.md`, `outputs/review_replies.json` — результаты доработки и состояние адресных ответов.
+- `outputs/response.md` — результаты анализа, оставшийся блокер и проверки.
+- `outputs/review_replies.json` — пустой список: все inline-потоки с идентификаторами помечены resolved; новые сводки ревью не имеют идентификаторов для ответа.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint apps/api/src/onboarding/pos-order-queue.service.ts apps/api/src/onboarding/pos-order-recovery.ts apps/api/src/onboarding/pos-order-recovery.spec.ts` — пройден.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнен; проверен состав PR.
+- `git status --short` — выполнен; незатронутые staged-файлы `docs/integrations/bepaid-checkout.md` и `docs/integrations/erip-bepaid.md` не менялись.
 - `npm run typecheck` — пройден во всех четырёх workspace.
-- `npm test` — пройден: API 77 наборов / 603 теста, guest-web 10 / 32, admin-web 63 / 124; сборка и проверка design tokens также завершились успешно.
-- Миграционная проверка `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавление `20260929120001_payment_completed_status/migration.sql`; существующие миграции не менялись. Поиск вызовов `emitPaymentStatusChanged` и обращений к статусам платежа выполнен через `rg` в `apps/api/src` и `apps/api/test`.
-- `npm run test:e2e --workspace=apps/api -- --runInBand test/payments.e2e-spec.ts` — запуск выполнен, но два сценария заблокированы отсутствующей `DATABASE_URL`; доступ к тестовой PostgreSQL не настроен.
-- `git diff --check` и `git diff --cached --check` — пройдены после разрешения конфликтов.
+- `npm test` — пройден: API 77 наборов / 603 теста, guest-web 10 / 32, admin-web 63 / 124; сборка и проверка design tokens также прошли.
+- ESLint для файлов rework не запускался: в этом раунде production-файлы не добавлялись и не изменялись; изменённые Markdown и JSON не являются входами ESLint.
