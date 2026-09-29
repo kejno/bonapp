@@ -1,11 +1,17 @@
 import { IntegrationsService } from './integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
+import { decryptCredentials, encryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 import * as https from 'node:https';
+import * as net from 'node:net';
 
 jest.mock('node:https', () => {
   const actual = jest.requireActual<typeof import('node:https')>('node:https');
   return { ...actual, request: jest.fn(actual.request) };
+});
+
+jest.mock('node:net', () => {
+  const actual = jest.requireActual<typeof import('node:net')>('node:net');
+  return { ...actual, connect: jest.fn(actual.connect) };
 });
 
 describe('IntegrationsService', () => {
@@ -54,28 +60,50 @@ describe('IntegrationsService', () => {
   });
 
   it('stores r_keeper credentials in the fields used by the POS import', async () => {
-    findUnique.mockResolvedValue({ integrationSettings: { iiko: { apiKey: 'old-key' } } });
-    await service.updateSettings('tenant-1', 'r_keeper', {
-      apiUrl: 'https://keeper.example', apiKey: 'keeper-key',
-    });
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-integration-secret';
+    try {
+      findUnique.mockResolvedValue({ integrationSettings: { iiko: { apiKey: 'old-key' } } });
+      await service.updateSettings('tenant-1', 'r_keeper', {
+        apiUrl: 'https://keeper.example', apiKey: 'keeper-key',
+      });
 
-    const saved = writes[0] as { data: Record<string, unknown> };
-    expect(saved.data).toMatchObject({
-      posType: 'r_keeper', posUrl: 'https://keeper.example', posApiKey: 'keeper-key',
-      integrationSettings: { iiko: {}, r_keeper: { apiUrl: 'https://keeper.example', apiKey: 'keeper-key' } },
-    });
+      const saved = writes[0] as { data: Record<string, unknown> };
+      expect(saved.data).toMatchObject({
+        posType: 'r_keeper', posUrl: 'https://keeper.example', posApiKey: null,
+      });
+      const settings = saved.data.integrationSettings as Record<string, Record<string, unknown>>;
+      expect(settings.iiko).toEqual({});
+      expect(isEncryptedCredentials(settings.r_keeper.apiKey)).toBe(true);
+      const posCredentials = saved.data.posCredentials;
+      expect(isEncryptedCredentials(posCredentials)).toBe(true);
+      if (!isEncryptedCredentials(posCredentials)) throw new Error('Expected encrypted POS credentials');
+      expect(decryptCredentials<{ apiKey: string }>(posCredentials, process.env.PAYMENT_CREDENTIALS_SECRET).apiKey).toBe('keeper-key');
+      expect(JSON.stringify(saved.data)).not.toContain('keeper-key');
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
   });
 
   it('does not clear a saved payment secret when the edit form submits an empty secret field', async () => {
-    findUnique.mockResolvedValue({
-      integrationSettings: { bePaid: { secretKey: 'saved-secret' } },
-    });
-    await service.updateSettings('tenant-1', 'bePaid', { secretKey: '' });
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-integration-secret';
+    const oldSecret = 'saved-secret';
+    try {
+      const savedSecret = encryptCredentials({ value: oldSecret }, process.env.PAYMENT_CREDENTIALS_SECRET);
+      findUnique.mockResolvedValue({ integrationSettings: { bePaid: { secretKey: savedSecret } } });
+      await service.updateSettings('tenant-1', 'bePaid', { secretKey: '' });
 
-    const saved = writes[0] as {
-      data: { integrationSettings: Record<string, unknown> };
-    };
-    expect(saved.data.integrationSettings).toMatchObject({ bePaid: { secretKey: 'saved-secret' } });
+      const saved = writes[0] as { data: { integrationSettings: Record<string, unknown> } };
+      const storedSecret = (saved.data.integrationSettings.bePaid as Record<string, unknown>).secretKey;
+      expect(isEncryptedCredentials(storedSecret)).toBe(true);
+      if (!isEncryptedCredentials(storedSecret)) throw new Error('Expected encrypted secret');
+      expect(decryptCredentials<{ value: string }>(storedSecret, process.env.PAYMENT_CREDENTIALS_SECRET).value).toBe(oldSecret);
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
   });
 
   it('encrypts iiko client secrets at rest and omits them from status responses', async () => {
@@ -103,6 +131,55 @@ describe('IntegrationsService', () => {
       if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
       else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
     }
+  });
+
+  it('encrypts every integration secret before writing tenant settings', async () => {
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-integration-secret';
+    try {
+      findUnique.mockResolvedValue({ integrationSettings: null });
+      await service.updateSettings('tenant-1', 'bePaid', { shopId: 'shop', mode: 'TEST', secretKey: 'private-key' });
+      const saved = writes[0] as { data: { integrationSettings: Record<string, Record<string, unknown>> } };
+      const stored = saved.data.integrationSettings.bePaid.secretKey;
+      expect(isEncryptedCredentials(stored)).toBe(true);
+      expect(JSON.stringify(saved.data.integrationSettings)).not.toContain('private-key');
+      findUnique.mockResolvedValue(saved.data);
+      const status = await service.getStatus('tenant-1');
+      expect(status.integrations.bePaid.settings['secretKey']).toBe('');
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
+  });
+
+  it('stores the configured Оплати merchant in the encrypted credentials read by PaymentsService', async () => {
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-integration-secret';
+    try {
+      findUnique.mockResolvedValue({ integrationSettings: null, paymentCredentials: null });
+      await service.updateSettings('tenant-1', 'oplati', { merchantId: 'merchant-1' });
+      const saved = writes[0] as { data: { paymentCredentials: Record<string, unknown> } };
+      const stored = saved.data.paymentCredentials.oplati;
+      expect(isEncryptedCredentials(stored)).toBe(true);
+      if (!isEncryptedCredentials(stored)) throw new Error('Expected encrypted Оплати credentials');
+      expect(decryptCredentials<{ gateway: string; merchantId: string }>(stored, process.env.PAYMENT_CREDENTIALS_SECRET))
+        .toEqual({ gateway: 'oplati', merchantId: 'merchant-1' });
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
+  });
+
+  it('does not open a TCP connection to an unapproved SKNO target', async () => {
+    const connectMock = jest.mocked(net.connect);
+    const previousTargets = process.env.SKNO_HEALTHCHECK_TARGETS;
+    delete process.env.SKNO_HEALTHCHECK_TARGETS;
+    findUnique.mockResolvedValue({ integrationSettings: { skno: { serialNumber: 'sn', host: '127.0.0.1', port: '22' } } });
+    const result = await service.getStatus('tenant-1');
+    expect(result.integrations.skno.status).toBe('ConnectionFailed');
+    expect(connectMock).not.toHaveBeenCalled();
+    if (previousTargets === undefined) delete process.env.SKNO_HEALTHCHECK_TARGETS;
+    else process.env.SKNO_HEALTHCHECK_TARGETS = previousTargets;
   });
 
   it('starts the existing POS import for the requested provider', async () => {

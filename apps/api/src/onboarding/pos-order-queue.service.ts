@@ -108,7 +108,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       }),
     ]);
     if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
-      (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) return;
+      (tenant.posType === 'iiko' || tenant.posType === 'r_keeper' ? !tenant.posCredentials && !tenant.posApiKey : true)) return;
     if (!order) throw new Error('Заказ не найден');
     if (order.posOrderId) return;
     if (!['r_keeper', 'iiko'].includes(tenant.posType)) throw new Error(`Отправка заказов для POS ${tenant.posType} не реализована`);
@@ -132,7 +132,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       };
     let externalId: string;
     if (tenant.posType === 'r_keeper') {
-      externalId = await requestPosOrder(new URL(tenant.posUrl), tenant.posApiKey!, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
+      externalId = await requestPosOrder(new URL(tenant.posUrl), this.getRKeeperApiKey(tenant.posCredentials, tenant.posApiKey), this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
     } else {
       const credentials = this.getIikoCredentials(tenant.posCredentials);
       externalId = await requestIikoOrder(new URL(tenant.posUrl), {
@@ -150,5 +150,15 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
     if (!secret) throw new Error('PAYMENT_CREDENTIALS_SECRET is not configured');
     return decryptCredentials(encrypted, secret);
+  }
+
+  private getRKeeperApiKey(encrypted: unknown, legacyApiKey: string | null): string {
+    if (isEncryptedCredentials(encrypted)) {
+      const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
+      if (!secret) throw new Error('POS credentials encryption is not configured');
+      return decryptCredentials<{ apiKey: string }>(encrypted, secret).apiKey;
+    }
+    if (legacyApiKey) return legacyApiKey;
+    throw new Error('Зашифрованные настройки r_keeper некорректны');
   }
 }

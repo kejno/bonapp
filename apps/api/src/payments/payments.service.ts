@@ -102,7 +102,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     try { body = JSON.parse(rawBody.toString('utf8')) as PaymentWebhook; } catch { throw new BadRequestException('Некорректное тело вебхука'); }
     if (!body || typeof body.providerTransactionId !== 'string' || typeof body.status !== 'string') throw new BadRequestException('В вебхуке отсутствуют обязательные поля');
     const jobId = createOplatiWebhookJobId(body.eventId);
-    await this.queue.add('oplati-payment-update', { body }, { jobId, attempts: 5, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000 });
+    await this.queue.add('oplati-payment-update', { body }, { jobId, attempts: 20, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000, removeOnFail: false });
     return { accepted: true };
   }
 
@@ -110,7 +110,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const event = job.data.body;
     if (event.status !== 'COMPLETED' && event.status !== 'SUCCESS') return;
     const payment = await this.prisma.unscopedClient.payment.findFirst({ where: { provider: 'OPLATI', providerTransactionId: event.providerTransactionId }, select: { id: true, tenantId: true, orderId: true, status: true } });
-    if (!payment || payment.status !== PaymentStatus.PENDING) return;
+    if (!payment) throw new Error('Оплати™ webhook пока не сопоставлен с платежом; BullMQ повторит обработку');
+    if (payment.status !== PaymentStatus.PENDING) return;
     const changed = await this.prisma.transactionForTenant(payment.tenantId, async (tx) => {
       const orderUpdate = await tx.order.updateMany({ where: { id: payment.orderId, tenantId: payment.tenantId, isPaid: false }, data: { isPaid: true, paidAt: new Date() } });
       if (orderUpdate.count !== 1) return false;

@@ -95,14 +95,16 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
       where: { id: tenantId },
       data: {
         posType: input.posType,
-        posApiKey: input.posType === 'r_keeper' ? input.apiKey : null,
+        posApiKey: null,
         posCredentials: input.posType === 'iiko' ? encryptCredentials({
           apiKey: input.apiKey,
           appId: input.appId,
           clientSecret: input.clientSecret,
           organizationId: input.organizationId,
           terminalGroupId: input.terminalGroupId,
-        }, this.requirePosCredentialsSecret()) : Prisma.DbNull,
+        }, this.requirePosCredentialsSecret()) : input.posType === 'r_keeper'
+          ? encryptCredentials({ apiKey: input.apiKey }, this.requirePosCredentialsSecret())
+          : Prisma.DbNull,
         posUrl: input.posType === 'none' ? null : input.url,
         posImportState: importState?.status === 'completed' ? importState :
           input.posType === 'none' ? { status: 'skipped' } : { status: 'idle', imported: 0, total: 0, failed: [] },
@@ -115,7 +117,7 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     const tenantId = this.requireTenant();
     const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant?.posType || tenant.posType === 'none' || !tenant.posUrl ||
-      (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) {
+      (tenant.posType === 'iiko' || tenant.posType === 'r_keeper' ? !tenant.posCredentials && !tenant.posApiKey : true)) {
       throw new BadRequestException('Сначала подключите POS-систему');
     }
     if (expectedPosType && tenant.posType !== expectedPosType) {
@@ -168,12 +170,12 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     const { tenantId } = job.data;
     const db = this.prisma.forTenant(tenantId);
     const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant?.posUrl || (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) throw new Error('Настройки POS не найдены');
+    if (!tenant?.posUrl || (tenant.posType === 'iiko' || tenant.posType === 'r_keeper' ? !tenant.posCredentials && !tenant.posApiKey : true)) throw new Error('Настройки POS не найдены');
     const state = tenant.posImportState as { imported?: number } | null;
     const posUrl = new URL(tenant.posUrl);
     const apiKey = tenant.posType === 'iiko'
       ? await requestIikoAccessToken(posUrl, this.getStoredIikoCredentials(tenant.posCredentials), this.allowedPosHosts, 15000)
-      : tenant.posApiKey!;
+      : this.getStoredRKeeperApiKey(tenant.posCredentials, tenant.posApiKey);
     const payload = await requestPosMenu(posUrl, apiKey, this.allowedPosHosts, 15000);
     const items = job.data.items ?? (Array.isArray(payload) ? payload :
       payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown }).items)
@@ -264,6 +266,14 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
   private getStoredIikoCredentials(encrypted: unknown): { apiKey: string; appId: string; clientSecret: string } {
     if (!isEncryptedCredentials(encrypted)) throw new Error('Зашифрованные настройки iiko некорректны');
     return decryptCredentials<{ apiKey: string; appId: string; clientSecret: string }>(encrypted, this.requirePosCredentialsSecret());
+  }
+
+  private getStoredRKeeperApiKey(encrypted: unknown, legacyApiKey: string | null): string {
+    if (isEncryptedCredentials(encrypted)) {
+      return decryptCredentials<{ apiKey: string }>(encrypted, this.requirePosCredentialsSecret()).apiKey;
+    }
+    if (legacyApiKey) return legacyApiKey;
+    throw new Error('Зашифрованные настройки r_keeper некорректны');
   }
 
   private requirePosCredentialsSecret(): string {

@@ -26,7 +26,7 @@ const SECRET_FIELDS = new Set(['apiKey', 'apiSecret', 'clientSecret', 'password'
 const REQUIRED_FIELDS: Record<Provider, string[]> = {
   iiko: ['apiUrl', 'apiKey', 'appId', 'clientSecret', 'organizationId', 'terminalGroupId'],
   r_keeper: ['apiUrl', 'apiKey'],
-  oplati: ['merchantId', 'apiKey'],
+  oplati: ['merchantId'],
   erip: ['serviceId'],
   bePaid: ['shopId', 'mode', 'secretKey'],
   skno: ['serialNumber', 'host', 'port'],
@@ -52,6 +52,14 @@ function isConfigured(provider: Provider, settings: Settings): boolean {
     const value = settings[key];
     return (typeof value === 'string' && value.trim().length > 0) || typeof value === 'boolean' || isEncryptedCredentials(value);
   });
+}
+
+function isAllowedSknoTarget(host: string, port: number): boolean {
+  const targets = (process.env.SKNO_HEALTHCHECK_TARGETS ?? '')
+    .split(',')
+    .map((target) => target.trim().toLowerCase())
+    .filter(Boolean);
+  return targets.includes(`${host.toLowerCase()}:${port}`);
 }
 
 @Injectable()
@@ -155,14 +163,31 @@ export class IntegrationsService {
               terminalGroupId: settings['terminalGroupId'],
             }, this.credentialsSecret()),
           }
-        : { posType: provider, posUrl: apiUrl, posApiKey: apiKey, posCredentials: Prisma.DbNull };
+        : {
+            posType: provider,
+            posUrl: apiUrl,
+            posApiKey: null,
+            posCredentials: encryptCredentials({ apiKey }, this.credentialsSecret()),
+          };
       if (provider === 'iiko' && typeof settings['clientSecret'] === 'string') {
         current.iiko.clientSecret = encryptCredentials({ value: clientSecret }, this.credentialsSecret());
       }
     }
+    const persisted = structuredClone(current);
+    for (const configuredProvider of PROVIDERS) {
+      for (const [key, value] of Object.entries(persisted[configuredProvider])) {
+        if (SECRET_FIELDS.has(key) && typeof value === 'string' && value.length > 0) {
+          persisted[configuredProvider][key] = encryptCredentials({ value }, this.credentialsSecret());
+        }
+      }
+    }
     const tenant = await this.prisma.forTenant(tenantId).tenant.update({
       where: { id: tenantId },
-      data: { integrationSettings: current as Prisma.InputJsonValue, ...posData },
+      data: {
+        integrationSettings: persisted as Prisma.InputJsonValue,
+        ...(provider === 'oplati' ? { paymentCredentials: await this.oplatiPaymentCredentials(tenantId, current.oplati) } : {}),
+        ...posData,
+      },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     return { saved: true };
@@ -180,12 +205,24 @@ export class IntegrationsService {
     if (!tenant) throw new NotFoundException('Tenant not found');
     const value: unknown = tenant.integrationSettings;
     if (!value || typeof value !== 'object' || Array.isArray(value)) return structuredClone(EMPTY_SETTINGS);
-    return Object.fromEntries(
+    const settings = Object.fromEntries(
       PROVIDERS.map((provider) => {
         const entry = (value as Record<string, unknown>)[provider];
         return [provider, entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}];
       }),
     ) as IntegrationSettings;
+    for (const provider of PROVIDERS) {
+      for (const [key, value] of Object.entries(settings[provider])) {
+        if (SECRET_FIELDS.has(key) && isEncryptedCredentials(value)) {
+          try {
+            settings[provider][key] = decryptCredentials<{ value: string }>(value, this.credentialsSecret()).value;
+          } catch {
+            throw new ServiceUnavailableException('Не удалось прочитать секрет интеграции');
+          }
+        }
+      }
+    }
+    return settings;
   }
 
   private credentialsSecret(): string {
@@ -194,15 +231,35 @@ export class IntegrationsService {
     return secret;
   }
 
+  private async oplatiPaymentCredentials(tenantId: string, settings: Settings) {
+    const merchantId = settings['merchantId'];
+    if (typeof merchantId !== 'string' || !merchantId.trim()) {
+      throw new ConflictException('Укажите Merchant ID Оплати™');
+    }
+    const db = this.prisma.forTenant(tenantId);
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
+    const stored = tenant?.paymentCredentials as Record<string, unknown> | null;
+    const encrypted = encryptCredentials({ gateway: 'oplati', merchantId: merchantId.trim() }, this.credentialsSecret());
+    const credentials: Record<string, Prisma.InputJsonValue> = {
+      ...((stored ?? {}) as Record<string, Prisma.InputJsonValue>),
+      oplati: { version: encrypted.version, iv: encrypted.iv, authTag: encrypted.authTag, ciphertext: encrypted.ciphertext },
+    };
+    return credentials;
+  }
+
   private checkSkno(settings: Settings): Promise<{ status: string; pingMs: number | null }> {
     const host = settings['host'];
     const port = Number(settings['port']);
     if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
       return Promise.resolve({ status: 'ConnectionFailed', pingMs: null });
     }
+    const normalizedHost = host.trim().toLowerCase();
+    if (!isAllowedSknoTarget(normalizedHost, port)) {
+      return Promise.resolve({ status: 'ConnectionFailed', pingMs: null });
+    }
     const startedAt = Date.now();
     return new Promise((resolve) => {
-      const socket = connect({ host, port });
+      const socket = connect({ host: normalizedHost, port });
       const finish = (status: string) => {
         const pingMs = status === 'Online' ? Date.now() - startedAt : null;
         socket.destroy();

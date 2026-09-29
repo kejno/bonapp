@@ -7,7 +7,7 @@ const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 const providers = [
   { id: 'iiko', name: 'iiko Cloud', fields: [['apiUrl', 'Адрес API'], ['apiKey', 'API-ключ', true], ['appId', 'App ID'], ['clientSecret', 'Client secret', true], ['organizationId', 'ID организации'], ['terminalGroupId', 'ID группы терминалов']], sync: true },
   { id: 'r_keeper', name: 'r_keeper', fields: [['apiUrl', 'Адрес API'], ['apiKey', 'API-ключ', true], ['restaurantId', 'ID ресторана']], sync: true },
-  { id: 'oplati', name: 'Оплати™', fields: [['merchantId', 'Merchant ID'], ['apiKey', 'API-ключ', true]] },
+  { id: 'oplati', name: 'Оплати™', fields: [['merchantId', 'Merchant ID']] },
   { id: 'erip', name: 'ЕРИП E-POS', fields: [['serviceId', 'Service ID']] },
   { id: 'bePaid', name: 'bePaid', fields: [['shopId', 'Shop ID'], ['mode', 'Режим (Test/Prod)'], ['secretKey', 'Секретный ключ', true]] },
   { id: 'skno', name: 'СКНО «Титан-Плюс»', fields: [['serialNumber', 'Серийный номер'], ['host', 'Адрес кассы'], ['port', 'Порт']] },
