@@ -1,4 +1,5 @@
 import { createCipheriv, randomBytes } from 'node:crypto';
+import { Queue } from 'bullmq';
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
@@ -33,12 +34,36 @@ describe('BNP-524 unavailable iiko API (e2e)', () => {
 
   it('retries the failed iiko request three times and records UNAVAILABLE', async () => {
     const server = fixture.app.getHttpServer();
-    await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
+    const beforeCategories = await fixture.prisma.menuCategory.findMany({ where: { tenantId: fixture.tenantId }, orderBy: { id: 'asc' } });
+    const beforeItems = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId }, orderBy: { id: 'asc' } });
+    const enqueueResponse = await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
+    const { jobId } = enqueueResponse.body as { jobId: string };
     await waitForStatus(server, authorization, 'UNAVAILABLE');
 
     expect(loginCount).toBe(3);
+    const syncQueue = new Queue('iiko-sync-menu', {
+      connection: { host: process.env.REDIS_HOST ?? 'localhost', port: Number(process.env.REDIS_PORT ?? '6379') },
+    });
+    try {
+      const job = await syncQueue.getJob(jobId);
+      expect(job).toBeDefined();
+      expect(await job?.getState()).toBe('failed');
+      expect(job?.attemptsMade).toBe(3);
+      expect(job?.failedReason).toContain('503');
+    } finally {
+      await syncQueue.close();
+    }
+
+    const statusResponse = await request(server).get('/api/v1/admin/pos/sync-status').set('Authorization', authorization).expect(200);
+    expect(statusResponse.body).toMatchObject({
+      status: 'UNAVAILABLE',
+      error: 'iiko Cloud API недоступен после трёх попыток',
+    });
+    expect((statusResponse.body as { completedAt?: string }).completedAt).toBeTruthy();
     const tenant = await fixture.prisma.tenant.findUnique({ where: { id: fixture.tenantId }, select: { posImportState: true } });
     expect(tenant?.posImportState).toMatchObject({ status: 'UNAVAILABLE', error: 'iiko Cloud API недоступен после трёх попыток' });
+    await expect(fixture.prisma.menuCategory.findMany({ where: { tenantId: fixture.tenantId }, orderBy: { id: 'asc' } })).resolves.toEqual(beforeCategories);
+    await expect(fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId }, orderBy: { id: 'asc' } })).resolves.toEqual(beforeItems);
   }, 30_000);
 });
 
