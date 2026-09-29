@@ -118,7 +118,6 @@ export class MenuCacheTestFixture {
     this.app.setGlobalPrefix('api/v1');
     await this.app.init();
     this.redis = this.app.get<Redis>(REDIS_CLIENT);
-    await this.redis.connect();
     await this.prisma.tenant.create({
       data: { id: this.tenantId, slug: this.tenantId, name: 'Menu cache E2E' },
     });
