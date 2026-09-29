@@ -33,8 +33,21 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       allowedPosHosts: { value: 'keeper.example' },
     });
 
+    const queueAdd = jest.fn<Promise<void>, [string, { tenantId: string; orderId: string }, Record<string, unknown>]>()
+      .mockResolvedValue(undefined);
+    Object.defineProperty(service, 'queue', { value: { add: queueAdd } });
+    await (service as unknown as { addOrderJob: (tenantId: string, orderId: string) => Promise<void> })
+      .addOrderJob('tenant-519', order.id);
+
+    expect(queueAdd).toHaveBeenCalledWith('submit-order', {
+      tenantId: 'tenant-519', orderId: order.id,
+    }, expect.objectContaining({
+      jobId: 'pos-order-tenant-519-order-519', attempts: 5,
+      backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: true,
+    }));
+
     await (service as unknown as { process: (job: { data: { tenantId: string; orderId: string } }) => Promise<void> })
-      .process({ data: { tenantId: 'tenant-519', orderId: order.id } });
+      .process({ data: queueAdd.mock.calls[0][1] });
 
     expect(posNetwork.requestPosOrder).toHaveBeenCalledWith(
       new URL('https://keeper.example/orders'), 'rk-key', 'keeper.example', 15000,
