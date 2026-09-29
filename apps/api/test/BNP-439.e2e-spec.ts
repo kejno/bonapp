@@ -6,6 +6,7 @@ import { GuestSessionGuard } from '../src/guest-session/guest-session.guard';
 import { GuestSessionService } from '../src/guest-session/guest-session.service';
 import { MenuGateway } from '../src/menu/menu.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { PosOrderDispatcher } from '../src/onboarding/pos-order-dispatcher';
 
 describe('BNP-439: отклонение некорректной гостевой корзины', () => {
   let app: INestApplication;
@@ -32,6 +33,7 @@ describe('BNP-439: отклонение некорректной гостево�
           useValue: { transactionForTenant: (_tenantId: string, callback: (transaction: typeof tx) => unknown) => callback(tx) },
         },
         { provide: MenuGateway, useValue: { emitKitchenOrder } },
+        { provide: PosOrderDispatcher, useValue: { enqueue: jest.fn() } },
       ],
     })
       .overrideGuard(GuestSessionGuard)

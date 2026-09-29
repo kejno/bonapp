@@ -12,6 +12,13 @@ async function bootstrap() {
     'trust proxy',
     trustedProxySetting(process.env.TRUSTED_PROXY_ADDRESSES),
   );
+  const allowedOrigins = process.env.CORS_ORIGIN?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: allowedOrigins?.length ? allowedOrigins : false,
+    credentials: true,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api/v1');
   await app.listen(process.env.PORT ?? 3000);

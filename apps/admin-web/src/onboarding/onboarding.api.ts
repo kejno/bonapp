@@ -18,8 +18,9 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export interface ImportStatus { status: string; imported?: number; total?: number; message?: string; failed?: Array<{ name: string; reason: string }> }
-export const savePos = (input: { posType: PosType; apiKey: string; url: string }) => request<{ posType: string }>('/pos', input);
-export const checkPos = (input: { posType: PosType; apiKey: string; url: string }) => request<{ pingMs: number; productCount: number }>('/pos-check', input);
+export interface PosSettings { posType: PosType; apiKey: string; url: string; appId?: string; clientSecret?: string; organizationId?: string; terminalGroupId?: string }
+export const savePos = (input: PosSettings) => request<{ posType: string }>('/pos', input);
+export const checkPos = (input: PosSettings) => request<{ pingMs: number; productCount: number }>('/pos-check', input);
 export const startImport = () => request<{ jobId: string }>('/import', {});
 export const retryImport = () => request<{ jobId: string }>('/import/retry', {});
 export const getImportStatus = () => request<ImportStatus>('/import');

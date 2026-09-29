@@ -1,0 +1,1 @@
+Устранён дублирующийся маршрут: `PosSyncController` теперь вызывает `IikoService.enqueueSync()`, а из `IikoController` удалён второй POST-обработчик. В `apps/api/src/integrations/iiko/iiko.controller.spec.ts` добавлена проверка зарегистрированных контроллеров обоих модулей: для `sync-menu` остаётся ровно один POST-маршрут. Существующие tenant/admin guards сохранены.
