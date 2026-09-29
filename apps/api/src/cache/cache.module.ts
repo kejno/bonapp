@@ -23,7 +23,6 @@ class RedisLifecycle implements OnModuleDestroy {
         const client = new Redis({
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: Number(config.get<string>('REDIS_PORT', '6379')),
-          lazyConnect: true,
           enableOfflineQueue: false,
           maxRetriesPerRequest: 0,
         });

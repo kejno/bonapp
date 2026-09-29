@@ -9,6 +9,8 @@ import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { connect } from 'node:net';
 import { PrismaService } from '../prisma/prisma.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
+import { encryptCredentials } from '../tenant/payment-credentials';
 
 const PROVIDERS = ['iiko', 'r_keeper', 'oplati', 'erip', 'bePaid', 'skno'] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -18,7 +20,7 @@ type IntegrationSettings = Record<Provider, Settings>;
 const EMPTY_SETTINGS = Object.fromEntries(PROVIDERS.map((key) => [key, {}])) as IntegrationSettings;
 const SECRET_FIELDS = new Set(['apiKey', 'apiSecret', 'password', 'token', 'secret', 'secretKey']);
 const REQUIRED_FIELDS: Record<Provider, string[]> = {
-  iiko: ['apiUrl', 'apiKey'],
+  iiko: ['apiUrl', 'apiKey', 'appId', 'clientSecret', 'organizationId', 'terminalGroupId'],
   r_keeper: ['apiUrl', 'apiKey'],
   oplati: ['merchantId', 'apiKey'],
   erip: ['serviceId'],
@@ -50,7 +52,10 @@ function isConfigured(provider: Provider, settings: Settings): boolean {
 
 @Injectable()
 export class IntegrationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly onboarding: OnboardingService,
+  ) {}
 
   isValidSettingsUpdate(
     body: unknown,
@@ -116,21 +121,40 @@ export class IntegrationsService {
       Object.entries(update).filter(([, value]) => value !== ''),
     );
     current[provider] = { ...current[provider], ...nonEmptyUpdate };
+    let posData: Record<string, unknown> = {};
+    if (provider === 'iiko' || provider === 'r_keeper') {
+      current[provider === 'iiko' ? 'r_keeper' : 'iiko'] = {};
+      const settings = current[provider];
+      const apiUrl = settings['apiUrl'];
+      const apiKey = settings['apiKey'];
+      if (!isConfigured(provider, settings) || typeof apiUrl !== 'string' || typeof apiKey !== 'string') {
+        throw new ConflictException('Заполните обязательные настройки POS-системы');
+      }
+      posData = provider === 'iiko'
+        ? {
+            posType: provider,
+            posUrl: apiUrl,
+            posApiKey: null,
+            posCredentials: encryptCredentials({
+              apiKey,
+              appId: settings['appId'],
+              clientSecret: settings['clientSecret'],
+              organizationId: settings['organizationId'],
+              terminalGroupId: settings['terminalGroupId'],
+            }, this.credentialsSecret()),
+          }
+        : { posType: provider, posUrl: apiUrl, posApiKey: apiKey, posCredentials: Prisma.DbNull };
+    }
     const tenant = await this.prisma.forTenant(tenantId).tenant.update({
       where: { id: tenantId },
-      data: { integrationSettings: current as Prisma.InputJsonValue },
+      data: { integrationSettings: current as Prisma.InputJsonValue, ...posData },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     return { saved: true };
   }
 
   async syncMenu(tenantId: string, provider: 'iiko' | 'r_keeper') {
-    const settings = await this.loadSettings(tenantId);
-    const configured = isConfigured(provider, settings[provider]);
-    if (!configured) throw new ConflictException('Integration is not configured');
-    throw new ServiceUnavailableException(
-      `Menu synchronization for ${provider} is not available until its import adapter is implemented`,
-    );
+    return this.onboarding.startImport(provider);
   }
 
   private async loadSettings(tenantId: string): Promise<IntegrationSettings> {
@@ -147,6 +171,12 @@ export class IntegrationsService {
         return [provider, entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}];
       }),
     ) as IntegrationSettings;
+  }
+
+  private credentialsSecret(): string {
+    const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    if (!secret) throw new ServiceUnavailableException('POS credentials encryption is not configured');
+    return secret;
   }
 
   private checkSkno(settings: Settings): Promise<{ status: string; pingMs: number | null }> {

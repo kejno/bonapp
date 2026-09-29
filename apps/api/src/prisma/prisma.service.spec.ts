@@ -20,6 +20,7 @@ describe('PrismaService tenant query scope', () => {
         'Tenant',
         'DiningArea',
         'Table',
+        'TableSession',
         'Order',
         'OrderItem',
         'Payment',
@@ -30,11 +31,19 @@ describe('PrismaService tenant query scope', () => {
         'ModifierOption',
         'Modifier',
         'MenuItemModifierGroup',
+        'Shift',
         'StopListItem',
+        'PosIntegrationConfig',
         'Shift',
         'ShiftReport',
       ]),
     );
+  });
+
+  it('scopes POS integration configuration reads to the active tenant', () => {
+    expect(scopeTenantQueryArgs('PosIntegrationConfig', 'findMany', {}, 'tenant-a')).toEqual({
+      where: { tenantId: 'tenant-a' },
+    });
   });
 
   it('adds tenantId to every create payload, including multiple rows', () => {

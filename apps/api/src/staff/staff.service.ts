@@ -43,6 +43,39 @@ export class StaffService {
     });
   }
 
+  listKitchenStaff(tenantId: string) {
+    return this.prisma.forTenant(tenantId).user.findMany({
+      where: { role: UserRole.CHEF },
+      select: { id: true, fullName: true, kitchenDepartments: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async updateKitchenDepartments(
+    tenantId: string,
+    id: string,
+    kitchenDepartments: string[],
+  ) {
+    const allowedDepartments = new Set(['HOT', 'COLD', 'BAR']);
+    if (
+      !Array.isArray(kitchenDepartments) ||
+      kitchenDepartments.some((department) => !allowedDepartments.has(department))
+    ) {
+      throw new BadRequestException('kitchenDepartments must contain HOT, COLD or BAR');
+    }
+    const user = this.prisma.forTenant(tenantId).user;
+    const chef = await user.findFirst({
+      where: { id, role: UserRole.CHEF },
+      select: { id: true },
+    });
+    if (!chef) throw new NotFoundException('Chef not found');
+    return user.update({
+      where: { id },
+      data: { kitchenDepartments },
+      select: { id: true, kitchenDepartments: true },
+    });
+  }
+
   async create(tenantId: string, input: StaffInput) {
     this.validate(input);
     const user = await this.prisma.forTenant(tenantId).user.create({

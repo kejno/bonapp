@@ -15,12 +15,14 @@ describe('IntegrationsService', () => {
   const prisma = {
     forTenant,
   } as unknown as PrismaService;
+  const startImport = jest.fn();
+  const onboarding = { startImport } as never;
   let service: IntegrationsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     writes.length = 0;
-    service = new IntegrationsService(prisma);
+    service = new IntegrationsService(prisma, onboarding);
   });
 
   it('returns all integrations as not configured for an empty settings record', async () => {
@@ -50,30 +52,36 @@ describe('IntegrationsService', () => {
     });
   });
 
-  it('does not clear a saved secret when the edit form submits an empty secret field', async () => {
-    findUnique.mockResolvedValue({
-      integrationSettings: { iiko: { apiKey: 'saved-secret' } },
+  it('stores r_keeper credentials in the fields used by the POS import', async () => {
+    findUnique.mockResolvedValue({ integrationSettings: { iiko: { apiKey: 'old-key' } } });
+    await service.updateSettings('tenant-1', 'r_keeper', {
+      apiUrl: 'https://keeper.example', apiKey: 'keeper-key',
     });
-    await service.updateSettings('tenant-1', 'iiko', { apiKey: '' });
+
+    const saved = writes[0] as { data: Record<string, unknown> };
+    expect(saved.data).toMatchObject({
+      posType: 'r_keeper', posUrl: 'https://keeper.example', posApiKey: 'keeper-key',
+      integrationSettings: { iiko: {}, r_keeper: { apiUrl: 'https://keeper.example', apiKey: 'keeper-key' } },
+    });
+  });
+
+  it('does not clear a saved payment secret when the edit form submits an empty secret field', async () => {
+    findUnique.mockResolvedValue({
+      integrationSettings: { bePaid: { secretKey: 'saved-secret' } },
+    });
+    await service.updateSettings('tenant-1', 'bePaid', { secretKey: '' });
 
     const saved = writes[0] as {
       data: { integrationSettings: Record<string, unknown> };
     };
-    expect(saved.data.integrationSettings).toMatchObject({ iiko: { apiKey: 'saved-secret' } });
+    expect(saved.data.integrationSettings).toMatchObject({ bePaid: { secretKey: 'saved-secret' } });
   });
 
-  it('rejects menu sync when the provider is not configured', async () => {
-    findUnique.mockResolvedValue({ integrationSettings: null });
+  it('starts the existing POS import for the requested provider', async () => {
+    startImport.mockResolvedValue({ jobId: 'job-1' });
 
-    await expect(service.syncMenu('tenant-1', 'iiko')).rejects.toThrow('Integration is not configured');
-  });
-
-  it('does not report success when no POS import adapter is available', async () => {
-    findUnique.mockResolvedValue({
-      integrationSettings: { iiko: { apiUrl: 'https://pos.example/health', apiKey: 'key' } },
-    });
-
-    await expect(service.syncMenu('tenant-1', 'iiko')).rejects.toThrow('import adapter is implemented');
+    await expect(service.syncMenu('tenant-1', 'iiko')).resolves.toEqual({ jobId: 'job-1' });
+    expect(startImport).toHaveBeenCalledWith('iiko');
   });
 
   it('does not send integration credentials to a tenant supplied host', async () => {
@@ -82,7 +90,10 @@ describe('IntegrationsService', () => {
     delete process.env.INTEGRATION_HEALTHCHECK_HOSTS;
     findUnique.mockResolvedValue({
       integrationSettings: {
-        iiko: { apiUrl: 'https://attacker.example/health', apiKey: 'secret' },
+        iiko: {
+          apiUrl: 'https://attacker.example/health', apiKey: 'secret', appId: 'app',
+          clientSecret: 'client-secret', organizationId: 'org', terminalGroupId: 'terminal',
+        },
       },
     });
 

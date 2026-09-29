@@ -2,29 +2,34 @@
 
 ## Issues/Notes
 
-- **BLOCKING не устранён:** `IntegrationsService.syncMenu` для настроенных iiko и r_keeper по-прежнему выбрасывает `ServiceUnavailableException`; импорт меню не запускается. Принятый ответ BNP-184 требует фактического запуска или постановки задания до `202 Accepted`. В проекте не обнаружены POS-адаптеры и обработчик импорта, а в `request.md` и ответе BNP-184 не заданы API-контракты провайдеров и правила сопоставления внешнего меню с каталогом Bonapp. Без этих данных нельзя корректно запустить импорт; фиктивная очередь или успешный ответ лишь скрыли бы отсутствие функциональности.
-- Ветка также не включает изменений кода, которые закрывают этот блокер. Требуется согласовать контракты интеграции и правила импорта либо отдельно изменить scope.
-- Прежнее замечание об утечке API-ключа через произвольный URL закрыто: health-check ограничен allowlist хостов, проверяет публичные IPv4 DNS-ответы и подключается к проверенному IP.
-- В `pr_discussions_raw.json` открыт один адресуемый inline-тред — № 6; для него подготовлен ответ. Остальные незакрытые записи являются сводными комментариями без `threadId` и `rootCommentId`, поэтому адресные ответы для них сформировать нельзя.
-- В `input/BNP-165/` отсутствуют `instruction.md`, `ticket.md`, `pr_files.txt`, `merge_conflicts.md`, `ci_failures.md` и `ci_failures_full.log`. Инструкции репозитория прочитаны из `CLAUDE.md`; цель проверена по `request.md` и завершённым решениям из `existing_questions.json`.
-- Описание PR в `input/BNP-165/pr_info.md` говорит об исправлении PDF/QR, а diff содержит экран интеграций. Описание PR следует актуализировать перед дальнейшим ревью.
+- Блокирующий сценарий ручной синхронизации исправлен: endpoint запускает существующий импорт через очередь `pos-menu-import` и возвращает успешный ответ только после постановки задания.
+- POS-настройки, сохранённые экраном интеграций, теперь также записываются в поля `posType`, `posUrl`, `posApiKey` и `posCredentials`, которые использует импорт. Credentials iiko шифруются.
+- Описание PR в `input/BNP-165/pr_info.md` не соответствует его diff (PDF/QR вместо интеграций); его следует обновить перед ревью.
+- В `pr_discussions_raw.json` открыт один адресуемый inline-тред № 6. Сводные записи не содержат `threadId` и `rootCommentId`, поэтому для них нельзя подготовить threaded-ответы.
+- В `input/BNP-165/` нет `instruction.md`, `ticket.md`, `pr_files.txt`, `ci_failures.md` и `ci_failures_full.log`. Использованы `CLAUDE.md`, `request.md`, `existing_questions.json` и предоставленное обновление к треду.
 
 ## Approach
 
-- Проследил `POST /admin/integrations/:provider/sync` до `IntegrationsService.syncMenu`; поиском по `apps/` и `packages/` проверил наличие POS-адаптера и обработчика очереди. Их нет.
-- Не менял производственный код: доступных требований недостаточно для корректной реализации импортного процесса. Не стал отвечать об успешном запуске без фактического запуска.
-- Проверку влияния выполнил поиском по `apps/` и `packages/` (`rg`; CodeGraph недоступен). В этой итерации производственные файлы, публичные сигнатуры, схема, миграции и глобальные провайдеры не менялись.
+- Объединил конфликты `App.tsx`, `schema.prisma`, `app.module.ts`, сохранив изменения BNP-165 и `origin/main`; устранил конфликты в отчётных файлах.
+- Направил `syncMenu` в `OnboardingService.startImport(provider)`. Существующая очередь сохраняет проверки настроек и занятости; проверка ожидаемого провайдера предотвращает запуск меню другой POS-системы.
+- Сохранил POS-настройки экрана интеграций в едином источнике, используемом импортом. Добавил регрессионный тест вызова импорта.
+- Проверка влияния выполнена через `rg` по `apps/` и `packages/`; CodeGraph недоступен.
 
 ## Files Modified
 
-- `outputs/response.md` — актуализирован отчёт по rework и оставшемуся блокеру.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_6.md` — уже содержат корректную адресную запись и ответ для открытого inline-треда.
+- `apps/api/src/integrations/integrations.service.ts` — запуск импорта и синхронизация POS-настроек.
+- `apps/api/src/integrations/integrations.module.ts`, `apps/api/src/onboarding/onboarding.module.ts`, `apps/api/src/onboarding/onboarding.service.ts` — подключение существующего импорта и проверка провайдера.
+- `apps/api/src/integrations/integrations.service.spec.ts` — регрессионный тест запуска синхронизации.
+- `apps/admin-web/src/pages/IntegrationsPage.tsx` — поля credentials iiko.
+- `apps/admin-web/src/App.tsx`, `apps/api/prisma/schema.prisma`, `apps/api/src/app.module.ts` — объединение merge-конфликтов.
+- `outputs/response.md`, `outputs/review_replies.json`, `outputs/review_replies/thread_6.md` — отчёт и ответ на открытый тред.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены. До изменения отчётных файлов незакоммиченных изменений не было.
-- `git diff --check` — пройдено; JSON ответов разобран успешно.
-- `npx eslint` для файлов этой итерации — не применялся: менялись только Markdown-файлы и JSON, для них ESLint не настроен.
-- Первый `npm run typecheck` не прошёл из-за устаревшего Prisma Client без поля `integrationSettings`. Выполнен `npx prisma generate --schema apps/api/prisma/schema.prisma`; повторный `npm run typecheck` прошёл во всех четырёх workspace.
-- `npm test` — пройдено: 56 Jest-наборов (524 теста), 28 Vitest-файлов (76 тестов), сборка workspace и проверка design tokens.
-- Миграционная проверка для новой миграции и проверка влияния относятся к уже существующему diff PR; в этой итерации миграции не изменялись. CI-логи в `input/` отсутствуют.
+- `git diff --check` и `git diff --cached --check` — пройдены.
+- `npx eslint apps/admin-web/src/App.tsx apps/admin-web/src/pages/IntegrationsPage.tsx apps/api/src/app.module.ts apps/api/src/integrations/integrations.controller.ts apps/api/src/integrations/integrations.module.ts apps/api/src/integrations/integrations.service.spec.ts apps/api/src/integrations/integrations.service.ts apps/api/src/onboarding/onboarding.module.ts apps/api/src/onboarding/onboarding.service.ts` — пройдено.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: 78 Jest-наборов (614 тестов), 63 Vitest-набора admin-web (124 теста), 10 Vitest-наборов guest-web (33 теста), сборка workspace и проверка design tokens.
+- `npx prisma generate --schema apps/api/prisma/schema.prisma` — пройдено.
+- Проверка миграций `git diff --name-status origin/main...HEAD -- '*/migrations/*'` показывает только добавленные файлы; существующие миграции не изменялись.
+- `rg -n 'startImport\(' apps packages` проверил всех вызовов: onboarding продолжает вызывать метод без аргументов, интеграционный endpoint передаёт выбранный провайдер. Глобальные провайдеры не менялись, поэтому полный e2e-набор не требовался.

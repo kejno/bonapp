@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 const providers = [
-  { id: 'iiko', name: 'iiko Cloud', fields: [['apiUrl', 'Адрес API'], ['apiKey', 'API-ключ', true], ['organizationId', 'ID организации'], ['terminalGroupId', 'ID группы терминалов']], sync: true },
+  { id: 'iiko', name: 'iiko Cloud', fields: [['apiUrl', 'Адрес API'], ['apiKey', 'API-ключ', true], ['appId', 'App ID'], ['clientSecret', 'Client secret', true], ['organizationId', 'ID организации'], ['terminalGroupId', 'ID группы терминалов']], sync: true },
   { id: 'r_keeper', name: 'r_keeper', fields: [['apiUrl', 'Адрес API'], ['apiKey', 'API-ключ', true], ['restaurantId', 'ID ресторана']], sync: true },
   { id: 'oplati', name: 'Оплати™', fields: [['merchantId', 'Merchant ID'], ['apiKey', 'API-ключ', true]] },
   { id: 'erip', name: 'ЕРИП E-POS', fields: [['serviceId', 'Service ID']] },
@@ -66,7 +66,7 @@ export default function IntegrationsPage() {
         const card = status.data!.integrations[provider.id];
         const configured = card.status !== 'NotConfigured';
         return <article key={provider.id} className="rounded-xl border border-outline-variant/50 bg-surface-card p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><h2 className="text-lg font-semibold">{provider.name}</h2><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${card.status === 'Online' || card.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{statusLabels[card.status] ?? card.status}</span></div>
-          <dl className="mt-4 space-y-2 text-sm">{provider.fields.filter(([key]) => !['apiKey', 'apiSecret', 'password', 'token', 'secret', 'secretKey'].includes(key)).map(([key, label]) => <div key={key} className="flex justify-between gap-3"><dt className="text-on-background/60">{label}</dt><dd className="max-w-[60%] truncate">{card.settings[key] || '—'}</dd></div>)}{'sync' in provider && <div className="flex justify-between"><dt className="text-on-background/60">Ping</dt><dd>{card.pingMs === null ? '—' : `${card.pingMs} мс`}</dd></div>}</dl>
+          <dl className="mt-4 space-y-2 text-sm">{provider.fields.filter(([key]) => !['apiKey', 'apiSecret', 'clientSecret', 'password', 'token', 'secret', 'secretKey'].includes(key)).map(([key, label]) => <div key={key} className="flex justify-between gap-3"><dt className="text-on-background/60">{label}</dt><dd className="max-w-[60%] truncate">{card.settings[key] || '—'}</dd></div>)}{'sync' in provider && <div className="flex justify-between"><dt className="text-on-background/60">Ping</dt><dd>{card.pingMs === null ? '—' : `${card.pingMs} мс`}</dd></div>}</dl>
           <div className="mt-5 flex flex-wrap gap-2"><button className="rounded-lg border px-3 py-2 text-sm" onClick={() => openEditor(provider.id)}>{configured ? 'Редактировать' : 'Настроить'}</button>{'sync' in provider && configured && <button disabled={card.status !== 'Online' || sync.isPending} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-on-primary disabled:opacity-50" onClick={() => sync.mutate(provider.id)}>{sync.isPending ? 'Синхронизация…' : 'Синхронизировать меню'}</button>}</div>
         </article>;
       })}</div>}

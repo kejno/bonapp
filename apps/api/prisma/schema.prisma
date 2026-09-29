@@ -17,6 +17,21 @@ enum UserRole {
   ADMIN
 }
 
+enum TenantStatus {
+  TRIAL
+}
+
+enum VenueType {
+  RESTAURANT
+  CAFE
+  BAR
+}
+
+enum PosProvider {
+  IIKO
+  RKEEPER
+}
+
 enum TableStatus {
   AVAILABLE
   OCCUPIED
@@ -32,65 +47,96 @@ enum ServiceMode {
 }
 
 model Tenant {
-  id               String       @id @default(uuid())
-  slug             String       @unique
-  name             String
-  legalName        String?      @map("legal_name")
-  unp              String?
-  address          String?
-  timezone         String       @default("Europe/Minsk")
-  currency         String       @default("BYN")
-  logoUrl          String?      @map("logo_url")
-  brandColor       String?      @map("brand_color")
-  integrationSettings Json?     @map("integration_settings")
-  serviceMode      ServiceMode  @default(ORDER_AND_PAY) @map("service_mode")
-  dineIn           Boolean      @default(true) @map("dine_in")
-  takeaway         Boolean      @default(false)
-  delivery         Boolean      @default(false)
-  isActive         Boolean      @default(true) @map("is_active")
-  trialEndsAt      DateTime?    @map("trial_ends_at")
-  subscriptionPlan String       @default("free") @map("subscription_plan")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  users            User[]
-  diningAreas      DiningArea[]
-  tables           Table[]
-  orders           Order[]
-  payments         Payment[]
-  menuCategories   MenuCategory[]
-  menuItems        MenuItem[]
-  modifierGroups   ModifierGroup[]
-  modifiers        Modifier[]
-  stopListItems    StopListItem[]
-  shifts           Shift[]
-  shiftReports     ShiftReport[]
-  staffShifts      StaffShift[]
-  dailyOrderNumber Int          @default(0) @map("daily_order_number")
-
+  id                     String          @id @default(uuid())
+  slug                   String          @unique
+  name                   String
+  status                 TenantStatus    @default(TRIAL)
+  venueType              VenueType       @default(RESTAURANT) @map("venue_type")
+  legalName              String?         @map("legal_name")
+  unp                    String?
+  address                String?
+  timezone               String          @default("Europe/Minsk")
+  currency               String          @default("BYN")
+  logoUrl                String?         @map("logo_url")
+  brandColor             String?         @map("brand_color")
+  integrationSettings    Json?           @map("integration_settings")
+  posType                String?         @map("pos_type")
+  posApiKey              String?         @map("pos_api_key")
+  posCredentials         Json?           @map("pos_credentials")
+  posUrl                 String?         @map("pos_url")
+  posImportState         Json?           @map("pos_import_state")
+  paymentCredentials     Json?           @map("payment_credentials")
+  serviceMode            ServiceMode     @default(ORDER_AND_PAY) @map("service_mode")
+  dineIn                 Boolean         @default(true) @map("dine_in")
+  takeaway               Boolean         @default(false)
+  delivery               Boolean         @default(false)
+  isActive               Boolean         @default(true) @map("is_active")
+  trialEndsAt            DateTime?       @map("trial_ends_at")
+  subscriptionPlan       String          @default("free") @map("subscription_plan")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  users                  User[]
+  diningAreas            DiningArea[]
+  tables                 Table[]
+  orders                 Order[]
+  guests                 Guest[]
+  payments               Payment[]
+  menuCategories         MenuCategory[]
+  menuItems              MenuItem[]
+  posIntegrationConfigs  PosIntegrationConfig[]
+  modifierGroups         ModifierGroup[]
+  modifiers              Modifier[]
+  stopListItems          StopListItem[]
+  shifts                 Shift[]
+  shiftReports           ShiftReport[]
+  staffShifts            StaffShift[]
+  dailyOrderNumber       Int             @default(0) @map("daily_order_number")
+  dailyOrderNumberDate   String?         @map("daily_order_number_date")
   @@map("tenants")
 }
 
+model PosIntegrationConfig {
+  id        String      @id @default(uuid())
+  tenantId  String      @map("tenant_id")
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider  PosProvider
+  config    Json
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([tenantId, provider])
+  @@map("pos_integration_configs")
+}
+
+model TenantRegistration {
+  email    String @id
+  tenantId String @unique @map("tenant_id")
+
+  @@map("tenant_registrations")
+}
+
 model User {
-  id             String    @id @default(uuid())
-  tenantId       String    @map("tenant_id")
-  tenant         Tenant    @relation(fields: [tenantId], references: [id])
-  email          String
-  passwordHash   String    @map("password_hash")
-  fullName       String    @map("full_name")
-  phone          String?
-  role           UserRole
-  pinHash        String?   @map("pin_hash")
-  mustChangePassword Boolean @default(true) @map("must_change_password")
-  sessionVersion Int       @default(0) @map("session_version")
-  totpSecret     String?   @map("totp_secret")
-  totpEnabled    Boolean   @default(false) @map("totp_enabled")
-  isActive       Boolean   @default(true) @map("is_active")
-  isBlocked      Boolean   @default(false) @map("is_blocked")
-  lastLoginAt    DateTime? @map("last_login_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  assignedOrders Order[]   @relation("AssignedWaiterOrders")
-  cashierShifts  Shift[]   @relation("ShiftCashier")
-  openedShifts   StaffShift[]
+  id                 String       @id @default(uuid())
+  tenantId           String       @map("tenant_id")
+  tenant             Tenant       @relation(fields: [tenantId], references: [id])
+  email              String
+  passwordHash       String       @map("password_hash")
+  fullName           String       @map("full_name")
+  phone              String?
+  role               UserRole
+  kitchenDepartments String[]     @default([]) @map("kitchen_departments")
+  pinHash            String?      @map("pin_hash")
+  mustChangePassword Boolean      @default(true) @map("must_change_password")
+  sessionVersion     Int          @default(0) @map("session_version")
+  totpSecret         String?      @map("totp_secret")
+  totpEnabled        Boolean      @default(false) @map("totp_enabled")
+  isActive           Boolean      @default(true) @map("is_active")
+  isBlocked          Boolean      @default(false) @map("is_blocked")
+  lastLoginAt        DateTime?    @map("last_login_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  assignedOrders     Order[]      @relation("AssignedWaiterOrders")
+  cashierShifts      Shift[]      @relation("ShiftCashier")
+  openedShifts       StaffShift[]
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
@@ -109,6 +155,19 @@ model StaffShift {
 
   @@index([tenantId, closedAt])
   @@map("staff_shifts")
+}
+
+model Guest {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  phone     String
+  createdAt DateTime @default(now()) @map("created_at")
+  orders    Order[]
+
+  @@unique([tenantId, phone])
+  @@unique([id, tenantId])
+  @@map("guests")
 }
 
 model DiningArea {
@@ -140,7 +199,8 @@ model Table {
   status      TableStatus @default(AVAILABLE)
   createdAt   DateTime    @default(now()) @map("created_at")
 
-  orders      Order[]
+  orders   Order[]
+  sessions TableSession[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, tableNumber])
@@ -148,6 +208,20 @@ model Table {
   @@index([tenantId])
   @@index([areaId])
   @@map("tables")
+}
+
+model TableSession {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  tableId   String    @map("table_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  table     Table     @relation(fields: [tableId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId, tableId, expiresAt])
+  @@map("table_sessions")
 }
 
 enum OrderStatus {
@@ -183,12 +257,15 @@ model Order {
   dailyOrderNumber Int            @map("daily_order_number")
   status           OrderStatus    @default(NEW)
   guestSessionId   String?        @map("guest_session_id")
+  guestId          String?        @map("guest_id")
+  guest            Guest?         @relation(fields: [guestId, tenantId], references: [id, tenantId], onDelete: Restrict)
   assignedWaiterId String?        @map("assigned_waiter_id")
   assignedWaiter   User?          @relation("AssignedWaiterOrders", fields: [assignedWaiterId, tenantId], references: [id, tenantId], onDelete: Restrict)
   totalAmountByn   Decimal        @default(0) @map("total_amount_byn") @db.Decimal(12, 2)
   tipsAmountByn    Decimal        @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   paymentMethod    PaymentMethod? @map("payment_method")
   isPaid           Boolean        @default(false) @map("is_paid")
+  isTest           Boolean        @default(false) @map("is_test")
   paidAt           DateTime?      @map("paid_at")
   posOrderId       String?        @map("pos_order_id")
   comment          String?
@@ -200,6 +277,7 @@ model Order {
   @@unique([id, tenantId])
   @@index([tenantId, status], map: "idx_orders_tenant_status")
   @@index([tableId], map: "idx_orders_table_id")
+  @@index([guestId, tenantId])
   @@map("orders")
 }
 
@@ -227,6 +305,7 @@ model Payment {
   amountByn             Decimal       @map("amount_byn") @db.Decimal(12, 2)
   tipsAmountByn         Decimal       @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   provider              String
+  method                PaymentMethod @default(BANK_CARD)
   providerTransactionId String?       @map("provider_transaction_id")
   eripOrderNumber       String?       @map("erip_order_number")
   status                PaymentStatus @default(PENDING)
@@ -364,11 +443,10 @@ model StopListItem {
   isStopped  Boolean  @default(true) @map("is_stopped")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  @@index([tenantId])
   @@unique([tenantId, menuItemId])
+  @@index([tenantId])
   @@map("stop_list_items")
 }
-
 
 enum ShiftStatus {
   OPEN
@@ -376,14 +454,16 @@ enum ShiftStatus {
 }
 
 model Shift {
-  id        String      @id @default(uuid())
-  tenantId  String      @map("tenant_id")
-  tenant    Tenant      @relation(fields: [tenantId], references: [id])
-  cashierId String      @map("cashier_id")
-  cashier   User        @relation("ShiftCashier", fields: [cashierId, tenantId], references: [id, tenantId])
-  status    ShiftStatus @default(OPEN)
-  openedAt  DateTime    @default(now()) @map("opened_at")
-  closedAt  DateTime?   @map("closed_at")
+  id        String       @id @default(uuid())
+  tenantId  String       @map("tenant_id")
+  tenant    Tenant       @relation(fields: [tenantId], references: [id])
+  cashierId String       @map("cashier_id")
+  cashier   User         @relation("ShiftCashier", fields: [cashierId, tenantId], references: [id, tenantId])
+  status    ShiftStatus  @default(OPEN)
+  openedAt  DateTime     @default(now()) @map("opened_at")
+  closedAt  DateTime?    @map("closed_at")
+  sknoStartZ Int?        @map("skno_start_z")
+  sknoCloseStartedAt DateTime? @map("skno_close_started_at")
   report    ShiftReport?
 
   @@unique([id, tenantId])
@@ -392,16 +472,17 @@ model Shift {
 }
 
 model ShiftReport {
-  id           String   @id @default(uuid())
-  tenantId     String   @map("tenant_id")
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  shiftId      String   @unique @map("shift_id")
-  shift        Shift    @relation(fields: [shiftId, tenantId], references: [id, tenantId])
-  cashierId    String   @map("cashier_id")
-  openedAt     DateTime @map("opened_at")
-  closedAt     DateTime @map("closed_at")
-  totalAmount  Decimal  @map("total_amount") @db.Decimal(12, 2)
-  orderCount   Int      @map("order_count")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  shiftId     String   @unique @map("shift_id")
+  shift       Shift    @relation(fields: [shiftId, tenantId], references: [id, tenantId])
+  cashierId   String   @map("cashier_id")
+  openedAt    DateTime @map("opened_at")
+  closedAt    DateTime @map("closed_at")
+  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
+  orderCount  Int      @map("order_count")
+  zReportNumber Int    @map("z_report_number")
 
   @@unique([shiftId, tenantId])
   @@index([tenantId])

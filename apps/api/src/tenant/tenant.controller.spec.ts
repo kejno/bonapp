@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantController } from './tenant.controller';
 import { TenantService } from './tenant.service';
 import { MenuGateway } from '../menu/menu.gateway';
+import { AdminRoleGuard } from '../auth/admin-role.guard';
 
 const mockTenantService = {
   uploadLogo: jest.fn(),
@@ -32,7 +33,9 @@ describe('TenantController', () => {
           useValue: {
             forTenant: () => ({
               user: {
-                findFirst: jest.fn().mockResolvedValue({ mustChangePassword: false }),
+                findFirst: jest
+                  .fn()
+                  .mockResolvedValue({ mustChangePassword: false }),
               },
             }),
           },
@@ -47,6 +50,30 @@ describe('TenantController', () => {
     expect(controller).toBeDefined();
   });
 
+  it('requires the administrative role guard for both payment credential endpoints', () => {
+    expect(
+      Reflect.getMetadata(
+        '__guards__',
+        Reflect.get(TenantController.prototype, 'getPaymentStatuses'),
+      ),
+    ).toContain(AdminRoleGuard);
+    expect(
+      Reflect.getMetadata(
+        '__guards__',
+        Reflect.get(TenantController.prototype, 'savePaymentCredentials'),
+      ),
+    ).toContain(AdminRoleGuard);
+  });
+
+  it('requires the administrative role guard to update tenant settings', () => {
+    expect(
+      Reflect.getMetadata(
+        '__guards__',
+        Reflect.get(TenantController.prototype, 'updateSettings'),
+      ),
+    ).toContain(AdminRoleGuard);
+  });
+
   describe('uploadLogo', () => {
     const tenantId = 'tenant-uuid';
     const file = {
@@ -59,7 +86,9 @@ describe('TenantController', () => {
       const url = 'http://s3/bucket/tenants/tenant-uuid/logo.png';
       mockTenantService.uploadLogo.mockResolvedValue(url);
 
-      const result = await controller.uploadLogo(file, { user: { tenantId } } as never);
+      const result = await controller.uploadLogo(file, {
+        user: { tenantId },
+      } as never);
 
       expect(result).toEqual({ logoUrl: url });
     });
@@ -79,7 +108,9 @@ describe('TenantController', () => {
     });
 
     it('should propagate service errors', async () => {
-      mockTenantService.uploadLogo.mockRejectedValue(new Error('storage error'));
+      mockTenantService.uploadLogo.mockRejectedValue(
+        new Error('storage error'),
+      );
 
       await expect(
         controller.uploadLogo(file, { user: { tenantId } } as never),

@@ -63,4 +63,32 @@ describe('StaffService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('assigns valid kitchen departments to a chef through staff management', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'chef-1',
+      kitchenDepartments: ['HOT', 'BAR'],
+    });
+    prisma.forTenant.mockReturnValue({
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'chef-1' }),
+        update,
+      },
+    });
+
+    await expect(
+      service.updateKitchenDepartments(tenantId, 'chef-1', ['HOT', 'BAR']),
+    ).resolves.toEqual({ id: 'chef-1', kitchenDepartments: ['HOT', 'BAR'] });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'chef-1' },
+      data: { kitchenDepartments: ['HOT', 'BAR'] },
+      select: { id: true, kitchenDepartments: true },
+    });
+  });
+
+  it('rejects unknown kitchen departments', async () => {
+    await expect(
+      service.updateKitchenDepartments(tenantId, 'chef-1', ['DESSERT']),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

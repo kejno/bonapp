@@ -8,6 +8,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Tenant',
   'DiningArea',
   'Table',
+  'TableSession',
   'Order',
   'OrderItem',
   'Payment',
@@ -18,6 +19,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Modifier',
   'MenuItemModifierGroup',
   'StopListItem',
+  'PosIntegrationConfig',
   'Shift',
   'ShiftReport',
 ]);
@@ -216,6 +218,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       await tx.$executeRaw`
         SELECT set_config('app.current_tenant_id', ${tenantId}, true)
       `;
+      return operation(tx);
+    });
+  }
+
+  async unscopedTransaction<T>(
+    tenantId: string,
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
       return operation(tx);
     });
   }

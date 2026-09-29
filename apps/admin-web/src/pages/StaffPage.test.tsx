@@ -8,6 +8,7 @@ describe('StaffPage operation errors', () => {
     useAuthStore.getState().setAuth('token', { id: 'admin-1', email: 'admin@example.com', role: 'ADMIN', tenantId: 'tenant-1', fullName: 'Admin' });
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.endsWith('/admin/staff')) return Promise.resolve({ ok: true, json: async () => [{ id: 'staff-1', fullName: 'Кассир', email: 'cashier@example.com', phone: null, role: 'CASHIER', isActive: true, lastLoginAt: null }] });
+      if (url.endsWith('/admin/kitchen-staff')) return Promise.resolve({ ok: true, json: async () => [] });
       if (url.endsWith('/admin/shifts/current')) return Promise.resolve({ ok: true, json: async () => ({ id: 'shift-1', openedAt: '2026-09-26T10:00:00Z', cashier: { fullName: 'Кассир' }, ordersCount: 2, revenue: '25.00' }) });
       return Promise.resolve({ ok: false, json: async () => ({}) });
     }));
@@ -27,6 +28,7 @@ describe('StaffPage operation errors', () => {
   it('shows an error when opening a shift fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.endsWith('/admin/staff')) return Promise.resolve({ ok: true, json: async () => [] });
+      if (url.endsWith('/admin/kitchen-staff')) return Promise.resolve({ ok: true, json: async () => [] });
       if (url.endsWith('/admin/shifts/current')) return Promise.resolve({ ok: true, json: async () => null });
       return Promise.resolve({ ok: false, json: async () => ({}) });
     }));

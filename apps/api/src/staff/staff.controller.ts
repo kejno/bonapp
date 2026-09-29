@@ -40,6 +40,27 @@ export class StaffController {
   list(@Req() req: TenantRequest) {
     return this.staff.list(req.user!.tenantId!);
   }
+  @Get('kitchen-staff')
+  @UseGuards(AdminRoleGuard)
+  listKitchenStaff(@Req() req: TenantRequest) {
+    return this.staff.listKitchenStaff(req.user!.tenantId!);
+  }
+  @Put('staff/:id/kitchen-departments')
+  @UseGuards(AdminRoleGuard)
+  updateKitchenDepartments(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    const departments = record(body)['kitchenDepartments'];
+    if (!Array.isArray(departments) || departments.some((value) => typeof value !== 'string'))
+      throw new BadRequestException('kitchenDepartments must be an array of strings');
+    return this.staff.updateKitchenDepartments(
+      req.user!.tenantId!,
+      id,
+      departments as string[],
+    );
+  }
   @Post('staff')
   @UseGuards(AdminRoleGuard)
   create(@Req() req: TenantRequest, @Body() body: unknown) {

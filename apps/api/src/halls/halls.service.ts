@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TableStatus } from '@prisma/client';
+import { OrderStatus, Prisma, TableStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import PDFDocument from 'pdfkit';
@@ -87,18 +87,48 @@ export class HallsService {
     });
   }
 
-  listTables(tenantId: string) {
+  listTables(tenantId: string, assignedWaiterId?: string) {
+    const activeOrderWhere: Prisma.OrderWhereInput = {
+      status: { notIn: [OrderStatus.PAID, OrderStatus.CANCELLED] },
+    };
     return this.prisma.forTenant(tenantId).table.findMany({
+      ...(assignedWaiterId
+        ? { where: { orders: { some: { ...activeOrderWhere, assignedWaiterId } } } }
+        : {}),
       orderBy: [{ areaId: 'asc' }, { tableNumber: 'asc' }],
       include: {
         orders: {
-          where: { status: { notIn: ['PAID', 'CANCELLED'] } },
+          where: {
+            ...activeOrderWhere,
+            ...(assignedWaiterId ? { assignedWaiterId } : {}),
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, status: true, totalAmountByn: true, guestSessionId: true },
+          select: {
+            id: true,
+            status: true,
+            totalAmountByn: true,
+            guestSessionId: true,
+            assignedWaiterId: true,
+          },
         },
       },
-    });
+    }).then((tables) => assignedWaiterId
+      ? tables.map((table) => ({
+        ...table,
+        assignedWaiterId,
+      }))
+      : tables);
+  }
+
+  async getTableQrPreview(tenantId: string, tableId: string) {
+    const db = this.prisma.forTenant(tenantId);
+    const [table, tenant] = await Promise.all([db.table.findFirst({
+      where: { id: tableId },
+      select: { tableNumber: true, qrToken: true },
+    }), db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } })]);
+    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
+    return { tableNumber: table.tableNumber, restaurantName: tenant?.name ?? '', url: createGuestTableUrl(getGuestMenuBaseUrl(), table.qrToken) };
   }
 
   async generateQrPdf(tenantId: string, tableIds: string[]): Promise<Buffer> {
