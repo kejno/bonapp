@@ -2,33 +2,44 @@ import { createCipheriv, randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { MenuCacheTestFixture } from './menu-cache-test.fixture';
 
-describe('BNP-522 iiko menu synchronization (e2e)', () => {
+describe('BNP-523 iiko authentication renewal (e2e)', () => {
   const fixture = new MenuCacheTestFixture();
   const encryptionKey = randomBytes(32);
   const encryptedPassword = encrypt('iiko-secret', encryptionKey);
   let previousCredentialsKey: string | undefined;
-  let nomenclature = {
-    groups: [{ id: 'iiko-drinks', name: 'Напитки iiko' }],
-    products: [{ id: 'iiko-coffee-522', name: 'Капучино', price: 7.5, categoryId: 'iiko-drinks', image: 'https://example.test/coffee.png' }],
-  };
   let authorization = '';
+  let loginCount = 0;
+  let mockNow = 0;
+  const tokenIssuedAt = new Map<string, number>();
+  const nomenclatureTokens: string[] = [];
 
   beforeAll(async () => {
     previousCredentialsKey = process.env.POS_CREDENTIALS_KEY;
     process.env.POS_CREDENTIALS_KEY = encryptionKey.toString('base64');
     await fixture.start({ redisAdapter: false });
     await fixture.prisma.posIntegrationConfig.create({
-      data: {
-        tenantId: fixture.tenantId,
-        provider: 'IIKO',
-        config: { login: 'restaurant-login', password_encrypted: encryptedPassword, concept_id: 'concept-522', base_url: 'https://iiko.test' },
-      },
+      data: { tenantId: fixture.tenantId, provider: 'IIKO', config: { login: 'restaurant-login', password_encrypted: encryptedPassword, concept_id: 'concept-523', base_url: 'https://iiko.test' } },
     });
     authorization = `Bearer ${fixture.token()}`;
-    jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.endsWith('/api/0/auth/login')) return Promise.resolve(new Response(JSON.stringify({ authToken: 'token-522' }), { status: 200 }));
-      if (url.endsWith('/api/0/nomenclature/concept-522')) return Promise.resolve(new Response(JSON.stringify(nomenclature), { status: 200 }));
+      if (url.endsWith('/api/0/auth/login')) {
+        loginCount += 1;
+        const token = `token-${loginCount}`;
+        tokenIssuedAt.set(token, mockNow);
+        return Promise.resolve(new Response(JSON.stringify({ authToken: token }), { status: 200 }));
+      }
+      if (url.endsWith('/api/0/nomenclature/concept-523')) {
+        const headers = new Headers(init?.headers);
+        const authorizationHeader = headers.get('authorization') ?? '';
+        nomenclatureTokens.push(authorizationHeader);
+        const token = authorizationHeader.replace(/^Bearer /, '');
+        const issuedAt = tokenIssuedAt.get(token);
+        if (issuedAt === undefined || mockNow - issuedAt >= 15 * 60_000) {
+          return Promise.resolve(new Response('Token expired', { status: 401 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], products: [] }), { status: 200 }));
+      }
       return Promise.resolve(new Response('Unexpected iiko request', { status: 404 }));
     });
   }, 120_000);
@@ -40,30 +51,17 @@ describe('BNP-522 iiko menu synchronization (e2e)', () => {
     else process.env.POS_CREDENTIALS_KEY = previousCredentialsKey;
   });
 
-  it('imports and updates product and category without creating duplicates', async () => {
+  it('authenticates again for a later sync and uses the newly issued token', async () => {
     const server = fixture.app.getHttpServer();
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
 
-    const firstImport = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId, posItemId: 'iiko-coffee-522' } });
-    expect(firstImport).toHaveLength(1);
-    expect(firstImport[0]).toMatchObject({ name: 'Капучино', imageUrl: 'https://example.test/coffee.png' });
-    expect(firstImport[0]?.priceByn.toString()).toBe('7.5');
-    const categories = await fixture.prisma.menuCategory.findMany({ where: { tenantId: fixture.tenantId, posCategoryId: 'iiko-drinks' } });
-    expect(categories).toHaveLength(1);
-    expect(categories[0]?.name).toBe('Напитки iiko');
-
-    nomenclature = {
-      groups: [{ id: 'iiko-drinks', name: 'Напитки iiko' }],
-      products: [{ id: 'iiko-coffee-522', name: 'Большой капучино', price: 9, categoryId: 'iiko-drinks', image: 'https://example.test/large-coffee.png' }],
-    };
+    mockNow += 15 * 60_000 + 1;
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
 
-    const updatedItems = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId, posItemId: 'iiko-coffee-522' } });
-    expect(updatedItems).toHaveLength(1);
-    expect(updatedItems[0]).toMatchObject({ name: 'Большой капучино', imageUrl: 'https://example.test/large-coffee.png' });
-    expect(updatedItems[0]?.priceByn.toString()).toBe('9');
+    expect(loginCount).toBe(2);
+    expect(nomenclatureTokens).toEqual(['Bearer token-1', 'Bearer token-2']);
   }, 30_000);
 });
 
