@@ -26,7 +26,11 @@ export class PaymentsService {
       const previousMethod: PaymentMethodName = current.provider === 'BEPAID' ? 'BEPAID' : 'ERIP';
       const transactionId = current.providerTransactionId;
       if (!transactionId || !(await this.gateway.cancel(previousMethod, transactionId))) throw new ConflictException('Current payment cannot be cancelled');
-      await db.payment.update({ where: { id: current.id }, data: { status: PaymentStatus.FAILED } });
+      const cancelled = await db.payment.updateMany({
+        where: { id: current.id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.FAILED },
+      });
+      if (!cancelled.count) throw new ConflictException('Current payment has already been processed');
     }
     let payment;
     try {

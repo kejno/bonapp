@@ -182,11 +182,15 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     payload: { orderId: string; paymentId: string; status: string; method: string },
   ): void {
     this.io.to(`tenant:${tenantId}`).emit('payment.status_changed', payload);
-    void this.prisma.forTenant(tenantId).tableSession.findFirst({
-      where: { tableId, revokedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' }, select: { id: true },
-    }).then((session) => {
-      if (session) this.io.to(`table:${session.id}`).emit('payment.status_changed', payload);
+    void this.prisma.forTenant(tenantId).tableSession.findMany({
+      where: {
+        tableId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    }).then((sessions) => {
+      for (const session of sessions) this.io.to(`table:${session.id}`).emit('payment.status_changed', payload);
     }).catch((error: unknown) => this.logger.error(`Could not route payment update: ${String(error)}`));
   }
 

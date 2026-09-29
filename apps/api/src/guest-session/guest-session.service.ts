@@ -4,12 +4,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { nextDailyOrderNumber, tenantLocalDate } from '../orders/daily-order-number';
+import { PosOrderDispatcher } from '../onboarding/pos-order-dispatcher';
 
 @Injectable()
 export class GuestSessionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly menuGateway: MenuGateway,
+    private readonly posOrderDispatcher: PosOrderDispatcher,
   ) {}
 
   async createGuestOrder(
@@ -78,6 +80,7 @@ export class GuestSessionService {
       }, select: { id: true, dailyOrderNumber: true, status: true, totalAmountByn: true, createdAt: true } });
       return created;
     });
+    await this.posOrderDispatcher.enqueue(tenantId, order.id);
     this.menuGateway.emitKitchenOrder(tenantId, 'order:created', order);
     return {
       orderId: order.id,
