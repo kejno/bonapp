@@ -25,7 +25,7 @@
 
 1. Гость на вкладке «Карта» жмёт «Оплатить картой».
 2. `guest-web` вызывает API (предлагаемый маршрут
-   `POST /api/v1/guest/orders/:orderId/pay/bepaid`, доступ по Table Session.
+   `POST /api/v1/guest/orders/:orderId/pay/bepaid`, доступ по Table Session).
 3. API создаёт `Payment` (`PENDING`, `provider='bepaid'`, `BANK_CARD`) и
    запрашивает у bePaid платёжный токен (ниже).
 4. API возвращает гостю `redirect_url`; клиент открывает страницу Checkout
