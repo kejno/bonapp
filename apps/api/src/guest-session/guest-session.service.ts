@@ -30,7 +30,26 @@ export class GuestSessionService {
     const db = this.prisma.forTenant(tenantId);
     const pending = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
     const paymentExpired = pending && pending.createdAt.getTime() <= Date.now() - 15 * 60_000;
-    if (paymentExpired) throw new ConflictException('Ожидается подтверждение статуса платежа от bePaid');
+    if (paymentExpired) {
+      const token = typeof pending.payload === 'object' && pending.payload !== null && 'token' in pending.payload
+        ? pending.payload.token
+        : null;
+      if (!this.bepaidClient || typeof token !== 'string') throw new ConflictException('Ожидается подтверждение статуса платежа от bePaid');
+      let status: { status: string; expired: boolean };
+      try {
+        status = await this.bepaidClient.getCheckoutStatus(token);
+      } catch {
+        throw new ConflictException('Не удалось подтвердить статус платежа у bePaid');
+      }
+      if (status.status === 'successful' || (status.status !== 'failed' && status.status !== 'expired' && !status.expired)) {
+        throw new ConflictException('Ожидается подтверждение статуса платежа от bePaid');
+      }
+      const closed = await db.payment.updateMany({
+        where: { id: pending.id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.CANCELLED },
+      });
+      if (closed.count !== 1) throw new ConflictException('Статус платежа уже изменился');
+    }
     const active = pending && !paymentExpired ? pending : null;
     let payment;
     try {

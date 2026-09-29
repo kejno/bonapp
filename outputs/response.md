@@ -2,30 +2,31 @@
 
 ## Issues/Notes
 
-- Устранено блокирующее замечание об истечении bePaid Checkout: возраст платежа сам по себе не подтверждает его отмену у провайдера. Пока запись остаётся `PENDING`, новый Checkout не создаётся и локальный статус не меняется; API возвращает `409 Conflict` и ожидает финальный webhook bePaid.
-- Открытый адресный review-тред по просроченному платежу получил ответ в `outputs/review_replies/`.
-- В обсуждении также повторяется блокирующий риск дублирования заказа при повторной отправке в POS после неопределённого ответа. В текущем контексте нет подтверждённого контракта дедупликации или поиска заказа у r_keeper/iiko, поэтому этот риск остаётся нерешённым.
-- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневой `instruction.md` отсутствуют. Контекст задачи взят из `.dmtools/input/BNP-158/request.md`; проектные соглашения — из `CLAUDE.md` и `.dmtools/agents/instructions/pr_rework/`.
+- Устранено замечание о невозможности повторной оплаты после истечения Checkout. До создания новой сессии сервер сверяет сохранённый токен через API статуса bePaid. Новая операция создаётся только при подтверждённом `failed` или `expired`; успешный, неизвестный или недоступный статус оставляет платёж без изменений.
+- Сохраняется блокирующий риск POS: BullMQ может повторить запрос создания заказа после неопределённого результата и создать дубль. Адаптеры r_keeper/iiko не подтверждают идемпотентность по передаваемому ID и не предоставляют реализованную сверку заказа. Без контрактной гарантии этих POS безопасное исправление нельзя подтвердить в этом проходе.
+- `pr_discussions_raw.json` помечает адресные inline-треды как разрешённые; текущие открытые сводные замечания не содержат `threadId` и `rootCommentId`, поэтому адресные ответы сформировать нельзя. В `review_replies.json` оставлен пустой список.
+- В подготовленном контексте отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневой `instruction.md`. Требования сверены с `request.md`, правила проекта — с `CLAUDE.md` и `.dmtools/agents/instructions/pr_rework/`.
 
 ## Approach
 
-- Добавлен регрессионный сценарий через публичный метод `createCardPayment`: просроченный платёж со статусом `PENDING` приводит к конфликту, не создаёт новый платёж и не вызывает новый Checkout.
-- Тест сначала запускался против прежней реализации и падал, поскольку она успешно создавала новую сессию после локальной отмены старого платежа.
-- Удалён перевод просроченного платежа в `CANCELLED` по локальному таймеру. Финальный статус должен поступить от bePaid.
+- Тест сначала воспроизвёл отказ повторной оплаты после локальных 15 минут.
+- `BepaidClient` запрашивает состояние Checkout по сохранённому токену. `GuestSessionService` закрывает предыдущий `PENDING` условным обновлением только после подтверждённого конечного статуса; при гонке с webhook условное обновление не сработает и будет возвращён конфликт.
+- Добавлены проверки для подтверждённого истечения и успешной оплаты. POS-отправка не изменялась, поскольку доступный контракт не позволяет одновременно гарантировать отсутствие дублей и отсутствие потери заказа.
 
 ## Files Modified
 
-- `apps/api/src/guest-session/guest-session.service.ts` — ожидание подтверждённого статуса вместо локальной отмены.
-- `apps/api/src/guest-session/guest-session.service.spec.ts` — регрессионная проверка повторного запроса после истечения Checkout.
+- `apps/api/src/guest-session/bepaid.client.ts` — чтение статуса Checkout у bePaid.
+- `apps/api/src/guest-session/guest-session.service.ts` — безопасная сверка истёкшей оплаты и условное закрытие.
+- `apps/api/src/guest-session/guest-session.service.spec.ts` — регрессионные проверки повтора и успешного платежа.
 - `outputs/response.md` — сводка доработки и проверок.
-- `outputs/review_replies.json` и `outputs/review_replies/thread_1.md` — адресный ответ на открытый review-тред.
+- `outputs/review_replies.json` — пустой список адресных ответов: доступных открытых тредов с идентификаторами нет.
 
 ## Test Coverage
 
-- RED: `npm test --workspace=apps/api -- --runInBand --runTestsByPath src/guest-session/guest-session.service.spec.ts` — новый сценарий падал на исходной реализации.
+- RED: `npm test --workspace=apps/api -- --runInBand --runTestsByPath src/guest-session/guest-session.service.spec.ts` — новый тест повтора упал до исправления на `409 Conflict`.
 - `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint apps/api/src/guest-session/guest-session.service.ts apps/api/src/guest-session/guest-session.service.spec.ts` — пройдено.
+- `npx eslint apps/api/src/guest-session/bepaid.client.ts apps/api/src/guest-session/guest-session.service.ts apps/api/src/guest-session/guest-session.service.spec.ts` — пройдено.
 - `npm run typecheck` — пройдено для всех четырёх workspace.
-- `npm test` — пройдено: API — 78 наборов / 607 тестов, guest-web — 10 / 33, admin-web — 63 / 124; сборка и проверка design tokens также пройдены.
+- `npm test` — пройдено: API 78 наборов / 608 тестов, guest-web 10 / 33, admin-web 63 / 124; сборка и проверка design tokens также пройдены.
 - `git diff --check` — пройдено.
-- Радиус изменения: схема, миграции, публичные сигнатуры и глобальные провайдеры в этом проходе не менялись. Вызовы `createCardPayment` проверены поиском `rg`; метод вызывается гостевым контроллером оплаты.
+- Радиус влияния: схема, миграции, публичные сигнатуры и глобальные провайдеры в этом проходе не менялись. Вызывающий метод `createCardPayment` проверен через `rg`: его вызывает контроллер гостевой оплаты.

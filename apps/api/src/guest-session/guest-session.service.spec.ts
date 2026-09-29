@@ -61,26 +61,31 @@ describe('GuestSessionService createCardPayment', () => {
   const paymentFindFirst = jest.fn();
   const paymentCreate = jest.fn();
   const paymentUpdate = jest.fn();
+  const paymentUpdateMany = jest.fn();
   const secret = 'payment-test-secret';
   const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
   const prisma = {
     db: { tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: { bepaid: encryptCredentials({ provider: 'bepaid', shopId: 'shop', secret: 'gateway-secret', environment: 'TEST' }, secret) } }) } },
     forTenant: jest.fn(() => ({
       order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', status: 'SERVED', isPaid: false, totalAmountByn: 12 }) },
-      payment: { findFirst: paymentFindFirst, create: paymentCreate, update: paymentUpdate },
+      payment: { findFirst: paymentFindFirst, create: paymentCreate, update: paymentUpdate, updateMany: paymentUpdateMany },
     })),
   } as unknown as PrismaService;
-  const client = { createCheckout: jest.fn().mockResolvedValue({ token: 'token', redirectUrl: 'https://checkout.test' }) };
+  const client = {
+    createCheckout: jest.fn().mockResolvedValue({ token: 'token', redirectUrl: 'https://checkout.test' }),
+    getCheckoutStatus: jest.fn().mockResolvedValue({ status: 'expired', expired: true }),
+  };
   const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never, { enqueue: jest.fn() }, client);
 
   beforeEach(() => {
     process.env.PAYMENT_CREDENTIALS_SECRET = secret;
     jest.clearAllMocks();
     paymentFindFirst.mockImplementation((args: { where: { createdAt?: unknown } }) =>
-      args.where.createdAt ? null : { id: 'old-payment', status: 'PENDING', createdAt: new Date(Date.now() - 16 * 60_000) },
+      args.where.createdAt ? null : { id: 'old-payment', status: 'PENDING', payload: { token: 'old-token' }, createdAt: new Date(Date.now() - 16 * 60_000) },
     );
     paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.00' });
     paymentUpdate.mockResolvedValue({});
+    paymentUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   afterAll(() => {
@@ -88,9 +93,21 @@ describe('GuestSessionService createCardPayment', () => {
     else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
   });
 
-  it('does not replace an expired pending payment before bePaid confirms its final status', async () => {
+  it('allows retry only after bePaid confirms the previous checkout expired', async () => {
+    await expect(service.createCardPayment('order-1', 'tenant-1', 'table-1')).resolves.toEqual({ redirectUrl: 'https://checkout.test' });
+
+    expect(client.getCheckoutStatus).toHaveBeenCalledWith('old-token');
+    expect(paymentUpdateMany).toHaveBeenCalledWith({ where: { id: 'old-payment', status: 'PENDING' }, data: { status: 'CANCELLED' } });
+    expect(paymentCreate).toHaveBeenCalledTimes(1);
+    expect(client.createCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry when bePaid reports a successful checkout', async () => {
+    client.getCheckoutStatus.mockResolvedValue({ status: 'successful', expired: false });
+
     await expect(service.createCardPayment('order-1', 'tenant-1', 'table-1')).rejects.toBeInstanceOf(ConflictException);
 
+    expect(paymentUpdateMany).not.toHaveBeenCalled();
     expect(paymentCreate).not.toHaveBeenCalled();
     expect(client.createCheckout).not.toHaveBeenCalled();
   });
