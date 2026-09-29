@@ -15,6 +15,7 @@ import { GuestSessionModule } from './guest-session/guest-session.module';
 import { HallsModule } from './halls/halls.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PublicRegistrationModule } from './public-registration/public-registration.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -36,6 +37,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     HallsModule,
     MenuModule,
     OrdersModule,
+    PaymentsModule,
     OnboardingModule,
     TenantModule,
     StaffAuthModule,
