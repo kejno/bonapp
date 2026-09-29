@@ -67,7 +67,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     try {
       response = await fetch(apiUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ merchantId: credentials.merchantId, orderId, amount: totalWithTipsByn, currency: 'BYN', callbackUrl }), signal: AbortSignal.timeout(10_000) });
     } catch {
-      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      // The provider may have created the payment even when its response was
+      // lost. Keep the reservation pending so a retry cannot create another QR.
       throw new ServiceUnavailableException('Оплати™ временно недоступен');
     }
     if (!response.ok) {

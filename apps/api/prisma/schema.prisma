@@ -304,6 +304,7 @@ model Payment {
   amountByn             Decimal       @map("amount_byn") @db.Decimal(12, 2)
   tipsAmountByn         Decimal       @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   provider              String
+  method                PaymentMethod @default(BANK_CARD)
   providerTransactionId String?       @map("provider_transaction_id")
   eripOrderNumber       String?       @map("erip_order_number")
   status                PaymentStatus @default(PENDING)
