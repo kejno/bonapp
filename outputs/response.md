@@ -1,29 +1,31 @@
-# Исправления PR BNP-504
+# Доработка PR #209 — BNP-168
 
 ## Issues/Notes
 
-- Исправлены оба блокирующих замечания из последнего ревью: маркер закрытия не сохраняется до проверки реквизитов, а восстановление принимает только однозначно подтверждённый номер Z-отчёта.
-- В `.dmtools/input/BNP-504/` нет `ci_failures.md` и `ci_failures_full.log`; состояние CI по подготовленным материалам проверить нельзя.
-- `pr_info.md` содержит описание для BNP-425, не соответствующее diff BNP-504. Его следует обновить перед повторным ревью.
-- В `pr_discussions_raw.json` все inline-потоки resolved. Сводные комментарии не имеют идентификаторов потоков, поэтому ответить на них адресно нельзя.
+- Обработаны все замечания: три inline-потока уже закрыты; для единственного открытого потока добавлен сквозной тест повторного импорта.
+- Контракт polling из BNP-174 предусматривает `UNAVAILABLE`; сервис возвращает это значение без преобразования. CI-логи и `pr_files.txt` в подготовленных материалах отсутствуют.
+- В ходе полного тестового прогона обнаружен конфликт timestamp новой iiko-миграции с миграцией на `origin/main`. Новая миграция перенесена после последней миграции базы.
 
 ## Approach
 
-- Реквизиты СКНО проверяются до транзакции, записывающей `sknoCloseStartedAt`; неверная конфигурация не оставляет смену в состоянии незавершённого закрытия.
-- Сверка закрытия принимает единственную новую запись `FDay`, если её номер совпадает с `currZ`; неоднозначные записи и противоречивое состояние требуют ручной сверки.
-- Добавлены регрессионные тесты для отказа реквизитов до начала закрытия, нескольких новых записей Z-отчётов и несовпадения `FDay` с `currZ`.
+- Добавлен e2e сценарий через `POST /api/v1/admin/pos/sync-menu`: реальная очередь BullMQ, PostgreSQL и polling статуса; заменён только внешний iiko API.
+- Тест запускает импорт дважды с одним `pos_item_id`, меняет название, цену и изображение во втором ответе и проверяет, что в БД осталась одна обновлённая запись.
+- Новая миграция переименована в `20260929130000_iiko_integration`, после последней миграции `20260929120000_add_iiko_app_credentials` на `origin/main`; существующие миграции не изменялись.
+- Регрессионная проверка проходит на текущей реализации; бизнес-логика импорта не менялась.
 
 ## Files Modified
 
-- `apps/api/src/staff/shift.service.ts` — проверка реквизитов до записи маркера.
-- `apps/api/src/staff/shift.service.spec.ts` — регрессионная проверка отказа до обращения к кассе.
-- `apps/api/src/staff/skno-client.ts` — строгая проверка результата восстановления.
-- `apps/api/src/staff/skno-client.spec.ts` — тесты неоднозначных и несогласованных ответов кассы.
+- `apps/api/test/BNP-168.iiko-sync.e2e-spec.ts` — e2e проверка повторного импорта через публичный маршрут.
+- `apps/api/prisma/migrations/20260929130000_iiko_integration/migration.sql` — новая миграция с уникальным timestamp после миграций базы.
+- `outputs/response.md`
+- `outputs/review_replies.json`
+- `outputs/review_replies/BNP-168-thread-4.md`
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены; проверены файлы PR и рабочее дерево.
-- `npx eslint apps/api/src/staff/shift.service.spec.ts apps/api/src/staff/shift.service.ts apps/api/src/staff/skno-client.spec.ts apps/api/src/staff/skno-client.ts` — завершён с кодом 0: ошибок нет, есть одно предупреждение `no-unsafe-argument` в `shift.service.ts:83`.
-- `npm run typecheck` — пройден для всех четырёх workspace-пакетов.
-- `npm test` — пройден: API 75 наборов / 603 теста, admin-web 63 набора / 124 теста, guest-web 10 наборов / 32 теста; также прошли сборка и проверка design tokens.
-- Blast-radius check: изменения этой доработки затрагивают только реализацию и тесты СКНО; публичные сигнатуры, глобальные провайдеры и схему БД эта доработка не меняет. CodeGraph недоступен; grep callers не требовался, поскольку публичные API не менялись.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки PR и изменений рабочей копии.
+- `npx eslint apps/api/test/BNP-168.iiko-sync.e2e-spec.ts` — PASSED.
+- `npm run typecheck` — PASSED во всех четырёх workspace.
+- `npm test` — PASSED: API 76 suites / 605 тестов, admin-web 63 / 124, guest-web 10 / 32; также прошли сборка и проверка design tokens.
+- `npm --workspace=@bonapp/api run test:e2e -- --runInBand BNP-168.iiko-sync.e2e-spec.ts` — PASSED (1 suite / 1 тест) на PostgreSQL и BullMQ с mock внешнего iiko API.
+- Blast-radius check: проверены все timestamps миграций — они уникальны, а новая iiko-миграция следует после последней миграции на `origin/main`; существующие миграции не изменялись. Регрессионный e2e тест проверяет публичный маршрут и tenant-scoped строки `menu_items`. Публичные сигнатуры и глобальные провайдеры не менялись.
