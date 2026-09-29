@@ -26,5 +26,5 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
 }
 
 export const getReadiness = () => request<Readiness>('/admin/readiness');
-export const openShift = () => request<{ id: string }>('/admin/shifts/open', 'POST');
+export const openShift = () => request<{ id: string }>('/admin/welcome/shifts/open', 'POST');
 export const simulateTestOrder = () => request<{ id: string }>('/orders', 'POST', { isTest: true });
