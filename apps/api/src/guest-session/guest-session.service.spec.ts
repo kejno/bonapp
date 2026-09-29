@@ -8,7 +8,7 @@ describe('GuestSessionService order status', () => {
   const prisma = {
     forTenant,
   } as unknown as PrismaService;
-  const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never);
+  const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never, { enqueue: jest.fn() });
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -52,7 +52,7 @@ describe('GuestSessionService addOrderItem', () => {
     }),
   } as unknown as PrismaService;
   const gateway = { emitKitchenOrder: jest.fn(() => lifecycle.push('emit')) };
-  const service = new GuestSessionService(prisma, gateway as never);
+  const service = new GuestSessionService(prisma, gateway as never, { enqueue: jest.fn() });
 
   beforeEach(() => {
     jest.clearAllMocks();
