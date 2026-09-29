@@ -9,12 +9,17 @@ describe('BNP-517: ошибка Z-отчёта не закрывает смен�
   const fixture = new StaffTestFixture();
   let cashRegister: Server;
   let cashRegisterHost: string;
+  let printReportUnavailable = false;
 
   beforeAll(async () => {
     process.env.PAYMENT_CREDENTIALS_SECRET = 'bnp-517-test-secret';
     cashRegister = createServer((request, response) => {
       if (!request.headers.authorization) {
         response.writeHead(401, { 'WWW-Authenticate': 'Digest realm="HTROM", nonce="test", qop="auth", algorithm=MD5' }).end();
+        return;
+      }
+      if (request.url === '/cgi/proc/printreport?0' && printReportUnavailable) {
+        response.destroy();
         return;
       }
       response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -43,10 +48,23 @@ describe('BNP-517: ошибка Z-отчёта не закрывает смен�
     const openResponse = await fixture.adminRequest().post('/api/v1/admin/shifts/open').send({ cashier_id: cashier.id }).expect(201);
     const opened = openResponse.body as { id: string };
 
-    await fixture.adminRequest().post('/api/v1/admin/shifts/close').expect(502);
+    const failedReport = await fixture.adminRequest().post('/api/v1/admin/shifts/close').expect(502);
+    expect((failedReport.body as { message: string }).message).toContain('Ошибка кассы СКНО');
     await fixture.adminRequest().get('/api/v1/admin/shifts/current').expect(200).expect(({ body }) => expect(body).toMatchObject({ id: opened.id, status: 'OPEN' }));
     expect(await fixture.prisma.shiftReport.count({ where: { tenantId: fixture.tenantId } })).toBe(0);
     const persistedTenant = await fixture.prisma.tenant.findUniqueOrThrow({ where: { id: fixture.tenantId }, select: { dailyOrderNumber: true } });
     expect(persistedTenant.dailyOrderNumber).toBe(17);
+
+    // Isolate the timeout scenario from the prior attempt's persisted close marker.
+    await fixture.prisma.shift.delete({ where: { id_tenantId: { id: opened.id, tenantId: fixture.tenantId } } });
+    const timeoutShiftResponse = await fixture.adminRequest().post('/api/v1/admin/shifts/open').send({ cashier_id: cashier.id }).expect(201);
+    const timeoutShift = timeoutShiftResponse.body as { id: string };
+    printReportUnavailable = true;
+    const unavailableRegister = await fixture.adminRequest().post('/api/v1/admin/shifts/close').expect(503);
+    expect((unavailableRegister.body as { message: string }).message).toContain('Не удалось подтвердить результат Z-отчёта');
+    await fixture.adminRequest().get('/api/v1/admin/shifts/current').expect(200).expect(({ body }) => expect(body).toMatchObject({ id: timeoutShift.id, status: 'OPEN' }));
+    expect(await fixture.prisma.shiftReport.count({ where: { tenantId: fixture.tenantId } })).toBe(0);
+    const tenantAfterUnavailableRegister = await fixture.prisma.tenant.findUniqueOrThrow({ where: { id: fixture.tenantId }, select: { dailyOrderNumber: true } });
+    expect(tenantAfterUnavailableRegister.dailyOrderNumber).toBe(17);
   });
 });
