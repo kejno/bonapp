@@ -1,14 +1,14 @@
-### Root Cause
-- Причина заявленного расхождения не установлена: тикет не содержит `failedReason` или фактического ответа API.
-- Текущий `OrdersService.findOne()` включает позиции и платежи в запрос и возвращает связи из базы без фильтрации.
+### Что изменено
+Добавлен коннектор iiko Cloud: фоновая синхронизация меню, upsert блюд и категорий, polling статуса и повторные попытки при сбоях.
 
-### Fix
-- `apps/api/test/BNP-425.e2e-spec.ts`: расширен сценарий до двух позиций и платежа; ответ API сверяется с записями в PostgreSQL.
-- Изменения продуктового кода не потребовались: проверка не выявила дефекта.
+### Ключевые решения
+- Учётные данные хранятся в отдельной tenant-scoped таблице; пароль расшифровывается AES-256-GCM из `POS_CREDENTIALS_KEY`.
+- Для синхронизации используется BullMQ; отсутствующие в успешном ответе блюда деактивируются, ручные блюда не затрагиваются.
+- Добавлены `POST /api/v1/admin/pos/sync-menu` и `GET /api/v1/admin/pos/sync-status`.
 
-### Test Coverage
-- `BNP-425.e2e-spec.ts` — PASSED (PostgreSQL, 2 позиции и 1 платёж).
-- Полный набор тестов API не запускался: воспроизведение прошло, исправления продуктового кода нет.
-
-### Notes
-- Для выяснения исходного сбоя необходимы фактический ответ или заполненное поле `failedReason`.
+### Как проверить
+```bash
+npm test --workspace=@bonapp/api -- --runInBand
+npm run typecheck --workspace=@bonapp/api
+npx eslint apps/api/src/integrations/iiko/iiko.module.ts apps/api/src/integrations/iiko/iiko.controller.ts apps/api/src/integrations/iiko/iiko.service.ts apps/api/src/app.module.ts apps/api/src/prisma/prisma.service.ts apps/api/src/prisma/prisma.service.spec.ts
+```

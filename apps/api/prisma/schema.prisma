@@ -27,6 +27,11 @@ enum VenueType {
   BAR
 }
 
+enum PosProvider {
+  IIKO
+  RKEEPER
+}
+
 enum TableStatus {
   AVAILABLE
   OCCUPIED
@@ -76,6 +81,7 @@ model Tenant {
   payments               Payment[]
   menuCategories         MenuCategory[]
   menuItems              MenuItem[]
+  posIntegrationConfigs  PosIntegrationConfig[]
   modifierGroups         ModifierGroup[]
   modifiers              Modifier[]
   stopListItems          StopListItem[]
@@ -85,6 +91,19 @@ model Tenant {
   dailyOrderNumber       Int             @default(0) @map("daily_order_number")
   dailyOrderNumberDate   String?         @map("daily_order_number_date")
   @@map("tenants")
+}
+
+model PosIntegrationConfig {
+  id        String      @id @default(uuid())
+  tenantId  String      @map("tenant_id")
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider  PosProvider
+  config    Json
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([tenantId, provider])
+  @@map("pos_integration_configs")
 }
 
 model TenantRegistration {
