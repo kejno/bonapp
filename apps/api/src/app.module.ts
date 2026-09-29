@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { CacheModule } from './cache/cache.module';
 import { GuestSessionModule } from './guest-session/guest-session.module';
 import { HallsModule } from './halls/halls.module';
+import { IikoModule } from './integrations/iiko/iiko.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
@@ -35,6 +36,7 @@ import { PaymentsModule } from './payments/payments.module';
     CacheModule,
     AuthModule,
     HallsModule,
+    IikoModule,
     MenuModule,
     OrdersModule,
     OnboardingModule,

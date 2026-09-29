@@ -19,6 +19,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'Modifier',
   'MenuItemModifierGroup',
   'StopListItem',
+  'PosIntegrationConfig',
   'Shift',
   'ShiftReport',
 ]);
