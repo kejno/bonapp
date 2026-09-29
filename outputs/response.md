@@ -2,33 +2,29 @@
 
 ## Issues/Notes
 
-- Ошибки CI lint устранены. В трёх тестах использовался отсутствующий `PaymentsService.initiate`; проверки переписаны на существующий публичный API `PaymentGateway`.
-- Исправлена настройка тестов `BNP-510`, `BNP-512` и `BNP-529`: зависимости передаются в актуальном порядке конструктора, конфигурация Redis содержит нужные параметры.
-- **BLOCKING остаётся:** официальный контракт Оплати™ и sandbox-реквизиты не представлены. По материалам BNP-213/214 нельзя подтвердить соответствие формата реальному API и webhook; для снятия блокера нужны официальная спецификация и проверка в sandbox.
-- В `pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; `outputs/review_replies.json` содержит пустой список.
+- **BLOCKING остаётся:** в материалах PR и тикета нет официальной спецификации API и webhook Оплати™ или sandbox-доступа. Нельзя подтвердить, что текущие форматы запроса, ответа и подписи совместимы с провайдером. Для снятия блокера нужны официальные параметры от владельца интеграции и проверка полного сценария в sandbox.
+- Предоставленные `pr_discussions_raw.json` и `pr_discussions.md` содержат открытые сводные замечания, но не содержат открытых адресных inline-тредов с `threadId` и `rootCommentId`. Поэтому `review_replies.json` оставлен с пустым списком.
+- Файлы `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `pr_files.txt`, `ticket.md` и `instruction.md` отсутствуют. Полный diff в `pr_diff.txt` усечён; проверена актуальная ветка PR.
 
 ## Approach
 
-- Заменил ошибочные вызовы несуществующего метода тестами реального `PaymentGateway`: отказ провайдера, номер E-POS и URL оплаты.
-- Обновил тестовую конфигурацию зависимостей и Redis для тестов webhook.
-- Сверил контракт тикета с ответами BNP-213/214/215. Успешная оплата не должна закрывать сессию стола; код этого не меняет.
-- Проверил потребителей `providerTransactionId` и OPLATI через поиск по исходникам; CodeGraph недоступен. Существующие миграции не редактировались.
+- Сверил доступные PR-материалы и тикет. Успешная оплата не должна закрывать сессию стола согласно ответу BNP-215.
+- Проверил потребителей `providerTransactionId` и OPLATI поиском по `apps` и `packages`; CodeGraph недоступен. Нашёл использование в обработчике вебхука bePaid и в consumer Оплати™.
+- Проверил миграции: обе миграции PR добавлены новыми файлами, существующие не изменялись.
+- Не менял производственный контракт Оплати™ без подтверждённой документации. Шесть staged тестовых файлов, уже присутствовавших в рабочем дереве, прошли scoped lint и полный тестовый прогон.
 
 ## Files Modified
 
-- `apps/api/src/payments/BNP-510.spec.ts`
-- `apps/api/src/payments/BNP-512.spec.ts`
-- `apps/api/src/payments/BNP-513.spec.ts`
-- `apps/api/src/payments/BNP-527.spec.ts`
-- `apps/api/src/payments/BNP-528.spec.ts`
-- `apps/api/src/payments/BNP-529.spec.ts`
-- `outputs/response.md`
+- В этом раунде файлы приложения не редактировались.
+- `outputs/response.md` — актуализирован отчёт о проверках и оставшемся блокере.
+- `outputs/review_replies.json` — пустой список, поскольку открытых адресных тредов нет.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки состава PR и изменённых файлов.
-- `npx eslint apps/api/src/payments/BNP-510.spec.ts apps/api/src/payments/BNP-512.spec.ts apps/api/src/payments/BNP-513.spec.ts apps/api/src/payments/BNP-527.spec.ts apps/api/src/payments/BNP-528.spec.ts apps/api/src/payments/BNP-529.spec.ts` — пройдено.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR проверен.
+- `git status --short` — выполнено; обнаружены шесть ранее staged тестовых файлов.
+- `npx eslint apps/admin-web/src/pages/BNP-526.test.tsx apps/api/src/integrations/BNP-456.spec.ts apps/api/src/integrations/BNP-524.spec.ts apps/api/src/integrations/BNP-525.spec.ts apps/api/test/BNP-522.e2e-spec.ts apps/api/test/BNP-526.e2e-spec.ts` — пройдено.
 - `npm run typecheck` — пройдено во всех четырёх workspace.
-- `npm test` — пройдено: API 90 наборов / 632 теста; прошли тесты остальных workspace, сборки и проверка design tokens.
+- `npm test` — пройдено: API 93 набора / 635 тестов; guest-web 10 файлов / 33 теста; admin-web 64 файла / 126 тестов. Сборки и проверка design tokens также пройдены.
 - `git diff --check` — пройдено.
-- Blast radius: поиск по `providerTransactionId` и OPLATI выполнен в исходниках; миграции PR добавлены новыми файлами, существующие миграции не изменялись. CodeGraph недоступен.
+- Blast radius: поиск потребителей `providerTransactionId` и OPLATI выполнен через `rg`; обе миграции PR имеют статус `A`, изменённых существующих миграций нет. CodeGraph недоступен.
