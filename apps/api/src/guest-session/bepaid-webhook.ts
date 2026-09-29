@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
-import { Job, Queue, Worker } from 'bullmq';
+import { Job, JobsOptions, Queue, Worker } from 'bullmq';
 import type { Request } from 'express';
 import { createVerify, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,14 @@ import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { MenuGateway } from '../menu/menu.gateway';
 
 interface WebhookJob { tenantId: string; body: Record<string, unknown> }
+
+export const bepaidWebhookJobOptions: JobsOptions = {
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 1000 },
+  removeOnComplete: true,
+  // Let a repeated provider delivery enqueue a fresh job after retries are exhausted.
+  removeOnFail: true,
+};
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -47,7 +55,7 @@ export class BepaidWebhookService implements OnModuleInit, OnModuleDestroy {
     const transaction = objectValue(body.transaction ?? body);
     const trackingId = stringValue(transaction.tracking_id) ?? 'unknown';
     const uid = stringValue(transaction.uid) ?? 'unknown';
-    await this.queue.add('process', { tenantId, body }, { jobId: `bepaid-${tenantId}-${trackingId}-${uid}`, removeOnComplete: true });
+    await this.queue.add('process', { tenantId, body }, { ...bepaidWebhookJobOptions, jobId: `bepaid-${tenantId}-${trackingId}-${uid}` });
   }
 
   private async process(job: Job<WebhookJob>) {

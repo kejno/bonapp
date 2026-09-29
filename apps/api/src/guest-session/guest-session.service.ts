@@ -46,12 +46,17 @@ export class GuestSessionService {
   async getCardPaymentStatus(orderId: string, tenantId: string, tableId: string) {
     const order = await this.prisma.forTenant(tenantId).order.findFirst({ where: { id: orderId, tableId }, select: { id: true, status: true } });
     if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
-    const payment = await this.prisma.forTenant(tenantId).payment.findFirst({ where: { orderId, provider: 'bepaid' }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+    const payment = await this.prisma.forTenant(tenantId).payment.findFirst({ where: { orderId, provider: 'bepaid' }, orderBy: { createdAt: 'desc' }, select: { status: true, createdAt: true } });
     const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
     const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.bepaid;
     const configured = isEncryptedCredentials(encoded) && !!process.env.PAYMENT_CREDENTIALS_SECRET
       && decryptCredentials<{ provider: string }>(encoded, process.env.PAYMENT_CREDENTIALS_SECRET).provider === 'bepaid';
-    return { orderStatus: order.status, paymentStatus: payment?.status ?? null, paymentEnabled: configured };
+    return {
+      orderStatus: order.status,
+      paymentStatus: payment?.status ?? null,
+      paymentExpiresAt: payment ? new Date(payment.createdAt.getTime() + 15 * 60_000).toISOString() : null,
+      paymentEnabled: configured,
+    };
   }
 
   async createGuestOrder(

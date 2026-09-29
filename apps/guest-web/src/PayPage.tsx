@@ -17,12 +17,11 @@ export default function PayPage({ orderId }: PayPageProps) {
   const qrToken = window.sessionStorage.getItem('qrToken')
     ?? new URLSearchParams(window.location.search).get('qr_token')
   const [orderTotal, setOrderTotal] = useState<number | null>(null)
-  const [tipAmount, setTipAmount] = useState(0)
-  const [customTip, setCustomTip] = useState('')
   const [error, setError] = useState(false)
   const [cardEnabled, setCardEnabled] = useState(false)
   const [paying, setPaying] = useState(false)
   const [paymentMessage, setPaymentMessage] = useState('')
+  const [paymentExpired, setPaymentExpired] = useState(false)
 
   useEffect(() => {
     if (!qrToken) {
@@ -55,19 +54,47 @@ export default function PayPage({ orderId }: PayPageProps) {
   useEffect(() => {
     if (!qrToken || !new URLSearchParams(window.location.search).has('result')) return
     let active = true
+    let expiresAt: number | undefined
+    let pollTimeout: number | undefined
+    const markExpired = () => {
+      if (!active) return
+      setPaymentExpired(true)
+      setPaymentMessage('Время оплаты истекло')
+    }
+    let expiryTimeout: number | undefined = window.setTimeout(markExpired, 15 * 60_000)
     const poll = async () => {
+      if (!active) return
+      if (expiresAt !== undefined && Date.now() >= expiresAt) {
+        setPaymentExpired(true)
+        setPaymentMessage('Время оплаты истекло')
+        return
+      }
       try {
         const response = await fetch(`${API_BASE}/guest/orders/${encodeURIComponent(orderId)}/pay/card/status`, { headers: { 'X-QR-Token': qrToken } })
         if (!response.ok) throw new Error()
-        const result = await response.json() as { paymentStatus: string | null; orderStatus: string }
+        const result = await response.json() as { paymentStatus: string | null; orderStatus: string; paymentExpiresAt?: string | null }
         if (!active) return
+        if (expiresAt === undefined) {
+          const serverExpiry = result.paymentExpiresAt ? Date.parse(result.paymentExpiresAt) : Number.NaN
+          expiresAt = Number.isFinite(serverExpiry) ? serverExpiry : Date.now() + 15 * 60_000
+          if (expiresAt <= Date.now()) {
+            markExpired()
+            return
+          }
+          window.clearTimeout(expiryTimeout)
+          expiryTimeout = window.setTimeout(markExpired, expiresAt - Date.now())
+        }
         if (result.paymentStatus === 'SUCCEEDED' || result.orderStatus === 'PAID') setPaymentMessage('Спасибо! Приходите снова')
         else if (result.paymentStatus === 'FAILED' || result.paymentStatus === 'CANCELLED') setPaymentMessage('Оплата не завершена. Попробуйте ещё раз или выберите другой способ.')
-        else window.setTimeout(poll, 2000)
+        else pollTimeout = window.setTimeout(poll, Math.min(2000, expiresAt - Date.now()))
       } catch { if (active) setPaymentMessage('Не удалось проверить статус оплаты') }
     }
     void poll()
-    return () => { active = false }
+    return () => {
+      active = false
+      if (expiryTimeout !== undefined) window.clearTimeout(expiryTimeout)
+      if (pollTimeout !== undefined) window.clearTimeout(pollTimeout)
+    }
   }, [orderId, qrToken])
 
   async function payByCard() {
@@ -86,18 +113,6 @@ export default function PayPage({ orderId }: PayPageProps) {
     finally { setPaying(false) }
   }
 
-  function selectPercent(percent: number) {
-    const amount = orderTotal === null ? 0 : Math.round(orderTotal * percent) / 100
-    setTipAmount(amount)
-    setCustomTip(money(amount))
-  }
-
-  function updateCustomTip(value: string) {
-    setCustomTip(value)
-    const amount = Number(value)
-    setTipAmount(value.trim() !== '' && Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) / 100 : 0)
-  }
-
   return <main className="mx-auto min-h-svh w-full max-w-lg bg-background px-5 py-8 text-on-background">
     <h1 className="text-2xl font-semibold">Оплата заказа</h1>
     {error && <p role="alert" className="mt-6">Не удалось загрузить заказ</p>}
@@ -106,14 +121,9 @@ export default function PayPage({ orderId }: PayPageProps) {
     {orderTotal !== null && <section className="mt-6 space-y-4">
       {cardEnabled && <div role="tablist" aria-label="Способ оплаты"><button type="button" role="tab" aria-selected="true">Карта</button></div>}
       <p>Сумма заказа: {money(orderTotal)} BYN</p>
-      <fieldset>
-        <legend>Чаевые</legend>
-        <div className="mt-2 flex gap-2">{[0, 5, 10, 15].map((percent) => <button key={percent} type="button" aria-pressed={customTip === money(orderTotal * percent / 100)} onClick={() => selectPercent(percent)} className="rounded-lg border px-3 py-2">{percent}%</button>)}</div>
-        <label className="mt-4 block">Своя сумма чаевых<input aria-label="Своя сумма чаевых" type="number" min="0" step="0.01" value={customTip} onChange={(event) => updateCustomTip(event.target.value)} className="mt-2 w-full rounded-xl border p-3" /></label>
-      </fieldset>
-      <p>Чаевые: {money(tipAmount)} BYN</p>
-      <p>Итого: {money(orderTotal + tipAmount)} BYN</p>
-      {cardEnabled && <button type="button" disabled={paying} onClick={() => void payByCard()} className="w-full rounded-xl bg-primary px-4 py-3 text-white">{paying ? 'Переходим к оплате…' : 'Оплатить картой'}</button>}
+      <p>К оплате: {money(orderTotal)} BYN</p>
+      {cardEnabled && !paymentExpired && <button type="button" disabled={paying} onClick={() => void payByCard()} className="w-full rounded-xl bg-primary px-4 py-3 text-white">{paying ? 'Переходим к оплате…' : 'Оплатить картой'}</button>}
+      {paymentExpired && <button type="button" disabled={paying} onClick={() => { setPaymentExpired(false); void payByCard() }} className="w-full rounded-xl bg-primary px-4 py-3 text-white">Повторить оплату</button>}
     </section>}
   </main>
 }
