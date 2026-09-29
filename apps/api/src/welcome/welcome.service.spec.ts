@@ -1,4 +1,5 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { ShiftService } from '../staff/shift.service';
 import { WelcomeService } from './welcome.service';
 
 describe('WelcomeService', () => {
@@ -11,7 +12,7 @@ describe('WelcomeService', () => {
         shift: { findFirst: jest.fn().mockResolvedValue(null) },
       }),
     };
-    const service = new WelcomeService(prisma as unknown as PrismaService);
+    const service = new WelcomeService(prisma as unknown as PrismaService, {} as ShiftService);
 
     await expect(service.getReadiness('tenant-a')).resolves.toEqual({
       menuReady: true,
@@ -34,7 +35,7 @@ describe('WelcomeService', () => {
         shift: { findFirst: jest.fn().mockResolvedValue({ id: 'shift-1' }) },
       }),
     };
-    const service = new WelcomeService(prisma as unknown as PrismaService);
+    const service = new WelcomeService(prisma as unknown as PrismaService, {} as ShiftService);
 
     await expect(service.getReadiness('tenant-a')).resolves.toMatchObject({
       menuReady: true,
