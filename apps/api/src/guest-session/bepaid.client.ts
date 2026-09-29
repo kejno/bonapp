@@ -6,7 +6,9 @@ interface CheckoutResponse {
 }
 
 interface CheckoutStatusResponse {
-  checkout?: { status?: string; expired?: boolean };
+  status?: string;
+  expired?: boolean;
+  checkout?: { token?: string };
 }
 
 @Injectable()
@@ -22,9 +24,9 @@ export class BepaidClient {
       throw new BadGatewayException('Не удалось проверить статус платежа');
     }
     const data = await response.json().catch(() => ({})) as CheckoutStatusResponse;
-    const status = data.checkout?.status;
+    const status = data.status;
     if (!response.ok || typeof status !== 'string') throw new BadGatewayException('Не удалось проверить статус платежа');
-    return { status, expired: data.checkout?.expired === true };
+    return { status, expired: data.expired === true };
   }
 
   async createCheckout(input: {
