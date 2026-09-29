@@ -441,6 +441,8 @@ model Shift {
   status    ShiftStatus  @default(OPEN)
   openedAt  DateTime     @default(now()) @map("opened_at")
   closedAt  DateTime?    @map("closed_at")
+  sknoStartZ Int?        @map("skno_start_z")
+  sknoCloseStartedAt DateTime? @map("skno_close_started_at")
   report    ShiftReport?
 
   @@unique([id, tenantId])
@@ -459,6 +461,7 @@ model ShiftReport {
   closedAt    DateTime @map("closed_at")
   totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
   orderCount  Int      @map("order_count")
+  zReportNumber Int    @map("z_report_number")
 
   @@unique([shiftId, tenantId])
   @@index([tenantId])
