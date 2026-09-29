@@ -9,6 +9,8 @@ describe('BNP-523 iiko authentication renewal (e2e)', () => {
   let previousCredentialsKey: string | undefined;
   let authorization = '';
   let loginCount = 0;
+  let mockNow = 0;
+  const tokenIssuedAt = new Map<string, number>();
   const nomenclatureTokens: string[] = [];
 
   beforeAll(async () => {
@@ -23,11 +25,19 @@ describe('BNP-523 iiko authentication renewal (e2e)', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.endsWith('/api/0/auth/login')) {
         loginCount += 1;
-        return Promise.resolve(new Response(JSON.stringify({ authToken: `token-${loginCount}` }), { status: 200 }));
+        const token = `token-${loginCount}`;
+        tokenIssuedAt.set(token, mockNow);
+        return Promise.resolve(new Response(JSON.stringify({ authToken: token }), { status: 200 }));
       }
       if (url.endsWith('/api/0/nomenclature/concept-523')) {
         const headers = new Headers(init?.headers);
-        nomenclatureTokens.push(headers.get('authorization') ?? '');
+        const authorizationHeader = headers.get('authorization') ?? '';
+        nomenclatureTokens.push(authorizationHeader);
+        const token = authorizationHeader.replace(/^Bearer /, '');
+        const issuedAt = tokenIssuedAt.get(token);
+        if (issuedAt === undefined || mockNow - issuedAt >= 15 * 60_000) {
+          return Promise.resolve(new Response('Token expired', { status: 401 }));
+        }
         return Promise.resolve(new Response(JSON.stringify({ groups: [], products: [] }), { status: 200 }));
       }
       return Promise.resolve(new Response('Unexpected iiko request', { status: 404 }));
@@ -45,6 +55,8 @@ describe('BNP-523 iiko authentication renewal (e2e)', () => {
     const server = fixture.app.getHttpServer();
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
+
+    mockNow += 15 * 60_000 + 1;
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
 

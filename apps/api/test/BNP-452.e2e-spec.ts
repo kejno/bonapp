@@ -1,5 +1,5 @@
-import { StaffTestFixture } from './staff-test.fixture';
 import { loginRequest } from './auth-test.fixture';
+import { StaffTestFixture } from './staff-test.fixture';
 
 describe('BNP-452: открытие смены из welcome', () => {
   const fixture = new StaffTestFixture();

@@ -7,7 +7,7 @@ describe('BNP-522 iiko menu synchronization (e2e)', () => {
   const encryptionKey = randomBytes(32);
   const encryptedPassword = encrypt('iiko-secret', encryptionKey);
   let previousCredentialsKey: string | undefined;
-  const nomenclature = {
+  let nomenclature = {
     groups: [{ id: 'iiko-drinks', name: 'Напитки iiko' }],
     products: [{ id: 'iiko-coffee-522', name: 'Капучино', price: 7.5, categoryId: 'iiko-drinks', image: 'https://example.test/coffee.png' }],
   };
@@ -40,24 +40,30 @@ describe('BNP-522 iiko menu synchronization (e2e)', () => {
     else process.env.POS_CREDENTIALS_KEY = previousCredentialsKey;
   });
 
-  it('imports product and category, then updates the product with the same POS id', async () => {
+  it('imports and updates product and category without creating duplicates', async () => {
     const server = fixture.app.getHttpServer();
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
 
-    const firstItem = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId, posItemId: 'iiko-coffee-522' } });
-    expect(firstItem).toHaveLength(1);
-    expect(firstItem[0]).toMatchObject({ name: 'Капучино', imageUrl: 'https://example.test/coffee.png' });
-    expect(firstItem[0]?.priceByn.toString()).toBe('7.5');
-    const firstCategory = await fixture.prisma.menuCategory.findMany({ where: { tenantId: fixture.tenantId, posCategoryId: 'iiko-drinks' } });
-    expect(firstCategory).toHaveLength(1);
-    expect(firstCategory[0]?.name).toBe('Напитки iiko');
+    const firstImport = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId, posItemId: 'iiko-coffee-522' } });
+    expect(firstImport).toHaveLength(1);
+    expect(firstImport[0]).toMatchObject({ name: 'Капучино', imageUrl: 'https://example.test/coffee.png' });
+    expect(firstImport[0]?.priceByn.toString()).toBe('7.5');
+    const categories = await fixture.prisma.menuCategory.findMany({ where: { tenantId: fixture.tenantId, posCategoryId: 'iiko-drinks' } });
+    expect(categories).toHaveLength(1);
+    expect(categories[0]?.name).toBe('Напитки iiko');
 
+    nomenclature = {
+      groups: [{ id: 'iiko-drinks', name: 'Напитки iiko' }],
+      products: [{ id: 'iiko-coffee-522', name: 'Большой капучино', price: 9, categoryId: 'iiko-drinks', image: 'https://example.test/large-coffee.png' }],
+    };
     await request(server).post('/api/v1/admin/pos/sync-menu').set('Authorization', authorization).expect(201);
     await waitForStatus(server, authorization, 'SUCCESS');
+
     const updatedItems = await fixture.prisma.menuItem.findMany({ where: { tenantId: fixture.tenantId, posItemId: 'iiko-coffee-522' } });
     expect(updatedItems).toHaveLength(1);
-    expect(updatedItems[0]?.name).toBe('Капучино');
+    expect(updatedItems[0]).toMatchObject({ name: 'Большой капучино', imageUrl: 'https://example.test/large-coffee.png' });
+    expect(updatedItems[0]?.priceByn.toString()).toBe('9');
   }, 30_000);
 });
 
