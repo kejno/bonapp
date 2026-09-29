@@ -1,32 +1,29 @@
-# Доработка PR #192 — BNP-481
+# Исправления по ревью BNP-506
 
 ## Issues/Notes
 
-- Исправлен обход фискального подтверждения в welcome-сценарии: ранее он создавал смену напрямую в БД и возвращал `OPEN`, даже если касса СКНО не подтверждала открытие.
-- В `pr_discussions_raw.json` все 18 адресуемых inline-тредов помечены решёнными; остальные записи не содержат `threadId` и `rootCommentId`. Открытых адресуемых тредов нет.
-- Файлы CI-ошибок, `instruction.md`, `pr_files.txt` и `merge_conflicts.md` в подготовленных материалах отсутствуют.
+- Закрыт риск потери подтверждённого платежа при временном сбое обработки вебхука: задача BullMQ повторяется до пяти раз с экспоненциальной задержкой. После исчерпания попыток повторная доставка вебхука может создать задачу заново.
+- До реализации BNP-252 чаевые не поддерживаются: экран больше не предлагает чаевые и показывает сумму, совпадающую со списанием.
+- Ожидание результата ограничено фактическим сроком Checkout: API возвращает время истечения, рассчитанное от создания платежа; по его истечении гость видит сообщение и может повторить оплату.
 
 ## Approach
 
-- Welcome-маршрут теперь использует `ShiftService.open`, общий с обычным маршрутом открытия смены. Без корректных реквизитов СКНО открытие завершается ошибкой, локальная смена не создаётся.
-- Добавлен регрессионный e2e-сценарий, проверяющий welcome-маршрут и отсутствие активной смены через публичный API. Перед исправлением тест воспроизводимо падал: маршрут отвечал `201 Created`.
-- Проверка BNP-413 подтверждает работу полного сценария с управляемым HTTP-ответом кассы: подтверждение открытия, получение номера Z-отчёта, закрытие смены и первый номер следующего заказа.
+- Добавлены регрессионные тесты политики повторов вебхука, срока Checkout и отображаемой суммы.
+- Идемпотентное обновление платежа при повторной обработке вебхука сохранено.
 
 ## Files Modified
 
-- `apps/api/src/staff/staff.module.ts` — экспорт `ShiftService` для общего использования.
-- `apps/api/src/welcome/welcome.module.ts` — подключение `StaffModule`.
-- `apps/api/src/welcome/welcome.service.ts` — делегирование открытия смены в `ShiftService`.
-- `apps/api/src/welcome/welcome.service.spec.ts` — обновлена инициализация сервиса с новой зависимостью.
-- `apps/api/test/BNP-452.e2e-spec.ts` — проверка отказа welcome-маршрута без подтверждения СКНО.
-- `outputs/response.md` и `outputs/review_replies.json` — отчёт и состояние ответов на review-треды.
+- `apps/api/src/guest-session/bepaid-webhook.ts` — повторы BullMQ с экспоненциальной задержкой и повторная постановка после исчерпания попыток.
+- `apps/api/src/guest-session/bepaid-webhook.spec.ts` — тест политики очереди.
+- `apps/api/src/guest-session/guest-session.service.ts` — возврат серверного срока истечения оплаты.
+- `apps/api/src/guest-session/guest-session.service.spec.ts` — тест срока истечения от времени создания платежа.
+- `apps/guest-web/src/PayPage.tsx` — показ суммы к оплате, ограниченное ожидание и кнопка повтора.
+- `apps/guest-web/src/PayPage.test.tsx` — тесты суммы и истечения ожидания.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для сверки файлов PR и изменений rework.
-- `npx eslint apps/api/src/staff/staff.module.ts apps/api/src/welcome/welcome.module.ts apps/api/src/welcome/welcome.service.ts apps/api/src/welcome/welcome.service.spec.ts apps/api/test/BNP-452.e2e-spec.ts` — пройден.
-- `npm run typecheck` — пройден во всех четырёх workspace.
-- `npm test` — пройден: API — 76 наборов / 605 тестов, `guest-web` — 10 файлов / 32 теста, `admin-web` — 63 файла / 124 теста; также пройдены сборки и проверка design tokens.
-- `npm --workspace=@bonapp/api run test:e2e -- --runInBand --forceExit BNP-452.e2e-spec.ts BNP-413.e2e-spec.ts` — пройдено: 2 набора / 2 теста. Jest завершён с `--forceExit` из-за оставшихся открытых дескрипторов.
-- Проверка радиуса влияния: изменена только внутренняя зависимость welcome-сервиса; схему БД, миграции, публичные сигнатуры и глобальные провайдеры изменения не затрагивают. Миграций в PR нет.
-- Управляемый тестовый ответ СКНО проверен через e2e-сервер. Проверка на реальной кассе в этих тестах не выполнялась.
+- `git diff --check` — пройдено.
+- `npx eslint apps/api/src/guest-session/bepaid-webhook.ts apps/api/src/guest-session/bepaid-webhook.spec.ts apps/api/src/guest-session/guest-session.service.ts apps/api/src/guest-session/guest-session.service.spec.ts apps/guest-web/src/PayPage.tsx apps/guest-web/src/PayPage.test.tsx` — пройдено.
+- `npm run typecheck` — пройдено для всех четырёх workspace-пакетов.
+- `npm test` — пройдено; полный набор тестов и проверка дизайн-токенов.
+- Изменение публичного ответа статуса оплаты использовано гостевым экраном; проверено тестом API-сервиса и полным typecheck. Миграции, схема БД, публичные сигнатуры других методов и глобальные провайдеры не менялись.

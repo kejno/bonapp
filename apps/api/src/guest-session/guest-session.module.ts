@@ -5,11 +5,13 @@ import { GuestSessionGuard } from './guest-session.guard';
 import { GuestSessionService } from './guest-session.service';
 import { MenuModule } from '../menu/menu.module';
 import { OnboardingModule } from '../onboarding/onboarding.module';
+import { BepaidClient } from './bepaid.client';
+import { BepaidWebhookController, BepaidWebhookService } from './bepaid-webhook';
 
 @Module({
   imports: [forwardRef(() => MenuModule), OnboardingModule],
-  controllers: [GuestSessionController, GuestOrdersController],
-  providers: [GuestSessionService, GuestSessionGuard],
+  controllers: [GuestSessionController, GuestOrdersController, BepaidWebhookController],
+  providers: [GuestSessionService, GuestSessionGuard, BepaidClient, BepaidWebhookService],
   exports: [GuestSessionGuard],
 })
 export class GuestSessionModule {}

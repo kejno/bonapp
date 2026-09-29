@@ -31,6 +31,18 @@ export class GuestOrdersController {
     return this.guestSessionService.getOrderStatus(id, guestRequest.tenantId, guestRequest.tableId);
   }
 
+  @Post(':id/pay/card')
+  createCardPayment(@Req() request: Request, @Param('id') id: string) {
+    const guestRequest = request as QrTokenRequest;
+    return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId);
+  }
+
+  @Get(':id/pay/card/status')
+  getCardPaymentStatus(@Req() request: Request, @Param('id') id: string) {
+    const guestRequest = request as QrTokenRequest;
+    return this.guestSessionService.getCardPaymentStatus(id, guestRequest.tenantId, guestRequest.tableId);
+  }
+
   @Post(':id/items')
   addOrderItem(@Req() request: Request, @Param('id') id: string, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;

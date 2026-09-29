@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import { trustedProxySetting } from './trusted-proxies';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const expressApp = app.getHttpAdapter().getInstance() as {
     set: (setting: string, value: false | string[]) => void;
   };
