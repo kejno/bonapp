@@ -14,6 +14,7 @@ export type PaymentCredentialInput =
       provider: 'bepaid' | 'webpay';
       shopId: string;
       secret: string;
+      publicKey?: string;
       environment: 'TEST' | 'PROD';
     }
   | { gateway: 'skno'; cashRegisterSerial: string; unp?: string; host: string; username: string; password: string };
@@ -89,13 +90,14 @@ export function validateCredentials(input: unknown): PaymentCredentialInput {
     value.gateway === 'bepaid' &&
     (value.provider === 'bepaid' || value.provider === 'webpay') &&
     (value.environment === 'TEST' || value.environment === 'PROD') &&
-    required('shopId', 'secret')
+    required('shopId', 'secret', ...(value.provider === 'bepaid' ? ['publicKey'] : []))
   )
     return {
       gateway: 'bepaid',
       provider: value.provider,
       shopId: (value.shopId as string).trim(),
       secret: value.secret as string,
+      ...(value.provider === 'bepaid' ? { publicKey: (value.publicKey as string).trim() } : {}),
       environment: value.environment,
     };
   if (value.gateway === 'skno' && required('cashRegisterSerial', 'host', 'username', 'password'))

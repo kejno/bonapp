@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, ServiceMode } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { OrderStatus, PaymentMethod, PaymentStatus, ServiceMode } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
 import { nextDailyOrderNumber, tenantLocalDate } from '../orders/daily-order-number';
 import { PosOrderDispatcher } from '../onboarding/pos-order-dispatcher';
+import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
+import { BepaidClient } from './bepaid.client';
 
 @Injectable()
 export class GuestSessionService {
@@ -12,7 +14,45 @@ export class GuestSessionService {
     private readonly prisma: PrismaService,
     private readonly menuGateway: MenuGateway,
     private readonly posOrderDispatcher: PosOrderDispatcher,
+    @Optional() private readonly bepaidClient?: BepaidClient,
   ) {}
+
+  async createCardPayment(orderId: string, tenantId: string, tableId: string) {
+    if (!process.env.PAYMENT_CREDENTIALS_SECRET) throw new ServiceUnavailableException('Оплата временно недоступна');
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
+    const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.bepaid;
+    if (!isEncryptedCredentials(encoded)) throw new ConflictException('Оплата картой не подключена');
+    const credentials = decryptCredentials<{ provider: string; shopId: string; secret: string; publicKey?: string; environment: 'TEST' | 'PROD' }>(encoded, process.env.PAYMENT_CREDENTIALS_SECRET);
+    if (credentials.provider !== 'bepaid') throw new ConflictException('Оплата картой не подключена');
+    const order = await this.prisma.forTenant(tenantId).order.findFirst({ where: { id: orderId, tableId }, select: { id: true, status: true, isPaid: true, totalAmountByn: true } });
+    if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
+    if (order.isPaid || order.status === OrderStatus.PAID || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
+    const db = this.prisma.forTenant(tenantId);
+    const active = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } }, orderBy: { createdAt: 'desc' } });
+    const payment = active ?? await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: 0, provider: 'bepaid', method: PaymentMethod.BANK_CARD, status: PaymentStatus.PENDING } });
+    const amount = Math.round(Number(payment.amountByn) * 100);
+    if (!Number.isSafeInteger(amount) || amount < 1) throw new BadRequestException('Некорректная сумма заказа');
+    try {
+      if (!this.bepaidClient) throw new ServiceUnavailableException('Оплата временно недоступна');
+      const checkout = await this.bepaidClient.createCheckout({ shopId: credentials.shopId, secret: credentials.secret, amount, paymentId: payment.id, orderId, tenantId, test: credentials.environment === 'TEST' });
+      await db.payment.update({ where: { id: payment.id }, data: { payload: { token: checkout.token } } });
+      return { redirectUrl: checkout.redirectUrl };
+    } catch (error) {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw error;
+    }
+  }
+
+  async getCardPaymentStatus(orderId: string, tenantId: string, tableId: string) {
+    const order = await this.prisma.forTenant(tenantId).order.findFirst({ where: { id: orderId, tableId }, select: { id: true, status: true } });
+    if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
+    const payment = await this.prisma.forTenant(tenantId).payment.findFirst({ where: { orderId, provider: 'bepaid' }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
+    const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.bepaid;
+    const configured = isEncryptedCredentials(encoded) && !!process.env.PAYMENT_CREDENTIALS_SECRET
+      && decryptCredentials<{ provider: string }>(encoded, process.env.PAYMENT_CREDENTIALS_SECRET).provider === 'bepaid';
+    return { orderStatus: order.status, paymentStatus: payment?.status ?? null, paymentEnabled: configured };
+  }
 
   async createGuestOrder(
     tenantId: string,
