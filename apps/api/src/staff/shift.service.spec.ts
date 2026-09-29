@@ -13,7 +13,7 @@ describe('ShiftService', () => {
         }),
       ),
     };
-    const service = new ShiftService(prisma as unknown as PrismaService);
+    const service = new ShiftService(prisma as unknown as PrismaService, { open: jest.fn(), close: jest.fn() });
 
     await expect(service.open('tenant-1', 'cashier-1')).rejects.toBeInstanceOf(
       ConflictException,
@@ -34,7 +34,7 @@ describe('ShiftService', () => {
         operation(tx),
     );
     const prisma = { transactionForTenant } as unknown as PrismaService;
-    const service = new ShiftService(prisma, { log: jest.fn() });
+    const service = new ShiftService(prisma, { open: jest.fn(), close: jest.fn() });
 
     await expect(service.open('tenant-1', 'cashier-1')).rejects.toBeInstanceOf(
       ConflictException,
