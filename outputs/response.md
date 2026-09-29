@@ -2,29 +2,29 @@
 
 ## Issues/Notes
 
-- Исправлен блокирующий разбор ответа bePaid: `status` и `expired` читаются из корня JSON, как указано в комментарии к API. Ранее открытые сводные замечания без `threadId` не являются адресными inline-тредами; POS-риск повторного создания заказа при неопределённом результате запроса остаётся вне этого изменения и требует отдельной гарантии идемпотентности со стороны POS либо поддерживаемого API сверки.
-- В `.dmtools/input/BNP-158` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневой `instruction.md`; CI-сбои из файлов не предоставлены. Требования сверены с `request.md`, инструкции проекта — с `CLAUDE.md`.
-- В `pr_discussions_raw.json` имеется один открытый адресный тред с `threadId` и `rootCommentId`; на него подготовлен отдельный ответ. У сводных review-записей эти идентификаторы отсутствуют.
+- Исправление формата ответа bePaid уже присутствует в ветке: `status` и `expired` читаются с верхнего уровня JSON, тест клиента покрывает документированное тело ответа.
+- В последнем обзоре остаётся блокирующий риск повторной отправки заказа в POS после неопределённого результата `POST`. Адаптеры r_keeper и iiko не имеют подтверждённого здесь контракта идемпотентности или поиска принятого заказа. Передача ID заказа в payload не гарантирует дедупликацию, поэтому безопасно закрыть этот риск без контракта шлюзов невозможно; замечание зафиксировано как неустранённое.
+- В `pr_discussions_raw.json` нет открытых адресуемых inline-тредов: единственный тред с `threadId` помечен resolved. Открытые сводные замечания не содержат `threadId` и `rootCommentId`.
+- Файлы `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневой `instruction.md` в подготовленном контексте отсутствуют. Требования сверены с `request.md`, правила репозитория — с `CLAUDE.md` и инструкциями `.dmtools/agents/instructions/pr_rework/`.
 
 ## Approach
 
-- Добавлен тест `BepaidClient` с документированной формой ответа, где `status` и `expired` находятся на верхнем уровне. До исправления он завершался `BadGatewayException`.
-- Клиент теперь валидирует верхнеуровневый `status` и возвращает верхнеуровневый `expired`; данные `checkout` не используются как источник этих полей.
-- POS-отправка не менялась: переданный во внешний запрос ID не доказывает дедупликацию, а доступная информация не подтверждает контракт API поиска/идемпотентности.
+- Разрешены конфликты `outputs/response.md` и `outputs/review_replies.json`, оставив содержание, относящееся к BNP-158.
+- Сверена реализация клиента bePaid и его регрессионный тест с последним адресным замечанием. Дополнительные изменения исходного кода в этом проходе не потребовались.
+- Миграция `PaymentStatus.COMPLETED` перенесена на timestamp `20260929170001`, следующий за последней миграцией `origin/main` (`20260929170000_payment_method`). Изменена только новая миграция PR, существующие миграции не редактировались.
+- POS-отправка не менялась: локальная блокировка или повторная проверка `posOrderId` не закрывает сценарий, когда POS принял заказ, а ответ потерялся до записи ID. Для гарантии нужна подтверждённая идемпотентность или API сверки со стороны POS.
 
 ## Files Modified
 
-- `apps/api/src/guest-session/bepaid.client.ts` — разбор верхнеуровневых полей статуса bePaid.
-- `apps/api/src/guest-session/bepaid.client.spec.ts` — регрессионный тест на документированное тело ответа.
-- `outputs/response.md` — сводка исправления и проверок.
-- `outputs/review_replies.json` и `outputs/review_replies/BNP-158-thread-6.md` — адресный ответ на открытый inline-тред.
+- `outputs/response.md` — результат доработки, открытый блокер и проверки.
+- `outputs/review_replies.json` — пустой список, так как открытых адресуемых тредов нет.
+- `apps/api/prisma/migrations/20260929170001_payment_completed_status/migration.sql` — безопасный timestamp новой миграции статуса платежа.
 
 ## Test Coverage
 
-- RED: `npm test --workspace=apps/api -- --runInBand --runTestsByPath src/guest-session/bepaid.client.spec.ts` — тест упал до изменения реализации с `BadGatewayException`.
-- GREEN: та же команда после исправления — пройдена, 1 тест.
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены.
-- `npx eslint apps/api/src/guest-session/bepaid.client.ts apps/api/src/guest-session/bepaid.client.spec.ts` — пройдено.
-- `npm run typecheck` — пройдено для четырёх workspace.
-- `npm test` — пройдено: API 79 наборов / 609 тестов, guest-web 10 / 33, admin-web 63 / 124; сборка и проверка design tokens пройдены.
-- Радиус влияния ограничен клиентом bePaid и его потребителем `GuestSessionService`; схему, миграции, публичную сигнатуру и глобальные провайдеры изменение не затрагивает.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки состава изменений и состояния дерева.
+- `npx eslint` — не запускался: в этом проходе не менялись файлы исходного кода.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: guest-web 10 наборов / 33 теста, API 80 / 616, admin-web 63 / 124; production-сборка workspace и проверка design tokens пройдены.
+- Миграционный blast-radius check: проверены все вызовы `PaymentStatus.PENDING`/запросы платежей поиском по `apps/api/src` и `apps/api/test`; миграция добавлена, существующие миграции не изменялись, timestamp новее максимального на `origin/main`.
+- `git diff --check` — пройдено; конфликтных маркеров в разрешённых файлах нет.
