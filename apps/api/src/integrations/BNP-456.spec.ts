@@ -18,8 +18,9 @@ describe('BNP-456: payment gateway settings', () => {
       if (!isEncryptedCredentials(storedSettings.iiko.clientSecret)) throw new Error('Ожидалось шифрование секрета');
       expect(decryptCredentials<{ value: string }>(storedSettings.iiko.clientSecret, process.env.PAYMENT_CREDENTIALS_SECRET).value).toBe('private-secret-456');
       const response = await service.getStatus('tenant-1');
-      expect(response.integrations.iiko.settings).toMatchObject({ apiUrl: 'https://iiko.test', appId: 'app-1', clientSecret: '' });
+      expect(response.integrations.iiko.settings).toMatchObject({ apiUrl: 'https://iiko.test', appId: 'app-1', apiKey: '', clientSecret: '' });
       expect(JSON.stringify(response)).not.toContain('private-secret-456');
+      expect(JSON.stringify(response)).not.toContain('api-key');
     } finally {
       if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
       else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
