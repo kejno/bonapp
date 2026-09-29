@@ -12,6 +12,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CacheModule } from './cache/cache.module';
 import { GuestSessionModule } from './guest-session/guest-session.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { HallsModule } from './halls/halls.module';
 import { IikoModule } from './integrations/iiko/iiko.module';
 import { MenuModule } from './menu/menu.module';
@@ -43,6 +44,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     StaffAuthModule,
     StaffModule,
     GuestSessionModule,
+    IntegrationsModule,
     PublicRegistrationModule,
     WaiterCallModule,
     WelcomeModule,

@@ -59,6 +59,7 @@ model Tenant {
   currency               String          @default("BYN")
   logoUrl                String?         @map("logo_url")
   brandColor             String?         @map("brand_color")
+  integrationSettings    Json?           @map("integration_settings")
   posType                String?         @map("pos_type")
   posApiKey              String?         @map("pos_api_key")
   posCredentials         Json?           @map("pos_credentials")

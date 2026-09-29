@@ -111,12 +111,15 @@ export class OnboardingService implements OnModuleInit, OnModuleDestroy {
     return { posType: input.posType };
   }
 
-  async startImport(): Promise<{ jobId: string }> {
+  async startImport(expectedPosType?: 'iiko' | 'r_keeper'): Promise<{ jobId: string }> {
     const tenantId = this.requireTenant();
     const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant?.posType || tenant.posType === 'none' || !tenant.posUrl ||
       (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) {
       throw new BadRequestException('Сначала подключите POS-систему');
+    }
+    if (expectedPosType && tenant.posType !== expectedPosType) {
+      throw new ConflictException('Настроенная POS-система не совпадает с выбранной интеграцией');
     }
     const current = tenant.posImportState as { status?: string } | null;
     if (current && !['idle', 'failed'].includes(current.status ?? '')) {
