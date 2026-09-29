@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { OrderStatus, PaymentMethod, PaymentStatus, ServiceMode } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, Prisma, ServiceMode } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MenuGateway } from '../menu/menu.gateway';
@@ -28,8 +28,25 @@ export class GuestSessionService {
     if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
     if (order.isPaid || order.status === OrderStatus.PAID || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
     const db = this.prisma.forTenant(tenantId);
-    const active = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } }, orderBy: { createdAt: 'desc' } });
-    const payment = active ?? await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: 0, provider: 'bepaid', method: PaymentMethod.BANK_CARD, status: PaymentStatus.PENDING } });
+    const pending = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
+    const paymentExpired = pending && pending.createdAt.getTime() <= Date.now() - 15 * 60_000;
+    if (paymentExpired) {
+      const expired = await db.payment.updateMany({
+        where: { id: pending.id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.CANCELLED },
+      });
+      if (!expired.count) throw new ConflictException('Текущий платёж уже обрабатывается');
+    }
+    const active = pending && !paymentExpired ? pending : null;
+    let payment;
+    try {
+      payment = active ?? await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: 0, provider: 'bepaid', method: PaymentMethod.BANK_CARD, status: PaymentStatus.PENDING } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Другой платёж уже создаётся');
+      }
+      throw error;
+    }
     const amount = Math.round(Number(payment.amountByn) * 100);
     if (!Number.isSafeInteger(amount) || amount < 1) throw new BadRequestException('Некорректная сумма заказа');
     try {
