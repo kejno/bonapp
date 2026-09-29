@@ -41,4 +41,25 @@ describe('ShiftService', () => {
     );
     expect(tx.user.findFirst).not.toHaveBeenCalled();
   });
+
+  it('validates SKNO credentials before persisting a close-start marker', async () => {
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    delete process.env.PAYMENT_CREDENTIALS_SECRET;
+    const transactionForTenant = jest.fn();
+    const prisma = {
+      transactionForTenant,
+      db: { tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: null }) } },
+    } as unknown as PrismaService;
+    const skno = { open: jest.fn(), close: jest.fn(), reconcileClose: jest.fn() };
+    const service = new ShiftService(prisma, skno);
+
+    try {
+      await expect(service.close('tenant-1')).rejects.toThrow('Настройте зашифрованные реквизиты');
+      expect(transactionForTenant).not.toHaveBeenCalled();
+      expect(skno.close).not.toHaveBeenCalled();
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
+  });
 });

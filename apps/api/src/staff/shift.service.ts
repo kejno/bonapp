@@ -61,6 +61,9 @@ export class ShiftService {
   }
 
   async close(tenantId: string) {
+    // A persisted marker means the non-idempotent command may have reached the device.
+    // Reject invalid configuration before recording that state.
+    const credentials = await this.getSknoCredentials(tenantId);
     const pending = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
       const shift = await tx.shift.findFirst({ where: { tenantId, status: ShiftStatus.OPEN } });
@@ -75,7 +78,6 @@ export class ShiftService {
       return { shift, started };
     });
 
-    const credentials = await this.getSknoCredentials(tenantId);
     const confirmation = pending.started
       ? await this.skno.close(credentials)
       : await this.skno.reconcileClose(credentials, pending.shift.sknoStartZ ?? 0);

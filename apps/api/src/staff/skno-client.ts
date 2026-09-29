@@ -61,11 +61,14 @@ export class TitanSknoClient implements SknoShiftClient {
     ]);
     this.assertNoErrors(state.err);
     if (state.serial !== credentials.cashRegisterSerial || !Array.isArray(rows)) return null;
-    const report = rows
-      .filter((row) => Number.isInteger(row.id) && row.id! > startZ)
-      .sort((a, b) => b.id! - a.id!)[0];
-    const zReportNumber = report?.id ?? (state.currZ !== undefined && state.currZ > startZ ? state.currZ : null);
-    return zReportNumber === null ? null : { zReportNumber };
+    const newDays = rows.filter((row) => Number.isInteger(row.id) && row.id! > startZ);
+    if (newDays.length > 1) return null;
+    const reportNumber = newDays[0]?.id;
+    if (reportNumber !== undefined) {
+      return state.currZ === reportNumber ? { zReportNumber: reportNumber } : null;
+    }
+    // State alone is sufficient only for one unambiguous sequential increment.
+    return state.currZ === startZ + 1 ? { zReportNumber: state.currZ } : null;
   }
 
   private async readSnapshot(credentials: SknoCredentials): Promise<{ currZ: number; ids: Set<number> }> {
@@ -89,9 +92,12 @@ export class TitanSknoClient implements SknoShiftClient {
     this.assertNoErrors(state.err);
     if (state.serial !== credentials.cashRegisterSerial || !Array.isArray(rows)) return null;
     const newDays = rows.filter((row) => Number.isInteger(row.id) && !before.ids.has(row.id!));
-    const latestNewDay = newDays.sort((a, b) => b.id! - a.id!)[0];
-    if (latestNewDay) return latestNewDay.id!;
-    if (state.currZ !== undefined && state.currZ > before.currZ) return state.currZ;
+    if (newDays.length > 1) return null;
+    if (newDays.length === 1) {
+      const reportNumber = newDays[0].id!;
+      return state.currZ === reportNumber ? reportNumber : null;
+    }
+    if (state.currZ === before.currZ + 1) return state.currZ;
     return null;
   }
 

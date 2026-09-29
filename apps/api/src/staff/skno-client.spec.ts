@@ -100,4 +100,16 @@ describe('TitanSknoClient', () => {
     await expect(client.reconcileClose(credentials(), 10)).resolves.toEqual({ zReportNumber: 11 });
     expect(reportCalls).toBe(0);
   });
+
+  it('does not guess which report belongs to a pending close when multiple reports appeared', async () => {
+    fiscalDays = [{ id: 10 }, { id: 11 }, { id: 12 }];
+    state.currZ = 12;
+    await expect(client.reconcileClose(credentials(), 10)).resolves.toBeNull();
+  });
+
+  it('rejects a fiscal-memory entry that conflicts with the current state', async () => {
+    fiscalDays = [{ id: 10 }, { id: 11 }];
+    state.currZ = 12;
+    await expect(client.reconcileClose(credentials(), 10)).resolves.toBeNull();
+  });
 });
