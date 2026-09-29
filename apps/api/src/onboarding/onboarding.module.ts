@@ -10,6 +10,6 @@ import { PosOrderQueueService } from './pos-order-queue.service';
   imports: [IikoModule],
   controllers: [OnboardingController, PosSyncController],
   providers: [OnboardingService, PosOrderQueueService, { provide: PosOrderDispatcher, useExisting: PosOrderQueueService }],
-  exports: [PosOrderDispatcher],
+  exports: [OnboardingService, PosOrderDispatcher],
 })
 export class OnboardingModule {}

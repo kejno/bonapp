@@ -13,6 +13,7 @@ import MenuEditorPage from './menu/MenuPage';
 import MenuPage from './pages/MenuPage';
 import OrderPage from './pages/OrderPage';
 import TablesPage from './pages/TablesPage';
+import IntegrationsPage from './pages/IntegrationsPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
 import OnboardingStep2Page from './onboarding/OnboardingStep2Page';
@@ -114,6 +115,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/settings/integrations" element={<ProtectedRoute><IntegrationsPage /></ProtectedRoute>} />
           <Route
             path="/orders/:orderId"
             element={<NonWaiterRoute><OrderPage /></NonWaiterRoute>}
