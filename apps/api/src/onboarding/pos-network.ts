@@ -35,10 +35,11 @@ export async function requestPosMenu(url: URL, apiKey: string, allowedHosts: str
   return requestPos(url, apiKey, allowedHosts, timeoutMs, 'GET', '/api/v1/menu');
 }
 
-export async function requestPosOrder(url: URL, apiKey: string, allowedHosts: string, timeoutMs: number, payload: unknown): Promise<string> {
-  const response = await requestPos(url, apiKey, allowedHosts, timeoutMs, 'POST', '/api/v1/orders', payload);
+export async function requestPosOrder(url: URL, apiKey: string, allowedHosts: string, timeoutMs: number, payload: unknown, path = '/api/v1/orders', idField = 'id'): Promise<string> {
+  const response = await requestPos(url, apiKey, allowedHosts, timeoutMs, 'POST', path, payload);
   if (!response || typeof response !== 'object') throw new Error('POS вернул некорректный идентификатор заказа');
-  const id = (response as Record<string, unknown>)['id'];
+  const id = idField.split('.').reduce<unknown>((value, key) =>
+    value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, response);
   if (typeof id !== 'string' || !id) throw new Error('POS вернул некорректный идентификатор заказа');
   return id;
 }

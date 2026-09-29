@@ -25,3 +25,20 @@ export function buildRKeeperOrderPayload(order: RKeeperOrder) {
     })),
   };
 }
+
+export function buildIikoOrderPayload(order: RKeeperOrder, organizationId: string, terminalGroupId: string) {
+  return {
+    organizationId,
+    terminalGroupId,
+    order: {
+      externalNumber: order.id,
+      comment: order.comment ?? '',
+      items: order.items.map((item) => ({
+        type: 'Product',
+        productId: item.posItemId,
+        amount: item.quantity,
+        price: item.unitPriceByn,
+      })),
+    },
+  };
+}
