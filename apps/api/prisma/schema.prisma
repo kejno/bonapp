@@ -221,6 +221,7 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   PENDING
+  COMPLETED
   SUCCEEDED
   FAILED
   CANCELLED

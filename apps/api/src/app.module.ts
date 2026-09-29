@@ -25,6 +25,7 @@ import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
 import { WaiterCallModule } from './waiter-call/waiter-call.module';
 import { WelcomeModule } from './welcome/welcome.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     PublicRegistrationModule,
     WaiterCallModule,
     WelcomeModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
