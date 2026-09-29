@@ -56,6 +56,7 @@ model Tenant {
   brandColor             String?         @map("brand_color")
   posType                String?         @map("pos_type")
   posApiKey              String?         @map("pos_api_key")
+  posCredentials         Json?           @map("pos_credentials")
   posUrl                 String?         @map("pos_url")
   posImportState         Json?           @map("pos_import_state")
   paymentCredentials     Json?           @map("payment_credentials")
