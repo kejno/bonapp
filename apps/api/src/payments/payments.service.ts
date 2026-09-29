@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentStatus } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
@@ -47,16 +47,45 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const callbackUrl = this.config.get<string>('OPLATI_CALLBACK_URL');
     if (!apiUrl || !callbackUrl) throw new ServiceUnavailableException('Не настроен API-контракт Оплати™');
 
+    let payment;
+    try {
+      payment = await db.payment.create({ data: { orderId, tenantId, amountByn: orderAmount, tipsAmountByn, provider: 'OPLATI', status: PaymentStatus.PENDING }, select: { id: true } });
+    } catch (error) {
+      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')) throw error;
+      // A partial unique index reserves one pending payment per order. Return its QR
+      // when ready; while the first request is still contacting Оплати™, ask retry.
+      const existing = await db.payment.findFirst({ where: { orderId, tenantId, provider: 'OPLATI', status: PaymentStatus.PENDING }, select: { id: true, amountByn: true, tipsAmountByn: true, payload: true } });
+      const payload = existing?.payload as { qrCodeData?: string; deepLink?: string; eripCode?: string } | null;
+      if (existing && payload?.qrCodeData && payload.deepLink) {
+        return { paymentId: existing.id, qrCodeData: payload.qrCodeData, deepLink: payload.deepLink, eripCode: payload.eripCode ?? null, totalWithTipsByn: Number(existing.amountByn) + Number(existing.tipsAmountByn) };
+      }
+      if (existing) throw new ConflictException('Создание платежа уже выполняется; повторите запрос позже');
+      throw error;
+    }
+
     let response: Response;
     try {
       response = await fetch(apiUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ merchantId: credentials.merchantId, orderId, amount: totalWithTipsByn, currency: 'BYN', callbackUrl }), signal: AbortSignal.timeout(10_000) });
-    } catch { throw new ServiceUnavailableException('Оплати™ временно недоступен'); }
-    if (!response.ok) throw new ServiceUnavailableException('Оплати™ отклонил создание платежа');
-    const provider = await response.json() as Partial<OplatiResponse>;
-    if (typeof provider.paymentId !== 'string' || typeof provider.qrCodeData !== 'string' || typeof provider.deepLink !== 'string') {
+    } catch {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ временно недоступен');
+    }
+    if (!response.ok) {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ отклонил создание платежа');
+    }
+    let provider: Partial<OplatiResponse>;
+    try {
+      provider = await response.json() as Partial<OplatiResponse>;
+    } catch {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
       throw new ServiceUnavailableException('Оплати™ вернул некорректный ответ');
     }
-    const payment = await db.payment.create({ data: { orderId, tenantId, amountByn: orderAmount, tipsAmountByn, provider: 'OPLATI', providerTransactionId: provider.paymentId, eripOrderNumber: provider.eripCode ?? null, status: PaymentStatus.PENDING, payload: { qrCodeData: provider.qrCodeData, deepLink: provider.deepLink } }, select: { id: true } });
+    if (typeof provider.paymentId !== 'string' || typeof provider.qrCodeData !== 'string' || typeof provider.deepLink !== 'string') {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ вернул некорректный ответ');
+    }
+    await db.payment.update({ where: { id: payment.id }, data: { providerTransactionId: provider.paymentId, eripOrderNumber: provider.eripCode ?? null, payload: { qrCodeData: provider.qrCodeData, deepLink: provider.deepLink } } });
     return { paymentId: payment.id, qrCodeData: provider.qrCodeData, deepLink: provider.deepLink, eripCode: provider.eripCode ?? null, totalWithTipsByn };
   }
 
@@ -82,9 +111,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const payment = await this.prisma.unscopedClient.payment.findFirst({ where: { provider: 'OPLATI', providerTransactionId: event.providerTransactionId }, select: { id: true, tenantId: true, orderId: true, status: true } });
     if (!payment || payment.status !== PaymentStatus.PENDING) return;
     const changed = await this.prisma.transactionForTenant(payment.tenantId, async (tx) => {
+      const orderUpdate = await tx.order.updateMany({ where: { id: payment.orderId, tenantId: payment.tenantId, isPaid: false }, data: { isPaid: true, paidAt: new Date() } });
+      if (orderUpdate.count !== 1) return false;
       const updated = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.SUCCEEDED } });
-      if (updated.count !== 1) return false;
-      await tx.order.update({ where: { id_tenantId: { id: payment.orderId, tenantId: payment.tenantId } }, data: { isPaid: true, paidAt: new Date() } });
+      if (updated.count !== 1) throw new Error('Payment status changed during webhook processing');
       return true;
     });
     if (changed) this.gateway.emitOrderPaymentUpdated(payment.orderId, payment.id, 'COMPLETED');

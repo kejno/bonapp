@@ -5,6 +5,7 @@ import { GuestSessionController } from '../src/guest-session/guest-session.contr
 import { GuestSessionService } from '../src/guest-session/guest-session.service';
 import { MenuGateway } from '../src/menu/menu.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { PosOrderDispatcher } from '../src/onboarding/pos-order-dispatcher';
 
 describe('BNP-378: unknown guest QR token', () => {
   let app: INestApplication;
@@ -20,6 +21,7 @@ describe('BNP-378: unknown guest QR token', () => {
         GuestSessionService,
         { provide: PrismaService, useValue: prisma },
         { provide: MenuGateway, useValue: {} },
+        { provide: PosOrderDispatcher, useValue: { enqueue: jest.fn() } },
       ],
     }).compile();
     app = module.createNestApplication();

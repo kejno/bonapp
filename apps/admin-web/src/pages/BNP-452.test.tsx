@@ -29,7 +29,7 @@ describe('BNP-452: открытие смены с /welcome', () => {
       if (url.endsWith('/admin/readiness')) {
         return Response.json(readiness);
       }
-      if (url.endsWith('/admin/shifts/open')) {
+      if (url.endsWith('/admin/welcome/shifts/open')) {
         return Response.json({ id: 'shift-1' });
       }
       throw new Error(`Unexpected request: ${url}`);
@@ -53,7 +53,7 @@ describe('BNP-452: открытие смены с /welcome', () => {
     fireEvent.click(openShiftButton);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/v1\/admin\/shifts\/open$/),
+        expect.stringMatching(/\/api\/v1\/admin\/welcome\/shifts\/open$/),
         expect.objectContaining({ method: 'POST' }),
       );
     });
