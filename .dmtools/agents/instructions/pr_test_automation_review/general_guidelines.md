@@ -20,6 +20,33 @@ flowchart TD
     OUTPUT --> END([End])
 ```
 
+## Do not re-raise an issue already sitting in an open thread
+
+Before writing a new inline comment, check `pr_discussions.md` /
+`pr_discussions_raw.json` for an existing **open** (unresolved) thread on the
+same file that already raises the same underlying issue. If one exists and
+rework has not actually changed the code the thread is about, do not create
+a second inline comment restating it — that thread is already open and
+waiting on a fix; a second one doesn't get it fixed any faster and only
+duplicates the conversation.
+
+This matters because `pr_test_automation_rework` is instructed to reply to
+**every** open thread on each of its runs (see its own
+`general_guidelines.md`) — a review that opens a fresh thread for an
+unresolved issue every round, instead of leaving the original thread open,
+produces one more "✅ Addressed." reply per round on top of all the previous
+rounds' duplicate threads. Observed on PR #169: the same BNP-417 finding
+("calls the API directly instead of exercising the KDS drag-and-drop through
+the UI") was re-opened as a new thread on repeated rounds, and rework's
+blanket reply-to-all-open-threads behavior compounded it into 700+ comments.
+
+Only open a new thread when: the finding is genuinely new (a different file,
+a different defect), or the previous thread was already resolved and a
+*new* instance of a similar issue has appeared. If the same file/finding
+keeps failing across rounds with the code essentially unchanged, say so in
+`generalComment` instead of adding another inline comment — that's a signal
+rework isn't actually fixing it, not a reason to file it again.
+
 ## Genuine defect → APPROVE, not BLOCK
 
 A FAILED test is not automatically a problem with the test. If the test

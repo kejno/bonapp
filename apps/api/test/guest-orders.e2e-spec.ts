@@ -14,6 +14,7 @@ import { OrdersService } from '../src/orders/orders.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { TenantContextService } from '../src/tenant/tenant-context.service';
 import { buildTokenPair } from '../src/staff-auth/staff-jwt.util';
+import { PosOrderDispatcher } from '../src/onboarding/pos-order-dispatcher';
 
 describe('POST /api/v1/guest/orders integration', () => {
   let app: INestApplication;
@@ -31,6 +32,7 @@ describe('POST /api/v1/guest/orders integration', () => {
   const inactiveOptionId = randomUUID();
   const qrToken = `guest-order-${randomUUID()}`;
   const jwtSecret = 'guest-orders-integration-secret';
+  const enqueuePosOrder = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     process.env.JWT_SECRET = jwtSecret;
@@ -68,6 +70,7 @@ describe('POST /api/v1/guest/orders integration', () => {
       controllers: [GuestOrdersController],
       providers: [
         GuestSessionService,
+        { provide: PosOrderDispatcher, useValue: { enqueue: enqueuePosOrder } },
         GuestSessionGuard,
         MenuGateway,
         PrismaService,
@@ -95,6 +98,7 @@ describe('POST /api/v1/guest/orders integration', () => {
   });
 
   it('creates a multi-item order with server prices and delivers order:created to the tenant kitchen room', async () => {
+    enqueuePosOrder.mockClear();
     const address = (app.getHttpServer() as unknown as { address(): AddressInfo }).address();
     const { accessToken } = buildTokenPair(staffId, tenantId, UserRole.CHEF, jwtSecret);
     socket = io(`http://127.0.0.1:${address.port}`, { auth: { accessToken }, transports: ['websocket'] });
@@ -127,6 +131,7 @@ describe('POST /api/v1/guest/orders integration', () => {
     const createdOrder = readOrderResponse(response.body);
     expect(createdOrder).toMatchObject({ dailyOrderNumber: 1, status: 'NEW', totalAmountByn: 15.5 });
     expect(createdOrder.orderId).toEqual(expect.any(String));
+    expect(enqueuePosOrder).toHaveBeenCalledWith(tenantId, createdOrder.orderId);
     expect(createdOrder.estimatedReadyTime).toEqual(expect.any(String));
     await expect(kitchenEvent).resolves.toMatchObject({ id: createdOrder.orderId, dailyOrderNumber: 1 });
     await request(app.getHttpServer() as never)

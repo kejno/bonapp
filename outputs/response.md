@@ -1,27 +1,31 @@
-# Повторная проверка PR #160 — BNP-136
+# Доработка PR #211 — BNP-158
 
 ## Issues/Notes
 
-- Последний отзыв после `9c6a80e` не содержит новых замечаний к реализации; рекомендация — COMMENT. Четыре адресуемых inline-треда в `input/BNP-136/pr_discussions_raw.json` помечены закрытыми, открытых тредов для ответа нет.
-- В `input/BNP-136` отсутствуют `ci_failures.md`, `ci_failures_full.log`, `merge_conflicts.md`, `pr_files.txt` и отдельный `ticket.md`. Требования сверены с `request.md`.
-- Производственный код в этой итерации не менялся. ESLint завершился без ошибок; остались два предупреждения `no-unsafe-argument` в `apps/api/src/onboarding/onboarding.service.ts:151`.
+- Исправлена классификация ответов POS: HTTP 4xx при вызове создания заказа не доказывает, что заказ не был принят. Такие ошибки больше не снимают `posOrderSubmittedAt`, поэтому BullMQ не повторяет неоднозначный `POST`.
+- Подтверждённая ошибка получения токена iiko до вызова создания заказа по-прежнему допускает безопасный повтор.
+- В подготовленном контексте нет `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `ticket.md` и корневого `instruction.md`. Требования сверены с `request.md`, инструкции проекта — с `CLAUDE.md` и `.dmtools/agents/instructions/pr_rework/`. CI-отчёты не предоставлены.
 
 ## Approach
 
-- Проверил текущую ветку и diff относительно `origin/main`; повторный отзыв подтверждает отсутствие изменений реализации после проверенной ревизии.
-- Повторно подтвердил закрытие четырёх адресуемых inline-тредов. `CodeGraph` недоступен; проверил потребителей POS-полей, `posItemId` и `dailyOrderNumberDate` поиском `rg` в `apps/` и `packages/`.
-- Миграционный diff содержит только новую append-only миграцию `20260927000001_add_pos_onboarding`; существующие миграции не изменены.
-- Регрессионные тесты не менялись: новых замечаний и исправлений кода в этой итерации нет.
+- HTTP-ответы вне 2xx теперь приводят к обычной ошибке; специальный `PosOrderRejectedError` оставлен только для сбоя iiko-аутентификации до обращения к endpoint создания заказа.
+- На границе iiko-адаптера ошибки создания заказа преобразуются в неоднозначные, даже если requester классифицировал их как отказ.
+- Добавлены регрессионные случаи HTTP 400, 408 и 409 через внешний seam requester. Каждый фиксированный статус проверяет, что вызов заказа не классифицируется как безопасно отклонённый.
 
 ## Files Modified
 
-- `outputs/response.md` — результаты повторной проверки и обязательных команд.
-- `outputs/review_replies.json` — пустой список, так как открытых inline-тредов нет.
+- `apps/api/src/onboarding/pos-network.ts` — неоднозначные ответы POS больше не освобождают защитную отметку.
+- `apps/api/src/onboarding/pos-auth.spec.ts` — покрытие 400, 408 и 409 при вызове iiko endpoint создания заказа.
+- `outputs/response.md` и `outputs/review_replies.json` — сводка доработки и ссылка на ответ в треде.
+- `outputs/review_replies/BNP-158-thread-8.md` — ответ на открытое замечание классификации 4xx.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD`, `git status --short`, `git diff --check` и проверка миграционного diff — выполнены; исходное рабочее дерево было чистым, форматирование diff корректно.
-- `npx eslint` по изменённым в PR TypeScript/TSX-файлам — выполнен успешно: 0 ошибок, 2 предупреждения `no-unsafe-argument` в `onboarding.service.ts:151`.
-- `npm run typecheck` — успешно во всех четырёх workspace; Prisma Client сгенерирован.
-- `npm test` — успешно: API 67 наборов / 576 тестов, admin-web 35 файлов / 89 тестов, guest-web 8 файлов / 26 тестов; сборка и проверка design tokens также завершились успешно.
-- Blast radius схемы и полей проверен поиском `rg` в `apps/` и `packages/`; проверены потребители `posItemId` и `dailyOrderNumberDate`. Миграции сверены с `origin/main`; изменена только новая миграция POS.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` и `git status --short` — выполнены для проверки файлов PR и состояния дерева.
+- RED: `npx jest --runInBand src/onboarding/pos-auth.spec.ts` до исправления — три новых проверки HTTP 400, 408 и 409 упали, поскольку ошибка оставалась `PosOrderRejectedError`.
+- GREEN: `npx jest --runInBand src/onboarding/pos-auth.spec.ts` — пройдено: 5 тестов.
+- `npx eslint apps/api/src/onboarding/pos-network.ts apps/api/src/onboarding/pos-auth.spec.ts` — пройдено.
+- `npm run typecheck` — пройдено.
+- `npm test` — пройдено: API 80 наборов / 619 тестов, guest-web 10 / 33, admin-web 63 / 124; сборки workspace и проверка design tokens прошли.
+- `git diff --check` — пройдено.
+- CodeGraph недоступен; потребители `PosOrderRejectedError`, `requestIikoOrder` и обработчика отправки проверены поиском `rg` по `apps/api/src` и `apps/api/test`. Схема, миграции, общие сигнатуры и глобальные провайдеры не затрагивались.

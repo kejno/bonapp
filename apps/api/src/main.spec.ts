@@ -16,6 +16,16 @@ describe('application bootstrap', () => {
 
     expect(source).toContain('trustedProxySetting(process.env.TRUSTED_PROXY_ADDRESSES)');
   });
+
+  it('enables CORS only for explicitly configured origins', () => {
+    const source = readFileSync(join(__dirname, 'main.ts'), 'utf8');
+
+    expect(source).toContain("process.env.CORS_ORIGIN?.split(',')");
+    expect(source).toContain(
+      'origin: allowedOrigins?.length ? allowedOrigins : false',
+    );
+    expect(source).toContain('credentials: true');
+  });
 });
 
 describe('trustedProxySetting', () => {

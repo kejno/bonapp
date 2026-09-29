@@ -1,22 +1,23 @@
 import {
   ConflictException,
+  BadRequestException,
+  Inject,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ShiftStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
+import { SKNO_CLIENT } from './skno-client';
+import type { SknoCredentials, SknoShiftClient } from './skno-client';
 
 @Injectable()
 export class ShiftService {
-  private readonly logger: Pick<Logger, 'log'>;
   constructor(
     private readonly prisma: PrismaService,
-    logger?: Pick<Logger, 'log'>,
-  ) {
-    this.logger = logger ?? new Logger(ShiftService.name);
-  }
+    @Inject(SKNO_CLIENT) private readonly skno: SknoShiftClient,
+  ) {}
 
   async current(tenantId: string) {
     return this.prisma
@@ -44,9 +45,9 @@ export class ShiftService {
         },
       });
       if (!cashier) throw new NotFoundException('Active cashier not found');
-      const shift = await tx.shift.create({ data: { tenantId, cashierId } });
-      this.logger.log(`[СКНО STUB] shift open – tenantId: ${tenantId}`);
-      return shift;
+      const credentials = await this.getSknoCredentials(tenantId);
+      const confirmation = await this.skno.open(credentials);
+      return tx.shift.create({ data: { tenantId, cashierId, sknoStartZ: confirmation.zReportNumber } });
       });
     } catch (error) {
       if (
@@ -60,17 +61,37 @@ export class ShiftService {
   }
 
   async close(tenantId: string) {
-    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+    // A persisted marker means the non-idempotent command may have reached the device.
+    // Reject invalid configuration before recording that state.
+    const credentials = await this.getSknoCredentials(tenantId);
+    const pending = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
-      const shift = await tx.shift.findFirst({
-        where: { tenantId, status: ShiftStatus.OPEN },
-      });
+      const shift = await tx.shift.findFirst({ where: { tenantId, status: ShiftStatus.OPEN } });
       if (!shift) throw new NotFoundException('No open shift for this tenant');
+      const started = !shift.sknoCloseStartedAt;
+      if (started) {
+        await tx.shift.update({
+          where: { id_tenantId: { id: shift.id, tenantId } },
+          data: { sknoCloseStartedAt: new Date() },
+        });
+      }
+      return { shift, started };
+    });
+
+    const confirmation = pending.started
+      ? await this.skno.close(credentials)
+      : await this.skno.reconcileClose(credentials, pending.shift.sknoStartZ ?? 0);
+    if (!confirmation) {
+      throw new ConflictException('Результат Z-отчёта не подтверждён; требуется сверка с кассой, повторная команда не отправлялась');
+    }
+
+    return this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const shift = await tx.shift.findFirst({ where: { id: pending.shift.id, tenantId, status: ShiftStatus.OPEN } });
+      if (!shift) throw new ConflictException('Смена уже закрыта или изменилась');
       const closedAt = new Date();
       const totals = await tx.order.aggregate({
         where: { tenantId, createdAt: { gte: shift.openedAt, lte: closedAt } },
-        _sum: { totalAmountByn: true },
-        _count: { _all: true },
+        _sum: { totalAmountByn: true }, _count: { _all: true },
       });
       const closed = await tx.shift.update({
         where: { id_tenantId: { id: shift.id, tenantId } },
@@ -78,17 +99,38 @@ export class ShiftService {
       });
       const report = await tx.shiftReport.create({
         data: {
-          tenantId,
-          shiftId: shift.id,
-          cashierId: shift.cashierId,
-          openedAt: shift.openedAt,
-          closedAt,
+          tenantId, shiftId: shift.id, cashierId: shift.cashierId,
+          openedAt: shift.openedAt, closedAt,
           totalAmount: totals._sum.totalAmountByn ?? 0,
-          orderCount: totals._count._all,
+          orderCount: totals._count._all, zReportNumber: confirmation.zReportNumber,
         },
       });
-      this.logger.log(`[СКНО STUB] shift close – tenantId: ${tenantId}`);
+      await tx.tenant.update({ where: { id: tenantId }, data: { dailyOrderNumber: 0 } });
       return { ...closed, report };
     });
+  }
+
+  private async getSknoCredentials(tenantId: string): Promise<SknoCredentials> {
+    const tenant = await this.prisma.db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { paymentCredentials: true },
+    });
+    const encrypted = (tenant?.paymentCredentials as Record<string, unknown> | null)?.skno;
+    const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    if (!isEncryptedCredentials(encrypted) || !secret) {
+      throw new BadRequestException('Настройте зашифрованные реквизиты кассы СКНО');
+    }
+    const credentials = decryptCredentials<{
+      cashRegisterSerial: string; host?: string; username?: string; password?: string;
+    }>(encrypted, secret);
+    if (!credentials.host || !credentials.username || credentials.password === undefined) {
+      throw new BadRequestException('В реквизитах СКНО отсутствуют хост или данные авторизации');
+    }
+    let host: URL;
+    try { host = new URL(credentials.host); } catch { throw new BadRequestException('Некорректный хост кассы СКНО'); }
+    if (!['http:', 'https:'].includes(host.protocol) || host.username || host.password) {
+      throw new BadRequestException('Некорректный хост кассы СКНО');
+    }
+    return { host: host.toString(), username: credentials.username, password: credentials.password, cashRegisterSerial: credentials.cashRegisterSerial };
   }
 }

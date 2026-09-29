@@ -13,7 +13,7 @@ import { StopListController } from './stop-list.controller';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [AuthModule, GuestSessionModule, StorageModule, forwardRef(() => OrdersModule)],
+  imports: [AuthModule, forwardRef(() => GuestSessionModule), StorageModule, forwardRef(() => OrdersModule)],
   controllers: [
     GuestMenuController,
     StopListController,

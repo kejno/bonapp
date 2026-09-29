@@ -14,5 +14,6 @@ test-results/
 # dmtools pipeline artifacts
 .dmtools/input/
 .dmtools/outputs/
+/outputs/
 .dmtools/cacheBasicJiraClient/
 .claude-session-id

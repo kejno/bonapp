@@ -15,7 +15,7 @@ export class WelcomeController {
     return this.welcomeService.getReadiness(req.user!.tenantId!);
   }
 
-  @Post('shifts/open')
+  @Post('welcome/shifts/open')
   openShift(@Req() req: TenantRequest) {
     if (!req.user!.userId) throw new UnauthorizedException('Authenticated user id is required');
     return this.welcomeService.openShift(req.user!.tenantId!, req.user!.userId);

@@ -95,6 +95,11 @@ assert.strictEqual(context.resolveRuleConcurrencyKey(testReworkRule, 'BNP-330', 
   fields: {}
 }), 'test-pr-BNP-122');
 assert(testReviewRule.skipIfLabels.includes('ai_pr_reviewed'));
+assert(testReviewRule.skipIfLabels.includes('test_pr_finalized'));
+assert(testReviewRule.jql.includes("'test_pr_finalized'"));
+const dirtyReviewRecovery = rules.find((r) => r.configFile === 'agents/recover_dirty_review_test_case.json');
+assert(dirtyReviewRecovery);
+assert(dirtyReviewRecovery.jql.includes("'test_pr_finalized'"));
 
 const active = (run) => ({ listWorkflowRuns: (status) =>
   status === 'in_progress' ? { workflow_runs: [run] } : { workflow_runs: [] } });
