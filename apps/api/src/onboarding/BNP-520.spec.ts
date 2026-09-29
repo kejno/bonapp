@@ -3,6 +3,17 @@ import { OrdersService } from '../orders/orders.service';
 import * as posNetwork from './pos-network';
 import * as recovery from './pos-order-recovery';
 
+const mockWorkerListeners: Record<string, (...args: unknown[]) => void> = {};
+
+jest.mock('bullmq', () => ({
+  Queue: jest.fn().mockImplementation(() => ({ add: jest.fn(), close: jest.fn() })),
+  Worker: jest.fn().mockImplementation(() => ({
+    on: jest.fn((event: string, listener: (...args: unknown[]) => void) => { mockWorkerListeners[event] = listener; }),
+    close: jest.fn(),
+    waitUntilReady: jest.fn(),
+  })),
+}));
+
 jest.mock('./pos-network', () => ({ requestPosOrder: jest.fn() }));
 jest.mock('./pos-order-recovery', () => ({
   claimPosOrderSubmission: jest.fn(),
@@ -12,7 +23,10 @@ jest.mock('./pos-order-recovery', () => ({
 }));
 
 describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Object.keys(mockWorkerListeners).forEach((event) => delete mockWorkerListeners[event]);
+  });
 
   it('keeps the saved order and its items when POS queue submission fails', async () => {
     const persistedOrder = {
@@ -91,5 +105,20 @@ describe('BNP-520: preserve a guest order when r_keeper is unavailable', () => {
     expect(posNetwork.requestPosOrder).toHaveBeenCalled();
     expect(order.items).toEqual([{ itemId: 'menu-520', quantity: 1, unitPriceByn: 9 }]);
     expect(orderUpdate).not.toHaveBeenCalled();
+  });
+
+  it('logs a worker failure after r_keeper rejects the order', () => {
+    const service = new PosOrderQueueService({} as never, { get: jest.fn().mockReturnValue('') } as never);
+    const logger = { error: jest.fn() };
+    Object.defineProperty(service, 'logger', { value: logger });
+
+    mockWorkerListeners.failed(
+      { data: { orderId: 'order-520-worker' } },
+      new Error('r_keeper unavailable'),
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Не удалось отправить заказ order-520-worker в POS', expect.any(String),
+    );
   });
 });
