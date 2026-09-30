@@ -4,13 +4,17 @@ import * as posNetwork from './pos-network';
 import * as recovery from './pos-order-recovery';
 
 const mockQueueAdd = jest.fn();
+let mockWorkerProcessor: ((job: { data: { tenantId: string; orderId: string } }) => Promise<void>) | undefined;
 
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: mockQueueAdd,
     close: jest.fn(),
   })),
-  Worker: jest.fn().mockImplementation(() => ({ on: jest.fn(), close: jest.fn(), waitUntilReady: jest.fn() })),
+  Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor) => {
+    mockWorkerProcessor = processor;
+    return { on: jest.fn(), close: jest.fn(), waitUntilReady: jest.fn() };
+  }),
 }));
 
 jest.mock('./pos-network', () => ({ requestPosOrder: jest.fn() }));
@@ -24,6 +28,7 @@ jest.mock('./pos-order-recovery', () => ({
 describe('BNP-519: submit a guest order to r_keeper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockWorkerProcessor = undefined;
     mockQueueAdd.mockResolvedValue(undefined);
   });
 
@@ -93,7 +98,8 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       attempts: 5,
     }));
 
-    await dispatcher.processOrder('tenant-519', order.id);
+    expect(mockWorkerProcessor).toBeDefined();
+    await mockWorkerProcessor!({ data: { tenantId: 'tenant-519', orderId: order.id } });
 
     expect(savedPosOrderId).toBe('rk-order-519');
     expect(posNetwork.requestPosOrder).toHaveBeenCalledWith(
