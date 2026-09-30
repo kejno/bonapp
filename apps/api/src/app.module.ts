@@ -27,6 +27,7 @@ import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
 import { WaiterCallModule } from './waiter-call/waiter-call.module';
 import { WelcomeModule } from './welcome/welcome.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { WelcomeModule } from './welcome/welcome.module';
     PublicRegistrationModule,
     WaiterCallModule,
     WelcomeModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
