@@ -26,6 +26,8 @@ export default function PayPage({ orderId }: PayPageProps) {
   const qrToken = window.sessionStorage.getItem('qrToken')
     ?? new URLSearchParams(window.location.search).get('qr_token')
   const [orderTotal, setOrderTotal] = useState<number | null>(null)
+  const [tipsAmountByn, setTipsAmountByn] = useState(0)
+  const [customTipsAmount, setCustomTipsAmount] = useState('0.00')
   const [error, setError] = useState(false)
   const [cardEnabled, setCardEnabled] = useState(false)
   const [paying, setPaying] = useState(false)
@@ -139,13 +141,25 @@ export default function PayPage({ orderId }: PayPageProps) {
     try {
       const response = await fetch(`${API_BASE}/guest/orders/${encodeURIComponent(orderId)}/pay/card`, {
         method: 'POST', headers: { 'X-QR-Token': qrToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipsAmountByn: 0 }),
+        body: JSON.stringify({ tipsAmountByn }),
       })
       const result = await response.json() as { redirectUrl?: string }
       if (!response.ok || !result.redirectUrl) throw new Error()
       window.location.assign(result.redirectUrl)
     } catch { setPaymentMessage('Не удалось начать оплату. Попробуйте ещё раз.') }
     finally { setPaying(false) }
+  }
+
+  function selectTipPercent(percent: number) {
+    const amount = orderTotal === null ? 0 : Math.round(orderTotal * percent) / 100
+    setTipsAmountByn(amount)
+    setCustomTipsAmount(money(amount))
+  }
+
+  function updateCustomTips(value: string) {
+    setCustomTipsAmount(value)
+    const amount = Number(value)
+    setTipsAmountByn(value.trim() !== '' && Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) / 100 : 0)
   }
 
   async function openErip(force = false) {
@@ -173,7 +187,13 @@ export default function PayPage({ orderId }: PayPageProps) {
         {eripEnabled && <button type="button" role="tab" aria-selected={activeTab === 'erip'} onClick={() => void openErip()}>ЕРИП</button>}
       </div>}
       <p>Сумма заказа: {money(orderTotal)} BYN</p>
-      <p>К оплате: {money(orderTotal)} BYN</p>
+      <fieldset>
+        <legend>Чаевые</legend>
+        <div className="mt-2 flex gap-2">{[0, 5, 10, 15].map((percent) => <button key={percent} type="button" aria-pressed={tipsAmountByn === Math.round(orderTotal * percent) / 100} onClick={() => selectTipPercent(percent)} className="rounded-lg border px-3 py-2">{percent}%</button>)}</div>
+        <label className="mt-4 block">Своя сумма чаевых<input aria-label="Своя сумма чаевых" type="number" min="0" step="0.01" value={customTipsAmount} onChange={(event) => updateCustomTips(event.target.value)} className="mt-2 w-full rounded-xl border p-3" /></label>
+      </fieldset>
+      <p>Чаевые: {money(tipsAmountByn)} BYN</p>
+      <p>К оплате: {money(orderTotal + tipsAmountByn)} BYN</p>
       {cardEnabled && activeTab === 'card' && !paymentExpired && <button type="button" disabled={paying} onClick={() => void payByCard()} className="w-full rounded-xl bg-primary px-4 py-3 text-white">{paying ? 'Переходим к оплате…' : 'Оплатить картой'}</button>}
       {eripEnabled && activeTab === 'erip' && <section aria-label="Оплата через ЕРИП" className="space-y-4">
         {!eripPayment && <button type="button" disabled={paying} onClick={() => void openErip()} className="w-full rounded-xl bg-primary px-4 py-3 text-white">{paying ? 'Создаём запрос…' : 'Получить код для оплаты'}</button>}
