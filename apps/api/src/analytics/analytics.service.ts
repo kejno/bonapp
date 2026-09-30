@@ -78,9 +78,11 @@ export class AnalyticsService {
     const payments = await this.prisma.db.payment.findMany({ where: { tenantId, status: { in: completedPayments }, createdAt: { gte: start, lt: end }, order: { isTest: false } }, select: { tipsAmountByn: true, order: { select: { assignedWaiterId: true, assignedWaiter: { select: { fullName: true } } } } } });
     const totals = new Map<string, { waiterName: string; tipsByn: number; transactionsCount: number }>();
     for (const payment of payments) {
+      const tipsByn = Number(payment.tipsAmountByn);
+      if (tipsByn <= 0) continue;
       const id = payment.order.assignedWaiterId ?? 'unassigned';
       const row = totals.get(id) ?? { waiterName: payment.order.assignedWaiter?.fullName ?? 'Не назначен', tipsByn: 0, transactionsCount: 0 };
-      row.tipsByn += Number(payment.tipsAmountByn);
+      row.tipsByn += tipsByn;
       row.transactionsCount += 1;
       totals.set(id, row);
     }
