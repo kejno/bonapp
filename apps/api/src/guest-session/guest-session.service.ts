@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { OrderStatus, PaymentMethod, PaymentStatus, Prisma, ServiceMode } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,6 +10,8 @@ import { BepaidClient } from './bepaid.client';
 
 @Injectable()
 export class GuestSessionService {
+  private readonly logger = new Logger(GuestSessionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly menuGateway: MenuGateway,
@@ -68,6 +70,7 @@ export class GuestSessionService {
       await db.payment.update({ where: { id: payment.id }, data: { payload: { token: checkout.token } } });
       return { redirectUrl: checkout.redirectUrl };
     } catch (error) {
+      this.logger.warn('bePaid checkout creation failed');
       await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
       throw error;
     }
