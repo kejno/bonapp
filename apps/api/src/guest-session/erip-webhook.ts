@@ -1,5 +1,5 @@
-import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
-import { OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
+import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { FiscalizationStatus, OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
 import type { Request } from 'express';
 import { createVerify, timingSafeEqual } from 'node:crypto';
@@ -8,6 +8,7 @@ import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-cr
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { MenuGateway } from '../menu/menu.gateway';
 import { EripClient } from './erip.client';
+import { FiscalizationService } from '../staff/fiscalization.service';
 
 interface EripJob { tenantId: string; body: Record<string, unknown> }
 const objectValue = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -16,7 +17,7 @@ const objectValue = (value: unknown): Record<string, unknown> => value && typeof
 export class EripWebhookService implements OnModuleInit, OnModuleDestroy {
   private readonly queue: Queue<EripJob>;
   private readonly worker: Worker<EripJob>;
-  constructor(private readonly prisma: PrismaService, private readonly erip: EripClient, private readonly gateway: MenuGateway) {
+  constructor(private readonly prisma: PrismaService, private readonly erip: EripClient, private readonly gateway: MenuGateway, @Optional() private readonly fiscalization?: FiscalizationService) {
     const connection = { host: process.env.REDIS_HOST ?? 'localhost', port: Number(process.env.REDIS_PORT ?? 6379) };
     this.queue = new Queue('erip-webhooks', { connection });
     this.worker = new Worker('erip-webhooks', (job) => this.process(job), { connection });
@@ -61,22 +62,37 @@ export class EripWebhookService implements OnModuleInit, OnModuleDestroy {
     if (!mapped) return;
     const completed = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const payment = await tx.payment.findFirst({ where: { id: trackingId, tenantId, provider: 'erip' } });
-      if (!payment || payment.providerTransactionId !== uid || payment.status === PaymentStatus.SUCCEEDED) return null;
+      if (!payment || payment.providerTransactionId !== uid) return null;
+      if (payment.status === PaymentStatus.SUCCEEDED) {
+        return payment.fiscalizationStatus === FiscalizationStatus.PENDING
+          ? { orderId: '', tableId: '', paymentId: payment.id, guestSessionId: null, notify: false }
+          : null;
+      }
       const order = mapped === PaymentStatus.SUCCEEDED
         ? await tx.order.findFirst({ where: { id: payment.orderId, tenantId } })
         : null;
       if (mapped === PaymentStatus.SUCCEEDED && (!order || order.isPaid || order.status !== OrderStatus.SERVED)) return null;
-      const updated = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: mapped, payload: body as Prisma.InputJsonValue } });
+      const updated = await tx.payment.updateMany({
+        where: { id: payment.id, status: PaymentStatus.PENDING },
+        data: {
+          status: mapped,
+          ...(mapped === PaymentStatus.SUCCEEDED ? { fiscalizationStatus: FiscalizationStatus.PENDING } : {}),
+          payload: body as Prisma.InputJsonValue,
+        },
+      });
       if (!updated.count || mapped !== PaymentStatus.SUCCEEDED) return null;
       if (!order) return null;
       await tx.order.update({ where: { id_tenantId: { id: order.id, tenantId } }, data: { isPaid: true, status: OrderStatus.PAID, paidAt: new Date() } });
       await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.AVAILABLE } });
-      return { orderId: order.id, tableId: order.tableId, paymentId: payment.id, guestSessionId: order.guestSessionId };
+      return { orderId: order.id, tableId: order.tableId, paymentId: payment.id, guestSessionId: order.guestSessionId, notify: true };
     });
     if (completed) {
-      this.gateway.emitPaymentStatusChanged(tenantId, completed.tableId, completed.guestSessionId, { orderId: completed.orderId, paymentId: completed.paymentId, status: 'SUCCEEDED', method: 'ERIP' });
-      this.gateway.emitOrderStatusChanged(tenantId, completed.orderId, OrderStatus.PAID);
-      await this.gateway.closeOrderSession(tenantId, completed.tableId, completed.orderId);
+      await this.fiscalization?.enqueue(tenantId, completed.paymentId);
+      if (completed.notify) {
+        this.gateway.emitPaymentStatusChanged(tenantId, completed.tableId, completed.guestSessionId, { orderId: completed.orderId, paymentId: completed.paymentId, status: 'SUCCEEDED', method: 'ERIP' });
+        this.gateway.emitOrderStatusChanged(tenantId, completed.orderId, OrderStatus.PAID);
+        await this.gateway.closeOrderSession(tenantId, completed.tableId, completed.orderId);
+      }
     }
   }
 }

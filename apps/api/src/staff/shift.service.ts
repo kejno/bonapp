@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ShiftStatus } from '@prisma/client';
+import { FiscalizationStatus, PaymentStatus, ShiftStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
@@ -68,6 +68,17 @@ export class ShiftService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
       const shift = await tx.shift.findFirst({ where: { tenantId, status: ShiftStatus.OPEN } });
       if (!shift) throw new NotFoundException('No open shift for this tenant');
+      const unresolvedFiscalizations = await tx.payment.count({
+        where: {
+          tenantId,
+          status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED] },
+          fiscalizationStatus: { in: [FiscalizationStatus.PENDING, FiscalizationStatus.FISCAL_FAILED] },
+          order: { isPaid: true, paidAt: { gte: shift.openedAt, lte: new Date() } },
+        },
+      });
+      if (unresolvedFiscalizations) {
+        throw new ConflictException({ message: 'Смену нельзя закрыть: есть неурегулированные фискализации', unresolvedFiscalizations });
+      }
       const started = !shift.sknoCloseStartedAt;
       if (started) {
         await tx.shift.update({

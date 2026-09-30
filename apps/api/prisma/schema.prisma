@@ -249,6 +249,13 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum FiscalizationStatus {
+  NOT_REQUIRED
+  PENDING
+  FISCALIZED
+  FISCAL_FAILED
+}
+
 model Order {
   id               String         @id @default(uuid())
   tenantId         String         @map("tenant_id")
@@ -312,6 +319,7 @@ model Payment {
   eripOrderNumber       String?       @map("erip_order_number")
   status                PaymentStatus @default(PENDING)
   fiscalReceiptNumber   String?       @map("fiscal_receipt_number")
+  fiscalizationStatus   FiscalizationStatus @default(NOT_REQUIRED) @map("fiscalization_status")
   payload               Json?
   createdAt             DateTime      @default(now()) @map("created_at")
 
