@@ -3,24 +3,14 @@ import { PosOrderQueueService } from './pos-order-queue.service';
 import * as posNetwork from './pos-network';
 import * as recovery from './pos-order-recovery';
 
-const mockWorkerListeners: Record<string, (...args: unknown[]) => void> = {};
-let mockWorkerProcessor: ((job: { data: { tenantId: string; orderId: string } }) => Promise<void>) | undefined;
+const mockQueueAdd = jest.fn();
 
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
-    add: jest.fn(async (_name: string, data: { tenantId: string; orderId: string }) => {
-      await mockWorkerProcessor?.({ data });
-    }),
+    add: mockQueueAdd,
     close: jest.fn(),
   })),
-  Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor) => {
-    mockWorkerProcessor = processor;
-    return {
-      on: jest.fn((event: string, listener: (...args: unknown[]) => void) => { mockWorkerListeners[event] = listener; }),
-      close: jest.fn(),
-      waitUntilReady: jest.fn(),
-    };
-  }),
+  Worker: jest.fn().mockImplementation(() => ({ on: jest.fn(), close: jest.fn(), waitUntilReady: jest.fn() })),
 }));
 
 jest.mock('./pos-network', () => ({ requestPosOrder: jest.fn() }));
@@ -34,11 +24,10 @@ jest.mock('./pos-order-recovery', () => ({
 describe('BNP-519: submit a guest order to r_keeper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    Object.keys(mockWorkerListeners).forEach((event) => delete mockWorkerListeners[event]);
-    mockWorkerProcessor = undefined;
+    mockQueueAdd.mockResolvedValue(undefined);
   });
 
-  it('creates the guest order, enqueues it, processes the BullMQ job, and saves the POS order ID', async () => {
+  it('creates and enqueues the guest order, then saves its POS order ID after processing', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const order = {
       id: 'order-519', dailyOrderNumber: 19, comment: 'Без лука', totalAmountByn: 12.5,
@@ -67,11 +56,15 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       }) },
       order: { create: orderCreate },
     };
+    let savedPosOrderId: string | null = null;
     const tenantDb = {
       tenant: { findUnique: jest.fn().mockResolvedValue({ posType: 'r_keeper', posApiKey: 'rk-key', posUrl: 'https://keeper.example/orders' }) },
       order: {
         findFirst: jest.fn().mockResolvedValue(order),
-        update: jest.fn(),
+        update: jest.fn(({ data }: { data: { posOrderId: string } }) => {
+          savedPosOrderId = data.posOrderId;
+          return Promise.resolve({ ...order, posOrderId: savedPosOrderId });
+        }),
       },
       menuItem: { findMany: jest.fn().mockResolvedValue([{ id: 'menu-519', posItemId: 'rk-item-519' }]) },
     };
@@ -95,6 +88,14 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
     });
 
     expect(result).toMatchObject({ orderId: order.id, dailyOrderNumber: 19, status: 'NEW', totalAmountByn: 12.5 });
+    expect(mockQueueAdd).toHaveBeenCalledWith('submit-order', { tenantId: 'tenant-519', orderId: order.id }, expect.objectContaining({
+      jobId: `pos-order-tenant-519-${order.id}`,
+      attempts: 5,
+    }));
+
+    await dispatcher.processOrder('tenant-519', order.id);
+
+    expect(savedPosOrderId).toBe('rk-order-519');
     expect(posNetwork.requestPosOrder).toHaveBeenCalledWith(
       new URL('https://keeper.example/orders'), 'rk-key', 'keeper.example', 15000,
       {

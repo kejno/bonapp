@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job, Queue, Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
@@ -27,7 +27,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       port: Number(config.get<string>('REDIS_PORT', '6379')),
     };
     this.queue = new Queue<PosOrderJob>('pos-order-submit', { connection });
-    this.worker = new Worker<PosOrderJob>('pos-order-submit', (job) => this.process(job), {
+    this.worker = new Worker<PosOrderJob>('pos-order-submit', (job) => this.processOrder(job.data.tenantId, job.data.orderId), {
       connection,
       concurrency: 5,
     });
@@ -88,8 +88,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     }
   }
 
-  private async process(job: Job<PosOrderJob>): Promise<void> {
-    const { tenantId, orderId } = job.data;
+  async processOrder(tenantId: string, orderId: string): Promise<void> {
     const db = this.prisma.forTenant(tenantId);
     const [tenant, order] = await Promise.all([
       db.tenant.findUnique({ where: { id: tenantId }, select: {
