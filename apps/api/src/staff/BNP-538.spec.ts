@@ -25,6 +25,7 @@ describe('BNP-538: исчерпание попыток фискализации'
       process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
 
       const paymentUpdate = jest.fn().mockResolvedValue({ count: 1 });
+      const paymentSave = jest.fn();
       const payment = {
         id: randomUUID(),
         amountByn: '18.00',
@@ -36,7 +37,7 @@ describe('BNP-538: исчерпание попыток фискализации'
           Promise.resolve(operation({ payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } })),
         ),
         forTenant: jest.fn().mockReturnValue({
-          payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn(), updateMany: paymentUpdate },
+          payment: { findFirst: jest.fn().mockResolvedValue(payment), update: paymentSave, updateMany: paymentUpdate },
         }),
         db: {
           tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: { skno: encryptCredentials({
@@ -67,6 +68,8 @@ describe('BNP-538: исчерпание попыток фискализации'
         where: { id: payment.id, fiscalReceiptNumber: null },
         data: { fiscalizationStatus: 'FISCAL_FAILED' },
       }));
+      expect(paymentSave).not.toHaveBeenCalled();
+      expect(payment.fiscalReceiptNumber).toBeNull();
       expect(logger).toHaveBeenCalledWith(expect.stringContaining('исчерпала три попытки'), expect.any(String));
     } finally {
       try {
