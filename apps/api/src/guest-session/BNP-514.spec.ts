@@ -1,4 +1,4 @@
-import { BadGatewayException } from '@nestjs/common';
+import { BadGatewayException, Logger } from '@nestjs/common';
 import { encryptCredentials } from '../tenant/payment-credentials';
 import { BepaidClient } from './bepaid.client';
 import { GuestSessionService } from './guest-session.service';
@@ -110,6 +110,7 @@ describe('BNP-514 bePaid credential confidentiality', () => {
       new BepaidClient(),
     );
     const logs = captureConsoleOutput();
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     try {
       let guestMessage = '';
@@ -122,6 +123,8 @@ describe('BNP-514 bePaid credential confidentiality', () => {
 
       expect(guestMessage).toBe('Не удалось создать платёж. Попробуйте ещё раз');
       expectSafe(guestMessage);
+      expect(warning).toHaveBeenCalledWith(expect.stringMatching(/bepaid checkout creation failed/i));
+      expectSafe(warning.mock.calls);
       expectSafe(logs.output);
       expect(paymentUpdate).toHaveBeenCalledWith({
         where: { id: 'payment-1' }, data: { status: 'FAILED' },
