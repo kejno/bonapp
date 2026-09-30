@@ -46,6 +46,10 @@ describe('payment credentials encryption', () => {
     expect(() => validateCredentials({
       gateway: 'skno', cashRegisterSerial: 'serial', unp: '123456789',
     })).toThrow();
+    expect(() => validateCredentials({
+      gateway: 'skno', cashRegisterSerial: 'serial', host: 'http://cash.local',
+      username: 'service', password: 'secret', unp: '12345',
+    })).toThrow();
   });
 
   it('requires a public signature key for bePaid while preserving Webpay credentials', () => {

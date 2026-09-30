@@ -31,7 +31,7 @@ describe('BNP-533 successful ERIP webhook', () => {
     try {
       await workerProcessor?.({ data: { tenantId: 'tenant-1', body: { transaction: { tracking_id: 'payment-1', uid: 'provider-1', status: 'successful' } } } });
       expect(erip.get).toHaveBeenCalledWith('provider-1', 'shop-1', 'provider-secret');
-      expect(updateMany).toHaveBeenCalledWith({ where: { id: 'payment-1', status: 'PENDING' }, data: { status: 'SUCCEEDED', payload: { transaction: { tracking_id: 'payment-1', uid: 'provider-1', status: 'successful' } } } });
+      expect(updateMany).toHaveBeenCalledWith({ where: { id: 'payment-1', status: 'PENDING' }, data: { status: 'SUCCEEDED', fiscalizationStatus: 'PENDING', payload: { transaction: { tracking_id: 'payment-1', uid: 'provider-1', status: 'successful' } } } });
       expect(orderUpdate).toHaveBeenCalledTimes(1);
       expect(tableUpdate).toHaveBeenCalledTimes(1);
       expect(gateway.emitPaymentStatusChanged).toHaveBeenCalledWith('tenant-1', 'table-1', null, expect.objectContaining({ status: 'SUCCEEDED' }));
