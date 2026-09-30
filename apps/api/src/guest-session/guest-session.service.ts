@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { OrderStatus, PaymentMethod, PaymentStatus, Prisma, ServiceMode } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,15 +7,70 @@ import { nextDailyOrderNumber, tenantLocalDate } from '../orders/daily-order-num
 import { PosOrderDispatcher } from '../onboarding/pos-order-dispatcher';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 import { BepaidClient } from './bepaid.client';
+import { EripClient } from './erip.client';
 
 @Injectable()
 export class GuestSessionService {
+  private readonly logger = new Logger(GuestSessionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly menuGateway: MenuGateway,
     private readonly posOrderDispatcher: PosOrderDispatcher,
     @Optional() private readonly bepaidClient?: BepaidClient,
+    @Optional() private readonly eripClient?: EripClient,
   ) {}
+
+  async createEripPayment(orderId: string, tenantId: string, tableId: string, ip: string) {
+    if (!process.env.PAYMENT_CREDENTIALS_SECRET) throw new ServiceUnavailableException('Оплата временно недоступна');
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true, name: true } });
+    const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.erip;
+    if (!isEncryptedCredentials(encoded)) throw new ConflictException('Оплата через ЕРИП не подключена');
+    const credentials = decryptCredentials<{ shopId?: string; serviceId: string; secret: string }>(encoded, process.env.PAYMENT_CREDENTIALS_SECRET);
+    if (!credentials.shopId) throw new ConflictException('Реквизиты ЕРИП не настроены');
+    const db = this.prisma.forTenant(tenantId);
+    const order = await db.order.findFirst({ where: { id: orderId, tableId }, select: { id: true, dailyOrderNumber: true, status: true, isPaid: true, totalAmountByn: true, tipsAmountByn: true } });
+    if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
+    if (order.isPaid || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
+    let payment = await db.payment.findFirst({ where: { orderId, provider: 'erip', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
+    if (payment?.providerTransactionId && payment.createdAt.getTime() > Date.now() - 15 * 60_000) {
+      const payload = payment.payload as Record<string, unknown> | null;
+      return { paymentId: payment.id, serviceNo: payload?.['serviceNo'], accountNumber: payment.eripOrderNumber, instruction: payload?.['instruction'] ?? [], qrCode: payload?.['qrCode'] ?? null, banks: payload?.['banks'] ?? [] };
+    }
+    if (payment?.providerTransactionId) {
+      if (!this.eripClient) throw new ServiceUnavailableException('Оплата временно недоступна');
+      let status: string;
+      try { status = (await this.eripClient.get(payment.providerTransactionId, credentials.shopId, credentials.secret)).status ?? ''; }
+      catch { throw new ConflictException('Не удалось подтвердить статус запроса ЕРИП'); }
+      if (status === 'successful') throw new ConflictException('Платёж уже подтверждён');
+      if (status !== 'expired' && status !== 'deleted') {
+        const cancelled = await this.eripClient.cancel(payment.providerTransactionId, credentials.shopId, credentials.secret).catch(() => false);
+        if (!cancelled) throw new ConflictException('Не удалось отменить предыдущий запрос ЕРИП');
+      }
+    }
+    if (payment) await db.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.CANCELLED } });
+    payment = await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: order.tipsAmountByn, provider: 'erip', method: PaymentMethod.ERIP_EPOS, status: PaymentStatus.PENDING } });
+    try {
+      if (!this.eripClient) throw new ServiceUnavailableException('Оплата временно недоступна');
+      const amount = new Prisma.Decimal(payment.amountByn).add(payment.tipsAmountByn).mul(100).toDecimalPlaces(0).toNumber();
+      if (!Number.isSafeInteger(amount) || amount < 1) throw new BadRequestException('Некорректная сумма заказа');
+      const result = await this.eripClient.create({ shopId: credentials.shopId, secret: credentials.secret, serviceId: credentials.serviceId, amount, orderId, paymentId: payment.id, tenantId, ip, dailyOrderNumber: order.dailyOrderNumber, restaurantName: tenant?.name });
+      await db.payment.update({ where: { id: payment.id }, data: { providerTransactionId: result.uid, eripOrderNumber: result.accountNumber, payload: result as unknown as Prisma.InputJsonValue } });
+      return { paymentId: payment.id, serviceNo: result.serviceNo, accountNumber: result.accountNumber, instruction: result.instruction, qrCode: result.qrCode, banks: result.banks };
+    } catch (error) {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw error;
+    }
+  }
+
+  async getEripPaymentStatus(orderId: string, tenantId: string, tableId: string) {
+    const order = await this.prisma.forTenant(tenantId).order.findFirst({ where: { id: orderId, tableId }, select: { id: true, status: true } });
+    if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
+    const payment = await this.prisma.forTenant(tenantId).payment.findFirst({ where: { orderId, provider: 'erip' }, orderBy: { createdAt: 'desc' }, select: { status: true, createdAt: true } });
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
+    const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.erip;
+    return { orderStatus: order.status, paymentStatus: payment?.status ?? null, paymentExpiresAt: payment ? new Date(payment.createdAt.getTime() + 15 * 60_000).toISOString() : null, paymentEnabled: isEncryptedCredentials(encoded) && !!process.env.PAYMENT_CREDENTIALS_SECRET };
+  }
 
   async createCardPayment(orderId: string, tenantId: string, tableId: string) {
     if (!process.env.PAYMENT_CREDENTIALS_SECRET) throw new ServiceUnavailableException('Оплата временно недоступна');
@@ -68,6 +123,7 @@ export class GuestSessionService {
       await db.payment.update({ where: { id: payment.id }, data: { payload: { token: checkout.token } } });
       return { redirectUrl: checkout.redirectUrl };
     } catch (error) {
+      this.logger.warn('bePaid checkout creation failed');
       await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
       throw error;
     }

@@ -15,8 +15,33 @@
 - Модель `Payment` уже содержит поле `eripOrderNumber` и enum
   `PaymentMethod.ERIP_EPOS`; статусы `PENDING`, `SUCCEEDED`, `FAILED`,
   `CANCELLED`, `REFUNDED`.
-- Создания платежа в ЕРИП, вкладки «ЕРИП» и показа кода нет: `PayPage.tsx` и
-  `OrderStatusPage.tsx` про оплату не знают.
+- **Модуль `apps/api/src/payments/` (BNP-158, PR #211) уже смёржен.** Это
+  общий, а не bePaid-специфичный код:
+  - `PaymentsController`: `POST /guest/orders/:orderId/pay/erip` и
+    `.../pay/bepaid` (доступ по `GuestSessionGuard`);
+  - `PaymentsService.initiate()`: находит заказ стола, возвращает уже
+    существующий `PENDING`-платёж того же способа или отменяет прежний другого
+    способа, создаёт `Payment`, вызывает шлюз, сохраняет `providerTransactionId`
+    и `eripOrderNumber`;
+  - `WebhooksController`: `POST /webhooks/erip` и `/webhooks/bepaid`, подпись
+    HMAC-SHA256 по общему секрету из env (`ERIP_WEBHOOK_SECRET`), задача в
+    очередь BullMQ, воркер `PaymentsService.process()` ставит платёж в
+    `COMPLETED` / `FAILED`, ставит `order.isPaid` и шлёт событие гостю;
+  - `PaymentGateway`: **выдуманный универсальный контракт**, а не API bePaid.
+    URL и ключ берутся из env (`ERIP_API_URL`, `ERIP_API_KEY`), поля ответа
+    угаданы (`eripOrderNumber ?? orderNumber`), тело вебхука ожидается в виде
+    `{paymentId, tenantId, status: confirmed|success|failed|...}`. С реальным
+    bePaid этот код работать не будет.
+- Оплата картой (BNP-506) реализована отдельно и правильно:
+  `POST /guest/orders/:id/pay/card`, `bepaid.client.ts`, `bepaid-webhook.ts`
+  (RSA-подпись по публичному ключу магазина), реквизиты tenant. Маршруты
+  `pay/bepaid` и `/webhooks/bepaid` из BNP-158 дублируют его и после этого
+  не нужны.
+- Статусы успеха в схеме два: `COMPLETED` (модуль BNP-158) и `SUCCEEDED`
+  (карточный поток); `OrdersService` учитывает оба. Для ЕРИП использовать
+  `SUCCEEDED`, как в карточном потоке, и не плодить третий вариант.
+- Вкладки «ЕРИП» и показа кода на гостевом экране нет: `PayPage.tsx` умеет
+  только оплату картой.
 
 ## Как работает ЕРИП через bePaid
 
@@ -138,16 +163,27 @@
 - `EripClient` за интерфейсом (создать запрос, получить, отменить),
   HTTP-клиент с Basic-авторизацией. Общая часть с `BepaidClient` (Basic,
   ошибки, таймауты) выносится в базовый слой, если получается без усложнения.
-- `POST /guest/orders/:id/pay/erip` (доступ по Table Session): создаёт
-  `Payment(PENDING, ERIP_EPOS, provider='erip')`, вызывает bePaid, сохраняет
-  `uid` в `providerTransactionId`, `erip.account_number` в `eripOrderNumber`,
-  ответ целиком в `payload`; возвращает гостю код, инструкцию и QR.
-  Повторный вызов для того же заказа возвращает существующий действующий
-  запрос, а не создаёт новый.
-- Вебхук: тот же публичный маршрут-приёмник и очередь BullMQ, что для карты
-  (см. bepaid-checkout.md), с разбором по `payment_method_type = "erip"`.
-- Воркер: идемпотентное обновление `Payment`; при `SUCCEEDED` завершает заказ
-  существующим сценарием и шлёт событие гостю по WebSocket.
+- **Не добавлять параллельный путь, а доработать существующий модуль
+  `payments` (см. «Что уже есть в репо»).**
+- Маршрут `POST /guest/orders/:orderId/pay/erip` уже существует. Оставить его
+  и `PaymentsService.initiate()` (там уже есть повторное использование
+  `PENDING`-платежа и отмена прежнего), но вместо универсального
+  `PaymentGateway` для ЕРИП вызвать `EripClient` с реквизитами tenant.
+  Сохранять `uid` в `providerTransactionId`, `erip.account_number` в
+  `eripOrderNumber`, ответ целиком в `payload`; возвращать гостю код услуги,
+  номер заказа, инструкцию и QR. Отмена прежнего запроса — `DELETE
+  /beyag/payments/:uid`.
+- Вебхук: заменить `POST /webhooks/erip` (общий секрет из env, выдуманный
+  формат тела) на `POST /webhooks/erip/:tenantId`: реквизиты и правила
+  проверки берутся у tenant, тело разбирается в настоящем формате bePaid
+  (`transaction.tracking_id`, `transaction.status`), статус подтверждается
+  `GET /beyag/payments/:uid`. Очередь BullMQ и `process()` остаются.
+- Воркер: идемпотентное обновление `Payment` в `SUCCEEDED` / `FAILED`,
+  завершение заказа существующим сценарием, событие гостю по WebSocket через
+  уже имеющийся `emitPaymentStatusChanged`.
+- Универсальный `PaymentGateway` после этого больше не нужен для ЕРИП;
+  удаление дублирующих `pay/bepaid` и `/webhooks/bepaid` вынести отдельной
+  небольшой задачей, если она не мешает.
 - `guest-web`: вкладка «ЕРИП» в `PayPage`: код услуги и номер заказа, QR,
   инструкция из 5 шагов, ожидание подтверждения. Без тяжёлых зависимостей
   (бюджет бандла <150 КБ): QR приходит готовым PNG в base64.
@@ -175,8 +211,8 @@
   наш числовой номер из 12 цифр, уникальный в рамках магазина; сохраняется в
   `Payment.eripOrderNumber` и уходит в bePaid как `account_number` и
   `order_id`. Формат проверить на тестовом магазине.
-- **Инструкция из 5 шагов** (продуктовый текст по умолчанию, порядок и
-  формулировки можно править):
+- **Инструкция из 5 шагов — утверждена владельцем 30.09.2026.** Текст
+  использовать как есть, дополнительных согласований не требуется:
   1. Откройте ЕРИП: интернет-банк, мобильное приложение банка, терминал или
      касса банка.
   2. Выберите «Система «Расчёт» (ЕРИП)» и найдите услугу по коду услуги

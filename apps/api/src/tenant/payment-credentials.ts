@@ -8,7 +8,7 @@ import {
 export type PaymentGateway = 'oplati' | 'erip' | 'bepaid' | 'skno';
 export type PaymentCredentialInput =
   | { gateway: 'oplati'; merchantId: string }
-  | { gateway: 'erip'; serviceId: string; secret: string }
+  | { gateway: 'erip'; shopId: string; serviceId: string; secret: string; publicKey?: string }
   | {
       gateway: 'bepaid';
       provider: 'bepaid' | 'webpay';
@@ -80,11 +80,13 @@ export function validateCredentials(input: unknown): PaymentCredentialInput {
       gateway: 'oplati',
       merchantId: (value.merchantId as string).trim(),
     };
-  if (value.gateway === 'erip' && required('serviceId', 'secret'))
+  if (value.gateway === 'erip' && required('shopId', 'serviceId', 'secret'))
     return {
       gateway: 'erip',
+      shopId: (value.shopId as string).trim(),
       serviceId: (value.serviceId as string).trim(),
       secret: value.secret as string,
+      ...(typeof value.publicKey === 'string' && value.publicKey.trim() ? { publicKey: value.publicKey.trim() } : {}),
     };
   if (
     value.gateway === 'bepaid' &&

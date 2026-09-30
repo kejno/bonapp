@@ -9,6 +9,7 @@ describe('payment credentials encryption', () => {
     const secret = 'test-secret';
     const input = validateCredentials({
       gateway: 'erip',
+      shopId: 'shop-1',
       serviceId: 'service-1',
       secret: 'private-value',
     });

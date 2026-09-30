@@ -237,6 +237,7 @@ describe('TenantService', () => {
         }),
         service.savePaymentCredentials({
           gateway: 'erip',
+          shopId: 'shop-1',
           serviceId: 'service-1',
           secret: 'secret-1',
         }),
