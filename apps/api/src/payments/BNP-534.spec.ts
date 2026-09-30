@@ -1,19 +1,40 @@
-import { PaymentsService } from './payments.service';
+import { encryptCredentials } from '../tenant/payment-credentials';
+import { GuestSessionService } from '../guest-session/guest-session.service';
 
 describe('BNP-534 repeated ERIP initiation', () => {
   it('returns the active E-POS request without creating another provider request', async () => {
-    const db = {
-      order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', isPaid: false, totalAmountByn: 25, guestSessionId: null }) },
-      payment: { findFirst: jest.fn().mockResolvedValue({ id: 'payment-1', provider: 'ERIP_EPOS', status: 'PENDING', providerTransactionId: 'uid-1', eripOrderNumber: '000000000042', payload: { serviceNo: 12345678, qrCode: 'encoded-qr' } }), create: jest.fn(), update: jest.fn() },
+    const secret = 'credentials-key';
+    const activePayment = {
+      id: 'payment-1',
+      providerTransactionId: 'uid-1',
+      eripOrderNumber: '000000000042',
+      payload: { serviceNo: 12345678, instruction: ['Pay via ERIP'], qrCode: 'encoded-qr', banks: [] },
+      createdAt: new Date(),
     };
-    const gateway = { create: jest.fn() };
-    const service = new PaymentsService({ forTenant: () => db } as never, gateway as never, { registerHandler: jest.fn() } as never, {} as never);
+    const paymentCreate = jest.fn();
+    const eripClient = { create: jest.fn() };
+    const prisma = {
+      db: { tenant: { findUnique: jest.fn().mockResolvedValue({ name: 'Cafe', paymentCredentials: { erip: encryptCredentials({ shopId: 'shop-1', serviceId: 'service-1', secret: 'provider-secret' }, secret) } }) } },
+      forTenant: jest.fn(() => ({
+        order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', dailyOrderNumber: 42, status: 'SERVED', isPaid: false, totalAmountByn: '25', tipsAmountByn: '0' }) },
+        payment: { findFirst: jest.fn().mockResolvedValue(activePayment), create: paymentCreate },
+      })),
+    };
+    const service = new GuestSessionService(prisma as never, {} as never, {} as never, {} as never, eripClient as never);
+    const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+    process.env.PAYMENT_CREDENTIALS_SECRET = secret;
 
-    const first = await service.initiate('order-1', 'tenant-1', 'table-1', 'ERIP');
-    const second = await service.initiate('order-1', 'tenant-1', 'table-1', 'ERIP');
+    try {
+      const first = await service.createEripPayment('order-1', 'tenant-1', 'table-1', '127.0.0.1');
+      const second = await service.createEripPayment('order-1', 'tenant-1', 'table-1', '127.0.0.1');
 
-    expect(first).toEqual(second);
-    expect(db.payment.create).not.toHaveBeenCalled();
-    expect(gateway.create).not.toHaveBeenCalled();
+      expect(first).toEqual({ paymentId: 'payment-1', serviceNo: 12345678, accountNumber: '000000000042', instruction: ['Pay via ERIP'], qrCode: 'encoded-qr', banks: [] });
+      expect(second).toEqual(first);
+      expect(paymentCreate).not.toHaveBeenCalled();
+      expect(eripClient.create).not.toHaveBeenCalled();
+    } finally {
+      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    }
   });
 });
