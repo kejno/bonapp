@@ -156,3 +156,46 @@ describe('GuestSessionService addOrderItem', () => {
     expect(gateway.emitKitchenOrder).toHaveBeenCalledWith('tenant-1', 'order:updated', { id: 'order-1' });
   });
 });
+
+describe('GuestSessionService createEripPayment', () => {
+  const secret = 'payment-test-secret';
+  const paymentCreate = jest.fn();
+  const paymentUpdate = jest.fn();
+  const eripClient = { create: jest.fn(), get: jest.fn(), cancel: jest.fn() };
+  const prisma = {
+    db: { tenant: { findUnique: jest.fn().mockResolvedValue({ name: 'Cafe', paymentCredentials: {
+      erip: encryptCredentials({ shopId: 'shop', serviceId: '12345678', secret: 'gateway-secret' }, secret),
+    } }) } },
+    forTenant: jest.fn(() => ({
+      order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', dailyOrderNumber: 42, status: 'SERVED', isPaid: false, totalAmountByn: '12.50', tipsAmountByn: '2.50' }) },
+      payment: { findFirst: jest.fn().mockResolvedValue(null), create: paymentCreate, update: paymentUpdate, updateMany: jest.fn() },
+    })),
+  } as unknown as PrismaService;
+  const service = new GuestSessionService(prisma, { emitKitchenOrder: jest.fn() } as never, { enqueue: jest.fn() }, undefined, eripClient as never);
+  const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
+
+  beforeEach(() => {
+    process.env.PAYMENT_CREDENTIALS_SECRET = secret;
+    process.env.API_PUBLIC_URL = 'https://api.example.test';
+    jest.clearAllMocks();
+    paymentCreate.mockResolvedValue({ id: 'payment-1', amountByn: '12.50', tipsAmountByn: '2.50' });
+    eripClient.create.mockResolvedValue({ uid: 'uid-1', accountNumber: '000000000042', serviceNo: 12345678, instruction: [], qrCode: null, banks: [] });
+    paymentUpdate.mockResolvedValue({});
+  });
+
+  afterAll(() => {
+    if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+    else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+    delete process.env.API_PUBLIC_URL;
+  });
+
+  it('includes existing order tips in the persisted payment and bePaid request', async () => {
+    await service.createEripPayment('order-1', 'tenant-1', 'table-1', '203.0.113.4');
+
+    expect(paymentCreate).toHaveBeenCalledWith({ data: {
+      tenantId: 'tenant-1', orderId: 'order-1', amountByn: '12.50', tipsAmountByn: '2.50',
+      provider: 'erip', method: 'ERIP_EPOS', status: 'PENDING',
+    } });
+    expect(eripClient.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 1500 }));
+  });
+});
