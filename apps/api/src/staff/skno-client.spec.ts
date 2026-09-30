@@ -7,19 +7,23 @@ describe('TitanSknoClient', () => {
   let host: string;
   let client: TitanSknoClient;
   let fiscalDays: { id: number }[];
-  let state: { serial: string; currZ: number; err?: unknown };
+  let state: { serial: string; currZ: number; chkId: number; err?: unknown };
+  let checkTape: Array<Record<string, unknown>>;
   let unavailable: boolean;
   let dropReportResponse: boolean;
   let reportCalls: number;
   let reportError: boolean;
+  let receiptRequest: { method?: string; body: string } | undefined;
 
   beforeEach(async () => {
     fiscalDays = [{ id: 10 }];
-    state = { serial: 'SERIAL-1', currZ: 10 };
+    state = { serial: 'SERIAL-1', currZ: 10, chkId: 0 };
+    checkTape = [];
     unavailable = false;
     dropReportResponse = false;
     reportCalls = 0;
     reportError = false;
+    receiptRequest = undefined;
     server = createServer((request, response) => {
       if (unavailable) { response.destroy(); return; }
       if (!request.headers.authorization) {
@@ -27,6 +31,22 @@ describe('TitanSknoClient', () => {
         return;
       }
       if (!request.url?.startsWith('/cgi/')) { response.writeHead(404).end(); return; }
+      if (request.url === '/cgi/chk') {
+        if (request.method === 'GET') {
+          response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(checkTape));
+          return;
+        }
+        let body = '';
+        request.setEncoding('utf8');
+        request.on('data', (chunk: string) => { body += chunk; });
+        request.on('end', () => {
+          receiptRequest = { method: request.method, body };
+          const receipt = JSON.parse(body) as { F: unknown[] };
+          checkTape = [...checkTape, { id: 1, no: 17, F: receipt.F }];
+          response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ err: [] }));
+        });
+        return;
+      }
       if (request.url === '/cgi/proc/printreport?0') {
         reportCalls += 1;
         if (reportError) { response.end(JSON.stringify({ err: [{ e: 'x25' }] })); return; }
@@ -49,6 +69,18 @@ describe('TitanSknoClient', () => {
   it('uses Digest and confirms the Z-report from FDay after close', async () => {
     await expect(client.open(credentials())).resolves.toEqual({ zReportNumber: 10 });
     await expect(client.close(credentials())).resolves.toEqual({ zReportNumber: 11 });
+  });
+
+  it('posts a JSON fiscal receipt and returns its number', async () => {
+    await expect(client.issueReceipt({ ...credentials(), unp: '123456789' }, {
+      paymentId: 'payment-1', amount: 15, items: [{ name: 'Tea', quantity: 2, price: 7.5 }],
+    })).resolves.toBe('17');
+    expect(receiptRequest?.method).toBe('POST');
+    expect(JSON.parse(receiptRequest!.body)).toEqual({ F: [
+      { C: { cm: 'BonApp payment:payment-1; УНП 123456789' } },
+      { S: { name: 'Tea', qty: 2, price: 7.5 } },
+      { P: { sum: 15 } },
+    ] });
   });
 
   it('rejects a cash register error and a serial number mismatch', async () => {

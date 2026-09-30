@@ -17,7 +17,7 @@ export type PaymentCredentialInput =
       publicKey?: string;
       environment: 'TEST' | 'PROD';
     }
-  | { gateway: 'skno'; cashRegisterSerial: string; unp?: string; host: string; username: string; password: string };
+  | { gateway: 'skno'; cashRegisterSerial: string; unp: string; host: string; username: string; password: string };
 
 export interface EncryptedCredentials {
   version: 1;
@@ -102,14 +102,14 @@ export function validateCredentials(input: unknown): PaymentCredentialInput {
       ...(value.provider === 'bepaid' ? { publicKey: (value.publicKey as string).trim() } : {}),
       environment: value.environment,
     };
-  if (value.gateway === 'skno' && required('cashRegisterSerial', 'host', 'username', 'password'))
+  if (value.gateway === 'skno' && required('cashRegisterSerial', 'host', 'username', 'password', 'unp') && /^\d{9}$/.test((value.unp as string).trim()))
     return {
       gateway: 'skno',
       cashRegisterSerial: (value.cashRegisterSerial as string).trim(),
       host: (value.host as string).trim(),
       username: (value.username as string).trim(),
       password: value.password as string,
-      ...(typeof value.unp === 'string' && value.unp.trim() ? { unp: value.unp.trim() } : {}),
+      unp: (value.unp as string).trim(),
     };
   throw new Error('Заполните обязательные поля платёжного шлюза');
 }
