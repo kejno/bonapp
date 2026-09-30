@@ -1,5 +1,5 @@
-import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
-import { OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
+import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { FiscalizationStatus, OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
 import { Job, JobsOptions, Queue, Worker } from 'bullmq';
 import type { Request } from 'express';
 import { createVerify, timingSafeEqual } from 'node:crypto';
@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { MenuGateway } from '../menu/menu.gateway';
+import { FiscalizationService } from '../staff/fiscalization.service';
 
 interface WebhookJob { tenantId: string; body: Record<string, unknown> }
 
@@ -30,7 +31,7 @@ function stringValue(value: unknown): string | undefined {
 export class BepaidWebhookService implements OnModuleInit, OnModuleDestroy {
   private readonly queue: Queue<WebhookJob>;
   private readonly worker: Worker<WebhookJob>;
-  constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway) {
+  constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway, @Optional() private readonly fiscalization?: FiscalizationService) {
     const connection = { host: process.env.REDIS_HOST ?? 'localhost', port: Number(process.env.REDIS_PORT ?? 6379) };
     this.queue = new Queue('bepaid-webhooks', { connection });
     this.worker = new Worker('bepaid-webhooks', (job) => this.process(job), { connection });
@@ -67,18 +68,31 @@ export class BepaidWebhookService implements OnModuleInit, OnModuleDestroy {
     if (!trackingId || !mapped) return;
     const completed = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const payment = await tx.payment.findFirst({ where: { id: trackingId, tenantId, provider: 'bepaid' } });
-      if (!payment || payment.status === PaymentStatus.SUCCEEDED) return null;
-      const updated = await tx.payment.update({ where: { id: payment.id }, data: { status: mapped, providerTransactionId: stringValue(transaction.uid) ?? payment.providerTransactionId, payload: body as Prisma.InputJsonValue } });
+      if (!payment) return null;
+      if (payment.status === PaymentStatus.SUCCEEDED) {
+        return payment.fiscalizationStatus === FiscalizationStatus.PENDING
+          ? { paymentId: payment.id, orderId: '', tableId: '', notify: false }
+          : null;
+      }
+      const updated = await tx.payment.update({ where: { id: payment.id }, data: {
+        status: mapped,
+        ...(mapped === PaymentStatus.SUCCEEDED ? { fiscalizationStatus: FiscalizationStatus.PENDING } : {}),
+        providerTransactionId: stringValue(transaction.uid) ?? payment.providerTransactionId,
+        payload: body as Prisma.InputJsonValue,
+      } });
       if (updated.status !== PaymentStatus.SUCCEEDED) return null;
       const order = await tx.order.findFirst({ where: { id: payment.orderId, tenantId } });
       if (!order || order.isPaid || order.status !== OrderStatus.SERVED) return null;
       await tx.order.update({ where: { id_tenantId: { id: order.id, tenantId } }, data: { isPaid: true, status: OrderStatus.PAID, paidAt: new Date() } });
       await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.AVAILABLE } });
-      return { orderId: order.id, tableId: order.tableId };
+      return { orderId: order.id, tableId: order.tableId, paymentId: payment.id, notify: true };
     });
     if (completed) {
-      this.menuGateway.emitOrderStatusChanged(tenantId, completed.orderId, OrderStatus.PAID);
-      await this.menuGateway.closeOrderSession(tenantId, completed.tableId, completed.orderId);
+      await this.fiscalization?.enqueue(tenantId, completed.paymentId);
+      if (completed.notify) {
+        this.menuGateway.emitOrderStatusChanged(tenantId, completed.orderId, OrderStatus.PAID);
+        await this.menuGateway.closeOrderSession(tenantId, completed.tableId, completed.orderId);
+      }
     }
   }
 }

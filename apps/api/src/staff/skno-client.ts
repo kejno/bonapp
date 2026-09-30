@@ -2,6 +2,7 @@ import { BadGatewayException, Injectable, ServiceUnavailableException } from '@n
 import { createHash, randomBytes } from 'node:crypto';
 
 export const SKNO_CLIENT = Symbol('SKNO_CLIENT');
+export const SKNO_FISCAL_CLIENT = Symbol('SKNO_FISCAL_CLIENT');
 
 export interface SknoCredentials {
   host: string;
@@ -16,12 +17,65 @@ export interface SknoShiftClient {
   reconcileClose(credentials: SknoCredentials, startZ: number): Promise<{ zReportNumber: number } | null>;
 }
 
-type CashState = { serial?: string; currZ?: number; err?: unknown };
+export interface SknoFiscalClient {
+  issueReceipt(credentials: SknoCredentials & { unp?: string }, input: {
+    paymentId: string;
+    amount: number;
+    items: Array<{ name: string; quantity: number; price: number }>;
+  }): Promise<string>;
+}
+
+type CashState = { serial?: string; currZ?: number; chkId?: number; err?: unknown };
 type FiscalDay = { id?: number; [key: string]: unknown };
+type CheckTapeRow = { id?: number; no?: number | string; [key: string]: unknown };
 type CashReply = { err?: unknown } & Record<string, unknown>;
 
 @Injectable()
-export class TitanSknoClient implements SknoShiftClient {
+export class TitanSknoClient implements SknoShiftClient, SknoFiscalClient {
+  async issueReceipt(credentials: SknoCredentials & { unp?: string }, input: {
+    paymentId: string;
+    amount: number;
+    items: Array<{ name: string; quantity: number; price: number }>;
+  }): Promise<string> {
+    const marker = `BonApp payment:${input.paymentId}`;
+    const state = await this.read<CashState>(credentials, '/cgi/state');
+    if (state.serial !== credentials.cashRegisterSerial || !Number.isInteger(state.chkId)) {
+      throw new BadGatewayException('Касса СКНО вернула некорректное состояние чековой ленты');
+    }
+    const existing = this.findReceipt(await this.read<CheckTapeRow[]>(credentials, '/cgi/chk'), marker);
+    if (existing) return existing;
+    const lines = [
+      { C: { cm: `${marker}${credentials.unp ? `; УНП ${credentials.unp}` : ''}` } },
+      ...input.items.map((item) => ({ S: { name: item.name, qty: item.quantity, price: item.price } })),
+      { P: { sum: input.amount } },
+    ];
+    let response: CashReply & { no?: string | number; id?: string | number; receiptNumber?: string | number; fiscal_receipt_number?: string | number };
+    try {
+      response = await this.request(credentials, '/cgi/chk', 'POST', JSON.stringify({ F: lines }));
+      this.assertNoErrors(response.err);
+    } catch (error) {
+      const reconciled = await this.findReceiptByMarker(credentials, marker).catch(() => undefined);
+      if (reconciled) return reconciled;
+      throw error;
+    }
+    const number = response.fiscal_receipt_number ?? response.receiptNumber ?? response.no;
+    if (typeof number === 'string' || typeof number === 'number') return String(number);
+    const reconciled = await this.findReceiptByMarker(credentials, marker);
+    if (reconciled) return reconciled;
+    throw new ServiceUnavailableException('Касса СКНО не вернула номер фискального чека');
+  }
+
+  private async findReceiptByMarker(credentials: SknoCredentials, marker: string): Promise<string | undefined> {
+    return this.findReceipt(await this.read<CheckTapeRow[]>(credentials, '/cgi/chk'), marker);
+  }
+
+  private findReceipt(rows: CheckTapeRow[], marker: string): string | undefined {
+    if (!Array.isArray(rows)) return undefined;
+    const row = rows.find((entry) => JSON.stringify(entry).includes(marker));
+    const number = row?.no ?? row?.id;
+    return typeof number === 'number' || typeof number === 'string' ? String(number) : undefined;
+  }
+
   async open(credentials: SknoCredentials): Promise<{ zReportNumber: number }> {
     const state = await this.read<CashState>(credentials, '/cgi/state');
     this.assertNoErrors(state.err);
@@ -107,15 +161,16 @@ export class TitanSknoClient implements SknoShiftClient {
     return value as T;
   }
 
-  private async request<T = unknown>(credentials: SknoCredentials, path: string): Promise<T> {
+  private async request<T = unknown>(credentials: SknoCredentials, path: string, method = 'GET', body?: string): Promise<T> {
     const url = new URL(path, credentials.host);
     try {
-      let response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const init: RequestInit = { method, signal: AbortSignal.timeout(5000), ...(body === undefined ? {} : { body, headers: { 'Content-Type': 'application/json; charset=utf-8' } }) };
+      let response = await fetch(url, init);
       if (response.status === 401) {
         const challenge = response.headers.get('www-authenticate');
         if (!challenge?.startsWith('Digest ')) throw new Error('Unsupported SKNO authentication challenge');
-        const authorization = this.digestAuthorization(challenge, credentials, `${url.pathname}${url.search}`);
-        response = await fetch(url, { headers: { Authorization: authorization }, signal: AbortSignal.timeout(5000) });
+        const authorization = this.digestAuthorization(challenge, credentials, `${url.pathname}${url.search}`, method);
+        response = await fetch(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), Authorization: authorization } });
       }
       if (!response.ok) throw new Error(`SKNO returned HTTP ${response.status}`);
       return await response.json() as T;
@@ -125,7 +180,7 @@ export class TitanSknoClient implements SknoShiftClient {
     }
   }
 
-  private digestAuthorization(challenge: string, credentials: SknoCredentials, uri: string): string {
+  private digestAuthorization(challenge: string, credentials: SknoCredentials, uri: string, method: string): string {
     const fields: Record<string, string> = {};
     for (const match of challenge.matchAll(/(\w+)=(?:"([^"]*)"|([^,\s]+))/g)) fields[match[1]] = match[2] ?? match[3];
     if (!fields.nonce || !fields.realm) throw new Error('Invalid digest challenge');
@@ -134,7 +189,7 @@ export class TitanSknoClient implements SknoShiftClient {
     const nc = '00000001';
     const hash = (value: string) => createHash('md5').update(value).digest('hex');
     const ha1 = hash(`${credentials.username}:${fields.realm}:${credentials.password}`);
-    const ha2 = hash(`GET:${uri}`);
+    const ha2 = hash(`${method}:${uri}`);
     const response = qop
       ? hash(`${ha1}:${fields.nonce}:${nc}:${cnonce}:${qop}:${ha2}`)
       : hash(`${ha1}:${fields.nonce}:${ha2}`);

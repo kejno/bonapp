@@ -9,9 +9,10 @@ import { BepaidClient } from './bepaid.client';
 import { BepaidWebhookController, BepaidWebhookService } from './bepaid-webhook';
 import { EripClient } from './erip.client';
 import { EripWebhookController, EripWebhookService } from './erip-webhook';
+import { StaffModule } from '../staff/staff.module';
 
 @Module({
-  imports: [forwardRef(() => MenuModule), OnboardingModule],
+  imports: [forwardRef(() => MenuModule), OnboardingModule, StaffModule],
   controllers: [GuestSessionController, GuestOrdersController, BepaidWebhookController, EripWebhookController],
   providers: [GuestSessionService, GuestSessionGuard, BepaidClient, BepaidWebhookService, EripClient, EripWebhookService],
   exports: [GuestSessionGuard],
