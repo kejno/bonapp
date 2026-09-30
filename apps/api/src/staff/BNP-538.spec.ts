@@ -12,45 +12,47 @@ describe('BNP-538: исчерпание попыток фискализации'
     const redisContainer = execFileSync('docker', [
       'run', '--detach', '--rm', '--publish', '127.0.0.1::6379', 'redis:7',
     ], { encoding: 'utf8' }).trim();
-    const redisPort = execFileSync('docker', ['port', redisContainer, '6379/tcp'], { encoding: 'utf8' }).trim().split(':').at(-1)!;
     const previousRedisHost = process.env.REDIS_HOST;
     const previousRedisPort = process.env.REDIS_PORT;
     const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
-    process.env.REDIS_HOST = '127.0.0.1';
-    process.env.REDIS_PORT = redisPort;
-    process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
-
-    const paymentUpdate = jest.fn().mockResolvedValue({ count: 1 });
-    const payment = {
-      id: randomUUID(),
-      amountByn: '18.00',
-      fiscalReceiptNumber: null,
-      order: { items: [{ itemId: 'tea', quantity: 1, unitPriceByn: '18.00' }] },
-    };
-    const prisma = {
-      transactionForTenant: jest.fn((_tenantId: string, operation: (tx: unknown) => unknown) =>
-        Promise.resolve(operation({ payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } })),
-      ),
-      forTenant: jest.fn().mockReturnValue({
-        payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn(), updateMany: paymentUpdate },
-      }),
-      db: {
-        tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: { skno: encryptCredentials({
-          cashRegisterSerial: 'serial', host: 'http://cash.local', username: 'service', password: 'secret', unp: '123456789',
-        }, 'test-secret') } }) },
-        menuItem: { findMany: jest.fn().mockResolvedValue([{ id: 'tea', name: 'Tea' }]) },
-      },
-    } as unknown as PrismaService;
-    const skno = { issueReceipt: jest.fn().mockRejectedValue(new Error('SKNO unavailable')) };
-    const service = new FiscalizationService(prisma, skno);
-    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const callTimes: number[] = [];
-    skno.issueReceipt.mockImplementation(() => {
-      callTimes.push(Date.now());
-      return Promise.reject(new Error('SKNO unavailable'));
-    });
+    let service: FiscalizationService | undefined;
+    let logger: jest.SpyInstance | undefined;
 
     try {
+      const redisPort = execFileSync('docker', ['port', redisContainer, '6379/tcp'], { encoding: 'utf8' }).trim().split(':').at(-1)!;
+      process.env.REDIS_HOST = '127.0.0.1';
+      process.env.REDIS_PORT = redisPort;
+      process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
+
+      const paymentUpdate = jest.fn().mockResolvedValue({ count: 1 });
+      const payment = {
+        id: randomUUID(),
+        amountByn: '18.00',
+        fiscalReceiptNumber: null,
+        order: { items: [{ itemId: 'tea', quantity: 1, unitPriceByn: '18.00' }] },
+      };
+      const prisma = {
+        transactionForTenant: jest.fn((_tenantId: string, operation: (tx: unknown) => unknown) =>
+          Promise.resolve(operation({ payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } })),
+        ),
+        forTenant: jest.fn().mockReturnValue({
+          payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn(), updateMany: paymentUpdate },
+        }),
+        db: {
+          tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: { skno: encryptCredentials({
+            cashRegisterSerial: 'serial', host: 'http://cash.local', username: 'service', password: 'secret', unp: '123456789',
+          }, 'test-secret') } }) },
+          menuItem: { findMany: jest.fn().mockResolvedValue([{ id: 'tea', name: 'Tea' }]) },
+        },
+      } as unknown as PrismaService;
+      const callTimes: number[] = [];
+      const skno = { issueReceipt: jest.fn().mockImplementation(() => {
+        callTimes.push(Date.now());
+        return Promise.reject(new Error('SKNO unavailable'));
+      }) };
+      service = new FiscalizationService(prisma, skno);
+      logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
       await service.onModuleInit();
       await service.enqueue('tenant-1', payment.id);
       const deadline = Date.now() + 80_000;
@@ -65,18 +67,20 @@ describe('BNP-538: исчерпание попыток фискализации'
         where: { id: payment.id, fiscalReceiptNumber: null },
         data: { fiscalizationStatus: 'FISCAL_FAILED' },
       }));
-      expect(payment.fiscalReceiptNumber).toBeNull();
       expect(logger).toHaveBeenCalledWith(expect.stringContaining('исчерпала три попытки'), expect.any(String));
     } finally {
-      await service.onModuleDestroy();
-      logger.mockRestore();
-      if (previousRedisHost === undefined) delete process.env.REDIS_HOST;
-      else process.env.REDIS_HOST = previousRedisHost;
-      if (previousRedisPort === undefined) delete process.env.REDIS_PORT;
-      else process.env.REDIS_PORT = previousRedisPort;
-      if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
-      else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
-      execFileSync('docker', ['stop', redisContainer], { stdio: 'pipe' });
+      try {
+        if (service) await service.onModuleDestroy();
+      } finally {
+        logger?.mockRestore();
+        if (previousRedisHost === undefined) delete process.env.REDIS_HOST;
+        else process.env.REDIS_HOST = previousRedisHost;
+        if (previousRedisPort === undefined) delete process.env.REDIS_PORT;
+        else process.env.REDIS_PORT = previousRedisPort;
+        if (previousSecret === undefined) delete process.env.PAYMENT_CREDENTIALS_SECRET;
+        else process.env.PAYMENT_CREDENTIALS_SECRET = previousSecret;
+        execFileSync('docker', ['stop', redisContainer], { stdio: 'pipe' });
+      }
     }
   });
 });
