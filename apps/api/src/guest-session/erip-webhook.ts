@@ -62,10 +62,13 @@ export class EripWebhookService implements OnModuleInit, OnModuleDestroy {
     const completed = await this.prisma.transactionForTenant(tenantId, async (tx) => {
       const payment = await tx.payment.findFirst({ where: { id: trackingId, tenantId, provider: 'erip' } });
       if (!payment || payment.providerTransactionId !== uid || payment.status === PaymentStatus.SUCCEEDED) return null;
+      const order = mapped === PaymentStatus.SUCCEEDED
+        ? await tx.order.findFirst({ where: { id: payment.orderId, tenantId } })
+        : null;
+      if (mapped === PaymentStatus.SUCCEEDED && (!order || order.isPaid || order.status !== OrderStatus.SERVED)) return null;
       const updated = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: mapped, payload: body as Prisma.InputJsonValue } });
       if (!updated.count || mapped !== PaymentStatus.SUCCEEDED) return null;
-      const order = await tx.order.findFirst({ where: { id: payment.orderId, tenantId } });
-      if (!order || order.isPaid || order.status !== OrderStatus.SERVED) return null;
+      if (!order) return null;
       await tx.order.update({ where: { id_tenantId: { id: order.id, tenantId } }, data: { isPaid: true, status: OrderStatus.PAID, paidAt: new Date() } });
       await tx.table.update({ where: { id_tenantId: { id: order.tableId, tenantId } }, data: { status: TableStatus.AVAILABLE } });
       return { orderId: order.id, tableId: order.tableId, paymentId: payment.id, guestSessionId: order.guestSessionId };

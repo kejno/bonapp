@@ -29,7 +29,7 @@ export class GuestSessionService {
     const credentials = decryptCredentials<{ shopId?: string; serviceId: string; secret: string }>(encoded, process.env.PAYMENT_CREDENTIALS_SECRET);
     if (!credentials.shopId) throw new ConflictException('Реквизиты ЕРИП не настроены');
     const db = this.prisma.forTenant(tenantId);
-    const order = await db.order.findFirst({ where: { id: orderId, tableId }, select: { id: true, dailyOrderNumber: true, status: true, isPaid: true, totalAmountByn: true } });
+    const order = await db.order.findFirst({ where: { id: orderId, tableId }, select: { id: true, dailyOrderNumber: true, status: true, isPaid: true, totalAmountByn: true, tipsAmountByn: true } });
     if (!order) throw new ForbiddenException('Заказ не принадлежит этому столу');
     if (order.isPaid || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
     let payment = await db.payment.findFirst({ where: { orderId, provider: 'erip', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
@@ -49,10 +49,10 @@ export class GuestSessionService {
       }
     }
     if (payment) await db.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.CANCELLED } });
-    payment = await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: 0, provider: 'erip', method: PaymentMethod.ERIP_EPOS, status: PaymentStatus.PENDING } });
+    payment = await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: order.tipsAmountByn, provider: 'erip', method: PaymentMethod.ERIP_EPOS, status: PaymentStatus.PENDING } });
     try {
       if (!this.eripClient) throw new ServiceUnavailableException('Оплата временно недоступна');
-      const amount = new Prisma.Decimal(payment.amountByn).mul(100).toDecimalPlaces(0).toNumber();
+      const amount = new Prisma.Decimal(payment.amountByn).add(payment.tipsAmountByn).mul(100).toDecimalPlaces(0).toNumber();
       if (!Number.isSafeInteger(amount) || amount < 1) throw new BadRequestException('Некорректная сумма заказа');
       const result = await this.eripClient.create({ shopId: credentials.shopId, secret: credentials.secret, serviceId: credentials.serviceId, amount, orderId, paymentId: payment.id, tenantId, ip, dailyOrderNumber: order.dailyOrderNumber, restaurantName: tenant?.name });
       await db.payment.update({ where: { id: payment.id }, data: { providerTransactionId: result.uid, eripOrderNumber: result.accountNumber, payload: result as unknown as Prisma.InputJsonValue } });
