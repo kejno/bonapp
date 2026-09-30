@@ -1,32 +1,26 @@
-# Доработка PR #223 — BNP-530
+# Результат доработки PR #230
 
 ## Issues/Notes
 
-- Устранен блокирующий регресс: сохраненные iiko-интеграции в `posIntegrationConfig` снова запускают прежнюю очередь `iiko-sync-menu`, а endpoint статуса продолжает читать состояние этого импорта.
-- Для конфигураций без legacy iiko-записи маршрут использует onboarding-импорт; это сохраняет запуск r_keeper и новых POS-конфигураций.
-- Старый ответ `{ jobId, status: 'PENDING' }` сохранен для legacy iiko-клиентов.
-- В `pr_discussions_raw.json` оба неразрешенных обсуждения содержат `rootCommentId: null` и `threadId: null`. Поэтому нельзя подготовить адресные GitHub-ответы с обязательными идентификаторами; `review_replies.json` оставлен пустым. В контексте отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt` и `ticket.md`; сведения о задаче взяты из `request.md` и `bug_001_description.md`.
+- В актуальных данных CI-логи и файл `merge_conflicts.md` отсутствуют. Локальный lint, typecheck и полный набор тестов прошли.
+- Сводное блокирующее замечание о невыполнении BNP-532 не соответствует текущей базе: production-реализация BNP-532 уже находится в `origin/main` (коммит `481ca8b`). Diff этого PR содержит только тесты BNP-527, BNP-534 и BNP-535; повторно менять production-код в рамках тестового PR не требуется.
+- В `pr_discussions_raw.json` нет открытых inline-обсуждений с `threadId` и `rootCommentId`. Единственное inline-предложение помечено разрешённым; `outputs/review_replies.json` содержит пустой список.
 
 ## Approach
 
-- Контроллер сначала пробует legacy iiko-сервис. При `BadRequestException` от отсутствующей старой конфигурации передает запуск onboarding-сервису; остальные ошибки не маскируются fallback-логикой.
-- Регрессионные тесты проверяют сохранение ответа старого API и запуск onboarding-пути при отсутствии legacy-конфигурации.
-- Проверено существующее покрытие BNP-518: оно проверяет сохранение `posItemId` и категории POS, обновление существующего блюда и отсутствие дублирования при импорте r_keeper.
+- Сверил изменения PR с `origin/main` и проверил, что тесты покрывают создание платежа ЕРИП с сохранением E-POS реквизитов, повторный запрос активного платежа и повторную попытку после ошибки провайдера.
+- Проверил весь набор обязательных локальных команд. Изменения схемы БД, миграций, глобальных провайдеров и production-сигнатур в этом PR отсутствуют, поэтому дополнительная проверка blast radius не требовалась.
 
 ## Files Modified
 
-- `apps/api/src/onboarding/pos-sync.controller.ts` — восстановлен совместимый запуск старой iiko-синхронизации с fallback на onboarding.
-- `apps/api/src/onboarding/pos-sync.controller.spec.ts` — добавлены регрессионные проверки для legacy-ответа и fallback.
-- `outputs/response.md` и `outputs/review_replies.json` — отчет о доработке и статус адресных ответов.
+- `apps/api/src/guest-session/BNP-527.spec.ts` — проверка создания платежа ЕРИП и сохранения E-POS номера.
+- `apps/api/src/payments/BNP-534.spec.ts` — проверка идемпотентного возврата активного запроса ЕРИП.
+- `apps/api/src/payments/BNP-535.spec.ts` — проверка обработки ошибки провайдера и успешного повтора.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка списка измененных файлов PR.
-- `git status --short` — подтверждены изменения только в контроллере и его тесте.
-- RED: `npx jest --runInBand src/onboarding/pos-sync.controller.spec.ts` — новая проверка legacy-ответа упала до исправления.
-- GREEN: `npx jest --runInBand src/onboarding/pos-sync.controller.spec.ts` — пройдено, 3 теста.
-- `npx eslint apps/api/src/onboarding/pos-sync.controller.ts apps/api/src/onboarding/pos-sync.controller.spec.ts` — пройдено.
-- `npm run typecheck` — пройдено для всех четырех workspace.
-- `npm test` — пройдено: API 100 наборов / 646 тестов, guest-web 10 / 33, admin-web 64 / 126; сборки workspace и проверка design tokens также прошли.
-- `git diff --check` — пройдено.
-- Изменения не затрагивают схему, миграции, глобальные провайдеры или публичные сигнатуры; CodeGraph недоступен. Проверены вызовы маршрута и сервисов поиском `rg` по `apps/api/src` и `apps/api/test`.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; перечислены три тестовых файла PR.
+- `git status --short` — выполнено; рабочее дерево чистое.
+- `npx eslint apps/api/src/guest-session/BNP-527.spec.ts apps/api/src/payments/BNP-534.spec.ts apps/api/src/payments/BNP-535.spec.ts` — пройдено.
+- `npm run typecheck` — пройдено во всех четырёх workspace.
+- `npm test` — пройдено: все тесты guest-web, 99 API suites (643 теста), 64 admin-web suites (126 тестов), проверка design tokens и сборки.
