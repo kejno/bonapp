@@ -21,6 +21,7 @@ describe('AnalyticsService.tips', () => {
   it('uses the requested date range when aggregating waiter tips', async () => {
     findMany.mockResolvedValue([
       { tipsAmountByn: 3, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 0, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
       { tipsAmountByn: 2, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
       { tipsAmountByn: 4, order: { assignedWaiterId: 'w2', assignedWaiter: { fullName: 'Иван' } } },
     ]);
