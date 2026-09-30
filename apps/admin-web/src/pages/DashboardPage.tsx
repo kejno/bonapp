@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const isWaiter = user?.role === 'WAITER';
   const canOpenKds = ['CHEF', 'OWNER', 'MANAGER', 'WAITER'].includes(user?.role ?? '');
-  const summary = useQuery({ queryKey: ['analytics', 'daily-summary'], queryFn: getDailySummary, refetchInterval: 60_000 });
+  const summary = useQuery({ queryKey: ['analytics', 'daily-summary'], queryFn: getDailySummary, refetchInterval: 60_000, enabled: !isWaiter });
   const data = summary.data;
   const topDishes = data?.topDishes ?? [];
 
@@ -21,9 +21,9 @@ export default function DashboardPage() {
           <div><h1 className="text-3xl font-semibold">Добро пожаловать{user ? `, ${user.fullName}` : ''}</h1><p className="mt-1 text-sm text-on-background/60">Панель ресторатора · Сводка за сегодня</p></div>
           <button onClick={clearAuth} className="text-sm text-primary hover:underline">Выйти</button>
         </header>
-        {summary.isError && <p role="alert" className="mt-6 rounded-xl border border-error p-4">{summary.error.message}</p>}
-        {summary.isPending && <p className="mt-6 text-sm text-on-background/60">Загружаем аналитику…</p>}
-        {data && <>
+        {!isWaiter && summary.isError && <p role="alert" className="mt-6 rounded-xl border border-error p-4">{summary.error.message}</p>}
+        {!isWaiter && summary.isPending && <p className="mt-6 text-sm text-on-background/60">Загружаем аналитику…</p>}
+        {!isWaiter && data && <>
           <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Показатели за сегодня">
             <article className="rounded-2xl bg-primary p-6 text-on-primary sm:col-span-2"><p className="text-sm opacity-80">Выручка</p><p className="mt-3 text-4xl font-semibold">{money(data.revenueByn ?? 0)}</p></article>
             <article className="rounded-2xl border border-outline-variant bg-surface-card p-6"><p className="text-sm text-on-background/60">Средний чек</p><p className="mt-3 text-2xl font-semibold">{money(data.averageCheckByn ?? 0)}</p></article>

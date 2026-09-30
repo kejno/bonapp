@@ -68,8 +68,13 @@ export class AnalyticsService {
     return ['OPLATI_QR', 'ERIP_EPOS', 'BANK_CARD', 'CASH_TO_WAITER'].map((method) => ({ method, ...(byMethod.get(method as (typeof rows)[number]['method']) ?? { amountByn: 0, transactionsCount: 0 }) }));
   }
 
-  async tips(tenantId: string) {
-    const { start, end } = await this.dayBounds(tenantId);
+  async tips(tenantId: string, from?: string, to?: string) {
+    const { start: dayStart, end: dayEnd } = await this.dayBounds(tenantId);
+    const start = from ? new Date(from) : dayStart;
+    const end = to ? new Date(to) : dayEnd;
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) {
+      throw new BadRequestException('from and to must define a valid range');
+    }
     const payments = await this.prisma.db.payment.findMany({ where: { tenantId, status: { in: completedPayments }, createdAt: { gte: start, lt: end }, order: { isTest: false } }, select: { tipsAmountByn: true, order: { select: { assignedWaiterId: true, assignedWaiter: { select: { fullName: true } } } } } });
     const totals = new Map<string, { waiterName: string; tipsByn: number; transactionsCount: number }>();
     for (const payment of payments) {

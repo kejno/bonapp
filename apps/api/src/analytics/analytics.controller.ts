@@ -13,7 +13,7 @@ export class AnalyticsController {
   @Get('daily-summary') dailySummary() { return this.analytics.dailySummary(this.tenantId()); }
   @Get('revenue') revenue(@Query('from') from?: string, @Query('to') to?: string, @Query('granularity') granularity?: string) { return this.analytics.revenue(this.tenantId(), from, to, granularity); }
   @Get('payments-split') paymentsSplit() { return this.analytics.paymentsSplit(this.tenantId()); }
-  @Get('tips') tips() { return this.analytics.tips(this.tenantId()); }
+  @Get('tips') tips(@Query('from') from?: string, @Query('to') to?: string) { return this.analytics.tips(this.tenantId(), from, to); }
 
   private tenantId() { return this.tenantContext.getTenantId()!; }
 }
