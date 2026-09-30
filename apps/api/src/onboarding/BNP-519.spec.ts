@@ -92,10 +92,19 @@ describe('BNP-519: submit a guest order to r_keeper', () => {
       dispatcher,
     );
 
-    const result = await guestSession.createGuestOrder('tenant-519', 'table-519', {
-      items: [{ menuItemId: 'menu-519', quantity: 2, selectedModifiers: [] }],
-      comment: 'Без лука',
-    });
+    // Keep the counter fixture on the same tenant-local date regardless of when
+    // the suite runs. Otherwise a date boundary correctly resets it to 1.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-29T12:00:00.000Z'));
+    let result: Awaited<ReturnType<typeof guestSession.createGuestOrder>>;
+    try {
+      result = await guestSession.createGuestOrder('tenant-519', 'table-519', {
+        items: [{ menuItemId: 'menu-519', quantity: 2, selectedModifiers: [] }],
+        comment: 'Без лука',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
 
     expect(result).toMatchObject({ orderId: order.id, dailyOrderNumber: 19, status: 'NEW', totalAmountByn: 12.5 });
     expect(orderCreate).toHaveBeenCalledTimes(1);
