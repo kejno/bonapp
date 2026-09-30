@@ -32,9 +32,18 @@ export class GuestOrdersController {
   }
 
   @Post(':id/pay/card')
-  createCardPayment(@Req() request: Request, @Param('id') id: string) {
+  createCardPayment(@Req() request: Request, @Param('id') id: string, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;
-    return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId);
+    let tipsAmountByn = 0;
+    if (body !== undefined) {
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Некорректная сумма чаевых');
+      const value = (body as Record<string, unknown>).tipsAmountByn;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || !Number.isSafeInteger(value * 100)) {
+        throw new BadRequestException('Некорректная сумма чаевых');
+      }
+      tipsAmountByn = value;
+    }
+    return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId, tipsAmountByn);
   }
 
   @Post(':id/pay/erip')
