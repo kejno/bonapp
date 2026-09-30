@@ -84,7 +84,9 @@ export class GuestSessionService {
     if (order.isPaid || order.status === OrderStatus.PAID || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
     const db = this.prisma.forTenant(tenantId);
     const pending = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
-    if (!Number.isFinite(tipsAmountByn) || tipsAmountByn < 0 || !Number.isSafeInteger(tipsAmountByn * 100)) {
+    if (!Number.isFinite(tipsAmountByn)) throw new BadRequestException('Некорректная сумма чаевых');
+    const tipsAmountInKopecks = new Prisma.Decimal(tipsAmountByn).mul(100);
+    if (tipsAmountInKopecks.isNegative() || !tipsAmountInKopecks.isInteger() || !Number.isSafeInteger(tipsAmountInKopecks.toNumber())) {
       throw new BadRequestException('Некорректная сумма чаевых');
     }
     const paymentExpired = pending && pending.createdAt.getTime() <= Date.now() - 15 * 60_000;

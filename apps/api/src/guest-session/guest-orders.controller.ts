@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { GuestSessionGuard, QrTokenRequest } from './guest-session.guard';
@@ -38,7 +39,11 @@ export class GuestOrdersController {
     if (body !== undefined) {
       if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Некорректная сумма чаевых');
       const value = (body as Record<string, unknown>).tipsAmountByn;
-      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || !Number.isSafeInteger(value * 100)) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new BadRequestException('Некорректная сумма чаевых');
+      }
+      const amountInKopecks = new Prisma.Decimal(value).mul(100);
+      if (amountInKopecks.isNegative() || !amountInKopecks.isInteger() || !Number.isSafeInteger(amountInKopecks.toNumber())) {
         throw new BadRequestException('Некорректная сумма чаевых');
       }
       tipsAmountByn = value;

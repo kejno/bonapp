@@ -125,6 +125,17 @@ describe('GuestSessionService createCardPayment', () => {
     expect(client.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amount: 1725 }));
   });
 
+  it.each([{ tips: 0.29, amount: 1279 }, { tips: 0.57, amount: 1307 }])(
+    'creates a checkout for $amount kopecks when tips are $tips BYN', async ({ tips, amount }) => {
+      paymentFindFirst.mockResolvedValue(null);
+      paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.50', tipsAmountByn: tips.toFixed(2) });
+
+      await service.createCardPayment('order-1', 'tenant-1', 'table-1', tips);
+
+      expect(client.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amount }));
+    },
+  );
+
 });
 
 describe('GuestSessionService addOrderItem', () => {
