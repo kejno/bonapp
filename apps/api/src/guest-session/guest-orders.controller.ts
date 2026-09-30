@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { GuestSessionGuard, QrTokenRequest } from './guest-session.guard';
@@ -32,9 +33,22 @@ export class GuestOrdersController {
   }
 
   @Post(':id/pay/card')
-  createCardPayment(@Req() request: Request, @Param('id') id: string) {
+  createCardPayment(@Req() request: Request, @Param('id') id: string, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;
-    return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId);
+    let tipsAmountByn = 0;
+    if (body !== undefined) {
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Некорректная сумма чаевых');
+      const value = (body as Record<string, unknown>).tipsAmountByn;
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new BadRequestException('Некорректная сумма чаевых');
+      }
+      const amountInKopecks = new Prisma.Decimal(value).mul(100);
+      if (amountInKopecks.isNegative() || !amountInKopecks.isInteger() || !Number.isSafeInteger(amountInKopecks.toNumber())) {
+        throw new BadRequestException('Некорректная сумма чаевых');
+      }
+      tipsAmountByn = value;
+    }
+    return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId, tipsAmountByn);
   }
 
   @Post(':id/pay/erip')

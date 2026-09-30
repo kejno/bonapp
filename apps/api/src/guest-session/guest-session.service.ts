@@ -72,7 +72,7 @@ export class GuestSessionService {
     return { orderStatus: order.status, paymentStatus: payment?.status ?? null, paymentExpiresAt: payment ? new Date(payment.createdAt.getTime() + 15 * 60_000).toISOString() : null, paymentEnabled: isEncryptedCredentials(encoded) && !!process.env.PAYMENT_CREDENTIALS_SECRET };
   }
 
-  async createCardPayment(orderId: string, tenantId: string, tableId: string) {
+  async createCardPayment(orderId: string, tenantId: string, tableId: string, tipsAmountByn = 0) {
     if (!process.env.PAYMENT_CREDENTIALS_SECRET) throw new ServiceUnavailableException('Оплата временно недоступна');
     const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
     const encoded = (tenant?.paymentCredentials as Record<string, unknown> | null)?.bepaid;
@@ -84,7 +84,15 @@ export class GuestSessionService {
     if (order.isPaid || order.status === OrderStatus.PAID || order.status !== OrderStatus.SERVED) throw new ConflictException('Заказ пока нельзя оплатить');
     const db = this.prisma.forTenant(tenantId);
     const pending = await db.payment.findFirst({ where: { orderId, provider: 'bepaid', status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
+    if (!Number.isFinite(tipsAmountByn)) throw new BadRequestException('Некорректная сумма чаевых');
+    const tipsAmountInKopecks = new Prisma.Decimal(tipsAmountByn).mul(100);
+    if (tipsAmountInKopecks.isNegative() || !tipsAmountInKopecks.isInteger() || !Number.isSafeInteger(tipsAmountInKopecks.toNumber())) {
+      throw new BadRequestException('Некорректная сумма чаевых');
+    }
     const paymentExpired = pending && pending.createdAt.getTime() <= Date.now() - 15 * 60_000;
+    if (pending && !paymentExpired && new Prisma.Decimal(pending.tipsAmountByn ?? 0).comparedTo(tipsAmountByn) !== 0) {
+      throw new ConflictException('Для активного платежа нельзя изменить сумму чаевых');
+    }
     if (paymentExpired) {
       const token = typeof pending.payload === 'object' && pending.payload !== null && 'token' in pending.payload
         ? pending.payload.token
@@ -108,14 +116,14 @@ export class GuestSessionService {
     const active = pending && !paymentExpired ? pending : null;
     let payment;
     try {
-      payment = active ?? await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn: 0, provider: 'bepaid', method: PaymentMethod.BANK_CARD, status: PaymentStatus.PENDING } });
+      payment = active ?? await db.payment.create({ data: { tenantId, orderId, amountByn: order.totalAmountByn, tipsAmountByn, provider: 'bepaid', method: PaymentMethod.BANK_CARD, status: PaymentStatus.PENDING } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Другой платёж уже создаётся');
       }
       throw error;
     }
-    const amount = Math.round(Number(payment.amountByn) * 100);
+    const amount = new Prisma.Decimal(payment.amountByn).add(payment.tipsAmountByn ?? 0).mul(100).toDecimalPlaces(0).toNumber();
     if (!Number.isSafeInteger(amount) || amount < 1) throw new BadRequestException('Некорректная сумма заказа');
     try {
       if (!this.bepaidClient) throw new ServiceUnavailableException('Оплата временно недоступна');

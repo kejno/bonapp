@@ -67,7 +67,7 @@ describe('GuestSessionService createCardPayment', () => {
   const prisma = {
     db: { tenant: { findUnique: jest.fn().mockResolvedValue({ paymentCredentials: { bepaid: encryptCredentials({ provider: 'bepaid', shopId: 'shop', secret: 'gateway-secret', environment: 'TEST' }, secret) } }) } },
     forTenant: jest.fn(() => ({
-      order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', status: 'SERVED', isPaid: false, totalAmountByn: 12 }) },
+      order: { findFirst: jest.fn().mockResolvedValue({ id: 'order-1', status: 'SERVED', isPaid: false, totalAmountByn: '12.50' }) },
       payment: { findFirst: paymentFindFirst, create: paymentCreate, update: paymentUpdate, updateMany: paymentUpdateMany },
     })),
   } as unknown as PrismaService;
@@ -81,9 +81,9 @@ describe('GuestSessionService createCardPayment', () => {
     process.env.PAYMENT_CREDENTIALS_SECRET = secret;
     jest.clearAllMocks();
     paymentFindFirst.mockImplementation((args: { where: { createdAt?: unknown } }) =>
-      args.where.createdAt ? null : { id: 'old-payment', status: 'PENDING', payload: { token: 'old-token' }, createdAt: new Date(Date.now() - 16 * 60_000) },
+      args.where.createdAt ? null : { id: 'old-payment', status: 'PENDING', tipsAmountByn: '0.00', payload: { token: 'old-token' }, createdAt: new Date(Date.now() - 16 * 60_000) },
     );
-    paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.00' });
+    paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.00', tipsAmountByn: '0.00' });
     paymentUpdate.mockResolvedValue({});
     paymentUpdateMany.mockResolvedValue({ count: 1 });
   });
@@ -111,6 +111,30 @@ describe('GuestSessionService createCardPayment', () => {
     expect(paymentCreate).not.toHaveBeenCalled();
     expect(client.createCheckout).not.toHaveBeenCalled();
   });
+
+  it('includes the requested tips in the persisted payment and bePaid amount', async () => {
+    paymentFindFirst.mockResolvedValue(null);
+    paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.50', tipsAmountByn: '4.75' });
+
+    await service.createCardPayment('order-1', 'tenant-1', 'table-1', 4.75);
+
+    expect(paymentCreate).toHaveBeenCalledWith({ data: {
+      tenantId: 'tenant-1', orderId: 'order-1', amountByn: '12.50', tipsAmountByn: 4.75,
+      provider: 'bepaid', method: 'BANK_CARD', status: 'PENDING',
+    } });
+    expect(client.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amount: 1725 }));
+  });
+
+  it.each([{ tips: 0.29, amount: 1279 }, { tips: 0.57, amount: 1307 }])(
+    'creates a checkout for $amount kopecks when tips are $tips BYN', async ({ tips, amount }) => {
+      paymentFindFirst.mockResolvedValue(null);
+      paymentCreate.mockResolvedValue({ id: 'new-payment', amountByn: '12.50', tipsAmountByn: tips.toFixed(2) });
+
+      await service.createCardPayment('order-1', 'tenant-1', 'table-1', tips);
+
+      expect(client.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amount }));
+    },
+  );
 
 });
 
