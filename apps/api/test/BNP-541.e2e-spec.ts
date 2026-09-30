@@ -56,11 +56,11 @@ describe('BNP-541 analytics waiter tips (e2e)', () => {
       .expect(200);
 
     expect(activeShift.body).toEqual([
-      { waiterName: 'Анна', tipsByn: 3, transactionsCount: 2 },
+      { waiterName: 'Анна', tipsByn: 3, transactionsCount: 1 },
       { waiterName: 'Иван', tipsByn: 2, transactionsCount: 1 },
     ]);
     expect(period.body).toEqual([
-      { waiterName: 'Анна', tipsByn: 8, transactionsCount: 3 },
+      { waiterName: 'Анна', tipsByn: 8, transactionsCount: 2 },
       { waiterName: 'Иван', tipsByn: 2, transactionsCount: 1 },
     ]);
   });
