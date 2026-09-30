@@ -84,12 +84,12 @@ export default function OnboardingStep3Page() {
   };
 
   const gateway = values.gateway as Gateway;
-  const field = (name: string, label: string, type = 'text') => (
+  const field = (name: string, label: string, type = 'text', required = true) => (
     <label className="block space-y-1 text-sm">
       {label}
       {type === 'textarea' ? (
         <textarea
-          required
+          required={required}
           value={values[name] ?? ''}
           onChange={(event) => update(name, event.target.value)}
           className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2"
@@ -98,7 +98,7 @@ export default function OnboardingStep3Page() {
         />
       ) : (
         <input
-          required
+          required={required}
           type={type}
           value={values[name] ?? ''}
           onChange={(event) => update(name, event.target.value)}
@@ -155,8 +155,10 @@ export default function OnboardingStep3Page() {
         {gateway === 'oplati' && field('merchantId', 'Merchant ID')}
         {gateway === 'erip' && (
           <>
+            {field('shopId', 'Shop ID')}
             {field('serviceId', 'Service ID')}
             {field('secret', 'Секрет', 'password')}
+            {field('publicKey', 'Публичный ключ bePaid (если доступен)', 'textarea', false)}
           </>
         )}
         {gateway === 'bepaid' && (

@@ -37,6 +37,18 @@ export class GuestOrdersController {
     return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId);
   }
 
+  @Post(':id/pay/erip')
+  createEripPayment(@Req() request: Request, @Param('id') id: string) {
+    const guestRequest = request as QrTokenRequest;
+    return this.guestSessionService.createEripPayment(id, guestRequest.tenantId, guestRequest.tableId, request.ip ?? '0.0.0.0');
+  }
+
+  @Get(':id/pay/erip/status')
+  getEripPaymentStatus(@Req() request: Request, @Param('id') id: string) {
+    const guestRequest = request as QrTokenRequest;
+    return this.guestSessionService.getEripPaymentStatus(id, guestRequest.tenantId, guestRequest.tableId);
+  }
+
   @Get(':id/pay/card/status')
   getCardPaymentStatus(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;
