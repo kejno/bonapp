@@ -1,56 +1,119 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PaymentStatus, Prisma } from '@prisma/client';
+import { Job, Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentGateway, PaymentMethodName } from './payment-gateway';
-import { PaymentQueue } from './payment-queue';
 import { MenuGateway } from '../menu/menu.gateway';
+import { decryptCredentials, EncryptedCredentials } from '../tenant/payment-credentials';
+import { verifyOplatiSignature } from './oplati-webhook-signature';
+import { createOplatiWebhookJobId } from './oplati-webhook-job-id';
+import { PaymentQueue } from './payment-queue';
+import { OPLATI_PAYMENT_WEBHOOK_QUEUE } from './payment-webhook-queues';
+import { PaymentMethodName } from './payment-gateway';
+
+interface PaymentWebhook { providerTransactionId: string; eventId?: string; status: string }
+interface PaymentJob { body: PaymentWebhook }
+interface OplatiResponse { paymentId: string; qrCodeData: string; deepLink: string; eripCode?: string }
 
 @Injectable()
-export class PaymentsService {
-  constructor(private readonly prisma: PrismaService, private readonly gateway: PaymentGateway, private readonly queue: PaymentQueue, private readonly socket: MenuGateway) {
-    this.queue.registerHandler((method, event) => this.process(method, event));
+export class PaymentsService implements OnModuleInit, OnModuleDestroy {
+  private readonly queue: Queue<PaymentJob>;
+  private readonly worker: Worker<PaymentJob>;
+  private readonly logger = new Logger(PaymentsService.name);
+
+  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly gateway: MenuGateway, private readonly paymentQueue?: PaymentQueue, private readonly socket?: MenuGateway) {
+    this.paymentQueue?.registerHandler((method, event) => this.process(method, event));
+    const connection = { host: config.get<string>('REDIS_HOST', 'localhost'), port: Number(config.get<string>('REDIS_PORT', '6379')) };
+    this.queue = new Queue<PaymentJob>(OPLATI_PAYMENT_WEBHOOK_QUEUE, { connection });
+    this.worker = new Worker<PaymentJob>(OPLATI_PAYMENT_WEBHOOK_QUEUE, (job) => this.processWebhook(job), { connection });
+    this.worker.on('failed', (job, error) => this.logger.error(`Payment webhook job ${job?.id ?? 'unknown'} failed: ${error.message}`));
   }
 
-  async initiate(orderId: string, tenantId: string, tableId: string, method: PaymentMethodName) {
+  async onModuleInit(): Promise<void> { await this.worker.waitUntilReady(); }
+  async onModuleDestroy(): Promise<void> { await this.worker.close(); await this.queue.close(); }
+
+  async createOplatiPayment(tenantId: string, tableId: string, orderId: string, tipsAmountByn: number) {
     const db = this.prisma.forTenant(tenantId);
-    const order = await db.order.findFirst({ where: { id: orderId, tableId }, select: { id: true, isPaid: true, totalAmountByn: true, guestSessionId: true } });
-    if (!order) throw new NotFoundException('Order not found for this table');
-    if (order.isPaid) throw new ConflictException('Order is already paid');
-    const current = await db.payment.findFirst({ where: { orderId, status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
-    const provider = method === 'ERIP' ? 'ERIP_EPOS' : 'BEPAID';
-    if (current?.provider === provider) {
-      const stored = current.payload as Record<string, unknown> | null;
-      return this.paymentResponse(current, method, typeof stored?.['checkoutUrl'] === 'string' ? stored['checkoutUrl'] : undefined);
-    }
-    if (current) {
-      const previousMethod: PaymentMethodName = current.provider === 'BEPAID' ? 'BEPAID' : 'ERIP';
-      const transactionId = current.providerTransactionId;
-      if (!transactionId || !(await this.gateway.cancel(previousMethod, transactionId))) throw new ConflictException('Current payment cannot be cancelled');
-      const cancelled = await db.payment.updateMany({
-        where: { id: current.id, status: PaymentStatus.PENDING },
-        data: { status: PaymentStatus.FAILED },
-      });
-      if (!cancelled.count) throw new ConflictException('Current payment has already been processed');
-    }
+    const order = await db.order.findFirst({ where: { id: orderId, tableId, isPaid: false }, select: { id: true, totalAmountByn: true, tipsAmountByn: true } });
+    if (!order) throw new NotFoundException('Order not found');
+    const orderAmount = Number(order.totalAmountByn);
+    const totalWithTipsByn = Number((orderAmount + tipsAmountByn).toFixed(2));
+    if (!Number.isFinite(totalWithTipsByn) || totalWithTipsByn <= 0) throw new BadRequestException('Payment amount must be positive');
+
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { paymentCredentials: true } });
+    const stored = tenant?.paymentCredentials as Record<string, EncryptedCredentials> | null;
+    const encrypted = stored?.['oplati'];
+    const encryptionSecret = this.config.get<string>('PAYMENT_CREDENTIALS_SECRET');
+    if (!encrypted || !encryptionSecret) throw new ServiceUnavailableException('Оплати™ не настроен для арендатора');
+    let credentials: { gateway: string; merchantId: string };
+    try { credentials = decryptCredentials(encrypted, encryptionSecret); } catch { throw new ServiceUnavailableException('Не удалось прочитать реквизиты Оплати™'); }
+    const apiUrl = this.config.get<string>('OPLATI_API_URL');
+    const callbackUrl = this.config.get<string>('OPLATI_CALLBACK_URL');
+    if (!apiUrl || !callbackUrl) throw new ServiceUnavailableException('Не настроен API-контракт Оплати™');
+
     let payment;
     try {
-      payment = await db.payment.create({ data: { orderId, tenantId, amountByn: order.totalAmountByn, provider, status: PaymentStatus.PENDING } });
+      payment = await db.payment.create({ data: { orderId, tenantId, amountByn: orderAmount, tipsAmountByn, provider: 'OPLATI', status: PaymentStatus.PENDING }, select: { id: true } });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Another payment is being initiated');
+      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')) throw error;
+      // A partial unique index reserves one pending payment per order. Return its QR
+      // when ready; while the first request is still contacting Оплати™, ask retry.
+      const existing = await db.payment.findFirst({ where: { orderId, tenantId, provider: 'OPLATI', status: PaymentStatus.PENDING }, select: { id: true, amountByn: true, tipsAmountByn: true, payload: true } });
+      const payload = existing?.payload as { qrCodeData?: string; deepLink?: string; eripCode?: string } | null;
+      if (existing && payload?.qrCodeData && payload.deepLink) {
+        return { paymentId: existing.id, qrCodeData: payload.qrCodeData, deepLink: payload.deepLink, eripCode: payload.eripCode ?? null, totalWithTipsByn: Number(existing.amountByn) + Number(existing.tipsAmountByn) };
+      }
+      if (existing) throw new ConflictException('Создание платежа уже выполняется; повторите запрос позже');
       throw error;
     }
-    let external;
+
+    let response: Response;
     try {
-      external = await this.gateway.create(method, { paymentId: payment.id, tenantId, orderId, amount: Number(order.totalAmountByn) });
-    } catch (error) {
-      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
-      throw error;
+      response = await fetch(apiUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ merchantId: credentials.merchantId, orderId, amount: totalWithTipsByn, currency: 'BYN', callbackUrl }), signal: AbortSignal.timeout(10_000) });
+    } catch {
+      // The provider may have created the payment even when its response was
+      // lost. Keep the reservation pending so a retry cannot create another QR.
+      throw new ServiceUnavailableException('Оплати™ временно недоступен');
     }
-    const updated = await db.payment.update({ where: { id: payment.id }, data: { providerTransactionId: external.id, eripOrderNumber: external.eripOrderNumber, payload: external.checkoutUrl ? { checkoutUrl: external.checkoutUrl } : undefined } });
-    return this.paymentResponse(updated, method, external.checkoutUrl);
+    if (!response.ok) {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ отклонил создание платежа');
+    }
+    let provider: Partial<OplatiResponse>;
+    try {
+      provider = await response.json() as Partial<OplatiResponse>;
+    } catch {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ вернул некорректный ответ');
+    }
+    if (typeof provider.paymentId !== 'string' || typeof provider.qrCodeData !== 'string' || typeof provider.deepLink !== 'string') {
+      await db.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
+      throw new ServiceUnavailableException('Оплати™ вернул некорректный ответ');
+    }
+    await db.payment.update({ where: { id: payment.id }, data: { providerTransactionId: provider.paymentId, eripOrderNumber: provider.eripCode ?? null, payload: { qrCodeData: provider.qrCodeData, deepLink: provider.deepLink } } });
+    return { paymentId: payment.id, qrCodeData: provider.qrCodeData, deepLink: provider.deepLink, eripCode: provider.eripCode ?? null, totalWithTipsByn };
   }
 
-  async enqueue(method: PaymentMethodName, event: Record<string, unknown>) { await this.queue.add(method, event); }
+  async acceptWebhook(rawBody: Buffer | undefined, headers: Record<string, string | string[] | undefined>) {
+    const signatureHeader = this.config.get<string>('OPLATI_WEBHOOK_SIGNATURE_HEADER');
+    const secret = this.config.get<string>('OPLATI_WEBHOOK_SECRET');
+    const algorithm = this.config.get<string>('OPLATI_WEBHOOK_HMAC_ALGORITHM');
+    if (!rawBody || !signatureHeader || !secret || !algorithm) throw new ServiceUnavailableException('Верификация вебхука Оплати™ не настроена');
+    const value = headers[signatureHeader.toLowerCase()];
+    const signature = Array.isArray(value) ? value[0] : value;
+    if (typeof signature !== 'string' || !verifyOplatiSignature(rawBody, signature, secret, algorithm)) throw new UnauthorizedException('Недействительная подпись Оплати™');
+    let body: PaymentWebhook;
+    try { body = JSON.parse(rawBody.toString('utf8')) as PaymentWebhook; } catch { throw new BadRequestException('Некорректное тело вебхука'); }
+    if (!body || typeof body.providerTransactionId !== 'string' || typeof body.status !== 'string') throw new BadRequestException('В вебхуке отсутствуют обязательные поля');
+    const jobId = createOplatiWebhookJobId(body.eventId);
+    await this.queue.add('oplati-payment-update', { body }, { jobId, attempts: 20, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 1000, removeOnFail: false });
+    return { accepted: true };
+  }
+
+  async enqueue(method: PaymentMethodName, event: Record<string, unknown>) {
+    if (!this.paymentQueue) throw new ServiceUnavailableException('Payment webhook queue is unavailable');
+    await this.paymentQueue.add(method, event);
+  }
 
   async process(method: PaymentMethodName, event: Record<string, unknown>) {
     const paymentId = event['paymentId'];
@@ -58,20 +121,31 @@ export class PaymentsService {
     const outcome = typeof event['status'] === 'string' ? event['status'].toLowerCase() : '';
     if (typeof paymentId !== 'string' || typeof tenantId !== 'string' || !['confirmed', 'success', 'completed', 'failed', 'declined', 'error'].includes(outcome)) return;
     const payment = await this.prisma.forTenant(tenantId).payment.findUnique({ where: { id: paymentId }, include: { order: { select: { tableId: true, guestSessionId: true } } } });
-    if (!payment || payment.status !== PaymentStatus.PENDING || payment.provider !== (method === 'ERIP' ? 'ERIP_EPOS' : 'BEPAID')) return;
+    const provider = method === 'ERIP' ? 'ERIP_EPOS' : 'BEPAID';
+    if (!payment || payment.status !== PaymentStatus.PENDING || payment.provider !== provider) return;
     const completed = ['confirmed', 'success', 'completed'].includes(outcome);
-    const result = await this.prisma.transactionForTenant(payment.tenantId, async (tx) => {
-      const changed = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: completed ? PaymentStatus.COMPLETED : PaymentStatus.FAILED, payload: event as Prisma.InputJsonValue } });
-      if (!changed.count) return false;
-      if (completed) await tx.order.update({ where: { id_tenantId: { id: payment.orderId, tenantId: payment.tenantId } }, data: { isPaid: true, paidAt: new Date() } });
+    const changed = await this.prisma.transactionForTenant(tenantId, async (tx) => {
+      const result = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: completed ? PaymentStatus.COMPLETED : PaymentStatus.FAILED, payload: event as Prisma.InputJsonValue } });
+      if (!result.count) return false;
+      if (completed) await tx.order.update({ where: { id_tenantId: { id: payment.orderId, tenantId } }, data: { isPaid: true, paidAt: new Date() } });
       return true;
     });
-    if (!result) return;
-    const payload = { orderId: payment.orderId, paymentId: payment.id, status: completed ? 'COMPLETED' : 'FAILED', method };
-    this.socket.emitPaymentStatusChanged(payment.tenantId, payment.order.tableId, payment.order.guestSessionId, payload);
+    if (changed) this.socket?.emitPaymentStatusChanged(tenantId, payment.order.tableId, payment.order.guestSessionId, { orderId: payment.orderId, paymentId: payment.id, status: completed ? 'COMPLETED' : 'FAILED', method });
   }
 
-  private paymentResponse(payment: { id: string; eripOrderNumber: string | null }, method: PaymentMethodName, checkoutUrl?: string) {
-    return method === 'ERIP' ? { paymentId: payment.id, erip_order_number: payment.eripOrderNumber } : { paymentId: payment.id, checkoutUrl };
+  private async processWebhook(job: Job<PaymentJob>): Promise<void> {
+    const event = job.data.body;
+    if (event.status !== 'COMPLETED' && event.status !== 'SUCCESS') return;
+    const payment = await this.prisma.unscopedClient.payment.findFirst({ where: { provider: 'OPLATI', providerTransactionId: event.providerTransactionId }, select: { id: true, tenantId: true, orderId: true, status: true } });
+    if (!payment) throw new Error('Оплати™ webhook пока не сопоставлен с платежом; BullMQ повторит обработку');
+    if (payment.status !== PaymentStatus.PENDING) return;
+    const changed = await this.prisma.transactionForTenant(payment.tenantId, async (tx) => {
+      const orderUpdate = await tx.order.updateMany({ where: { id: payment.orderId, tenantId: payment.tenantId, isPaid: false }, data: { isPaid: true, paidAt: new Date() } });
+      if (orderUpdate.count !== 1) return false;
+      const updated = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.SUCCEEDED } });
+      if (updated.count !== 1) throw new Error('Payment status changed during webhook processing');
+      return true;
+    });
+    if (changed) this.gateway.emitOrderPaymentUpdated(payment.orderId, payment.id, 'COMPLETED');
   }
 }

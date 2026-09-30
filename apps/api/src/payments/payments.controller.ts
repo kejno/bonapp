@@ -1,4 +1,4 @@
-import { Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Headers, Param, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { GuestSessionGuard, QrTokenRequest } from '../guest-session/guest-session.guard';
@@ -7,14 +7,26 @@ import { PaymentsService } from './payments.service';
 @Controller('guest/orders/:orderId/pay')
 @SkipTenantGuard()
 @UseGuards(GuestSessionGuard)
-export class PaymentsController {
+export class GuestOrderPaymentsController {
   constructor(private readonly payments: PaymentsService) {}
-  @Post('erip') erip(@Req() request: Request, @Param('orderId') orderId: string) {
-    const guest = request as QrTokenRequest;
-    return this.payments.initiate(orderId, guest.tenantId, guest.tableId, 'ERIP');
+
+  @Post('oplati')
+  createOplatiPayment(@Req() req: Request, @Param('orderId') orderId: string, @Body() body: unknown) {
+    const guest = req as QrTokenRequest;
+    const value = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['tipsAmountByn'] : undefined;
+    const tipsAmountByn = value === undefined ? 0 : Number(value);
+    if (!Number.isFinite(tipsAmountByn) || tipsAmountByn < 0) throw new BadRequestException('Invalid tips amount');
+    return this.payments.createOplatiPayment(guest.tenantId, guest.tableId, orderId, tipsAmountByn);
   }
-  @Post('bepaid') bepaid(@Req() request: Request, @Param('orderId') orderId: string) {
-    const guest = request as QrTokenRequest;
-    return this.payments.initiate(orderId, guest.tenantId, guest.tableId, 'BEPAID');
+}
+
+@Controller('webhooks/oplati')
+@SkipTenantGuard()
+export class OplatiWebhookController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Post()
+  receive(@Req() req: Request & { rawBody?: Buffer }, @Headers() headers: Record<string, string | string[] | undefined>) {
+    return this.payments.acceptWebhook(req.rawBody, headers);
   }
 }

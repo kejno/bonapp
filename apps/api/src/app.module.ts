@@ -17,6 +17,7 @@ import { HallsModule } from './halls/halls.module';
 import { IikoModule } from './integrations/iiko/iiko.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PublicRegistrationModule } from './public-registration/public-registration.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -27,7 +28,6 @@ import { TenantGuard } from './tenant/tenant.guard';
 import { TenantModule } from './tenant/tenant.module';
 import { WaiterCallModule } from './waiter-call/waiter-call.module';
 import { WelcomeModule } from './welcome/welcome.module';
-import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -40,6 +40,7 @@ import { PaymentsModule } from './payments/payments.module';
     IikoModule,
     MenuModule,
     OrdersModule,
+    PaymentsModule,
     OnboardingModule,
     TenantModule,
     StaffAuthModule,
@@ -49,7 +50,6 @@ import { PaymentsModule } from './payments/payments.module';
     PublicRegistrationModule,
     WaiterCallModule,
     WelcomeModule,
-    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [

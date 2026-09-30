@@ -56,14 +56,15 @@ describe('BNP-529 failed payment webhook through BullMQ', () => {
     const socket = {
       emitPaymentStatusChanged: jest.fn(() => processed.resolve()),
     };
-    const config = { get: (key: string) => key === 'REDIS_URL' ? redisUrl : undefined } as ConfigService;
+    const redisPort = Number(new URL(redisUrl).port);
+    const config = { get: (key: string, fallback?: string) => key === 'REDIS_URL' ? redisUrl : key === 'REDIS_HOST' ? '127.0.0.1' : key === 'REDIS_PORT' ? String(redisPort) : fallback } as ConfigService;
     const queue = new PaymentQueue(config);
     let cleanupQueue: Queue | undefined;
 
     try {
       queue.registerHandler(() => Promise.resolve());
       queue.onModuleInit();
-      const service = new PaymentsService(prisma as never, {} as never, queue, socket as never);
+      const service = new PaymentsService(prisma as never, config, {} as never, queue, socket as never);
       const rawBody = Buffer.from(JSON.stringify(event));
       const signature = createHmac('sha256', 'secret').update(rawBody).digest('hex');
       const controller = new WebhooksController(service, { get: () => 'secret' } as never);

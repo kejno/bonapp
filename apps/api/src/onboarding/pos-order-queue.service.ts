@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job, Queue, Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildIikoOrderPayload, buildRKeeperOrderPayload } from './pos-order';
 import { PosOrderDispatcher } from './pos-order-dispatcher';
@@ -27,7 +27,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       port: Number(config.get<string>('REDIS_PORT', '6379')),
     };
     this.queue = new Queue<PosOrderJob>('pos-order-submit', { connection });
-    this.worker = new Worker<PosOrderJob>('pos-order-submit', (job) => this.process(job), {
+    this.worker = new Worker<PosOrderJob>('pos-order-submit', (job) => this.processOrder(job.data.tenantId, job.data.orderId), {
       connection,
       concurrency: 5,
     });
@@ -88,8 +88,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     }
   }
 
-  private async process(job: Job<PosOrderJob>): Promise<void> {
-    const { tenantId, orderId } = job.data;
+  async processOrder(tenantId: string, orderId: string): Promise<void> {
     const db = this.prisma.forTenant(tenantId);
     const [tenant, order] = await Promise.all([
       db.tenant.findUnique({ where: { id: tenantId }, select: {
@@ -111,7 +110,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
       }),
     ]);
     if (!tenant?.posUrl || !tenant.posType || tenant.posType === 'none' ||
-      (tenant.posType === 'iiko' ? !tenant.posCredentials : !tenant.posApiKey)) return;
+      (tenant.posType === 'iiko' || tenant.posType === 'r_keeper' ? !tenant.posCredentials && !tenant.posApiKey : true)) return;
     const posUrl = tenant.posUrl;
     if (!order) throw new Error('Заказ не найден');
     if (order.posOrderId || order.posOrderSubmittedAt || !isPosOrderEligible(order.status, order.isPaid)) return;
@@ -138,7 +137,7 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
 
     const externalId = await submitClaimedPosOrder(this.prisma, tenantId, orderId, async () => {
       if (tenant.posType === 'r_keeper') {
-        return requestPosOrder(new URL(posUrl), tenant.posApiKey!, this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
+        return requestPosOrder(new URL(posUrl), this.getRKeeperApiKey(tenant.posCredentials, tenant.posApiKey), this.allowedPosHosts, 15000, buildRKeeperOrderPayload(orderData));
       }
       const credentials = this.getIikoCredentials(tenant.posCredentials);
       return requestIikoOrder(new URL(posUrl), {
@@ -156,5 +155,15 @@ export class PosOrderQueueService extends PosOrderDispatcher implements OnModule
     const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
     if (!secret) throw new Error('PAYMENT_CREDENTIALS_SECRET is not configured');
     return decryptCredentials(encrypted, secret);
+  }
+
+  private getRKeeperApiKey(encrypted: unknown, legacyApiKey: string | null): string {
+    if (isEncryptedCredentials(encrypted)) {
+      const secret = process.env.PAYMENT_CREDENTIALS_SECRET;
+      if (!secret) throw new Error('POS credentials encryption is not configured');
+      return decryptCredentials<{ apiKey: string }>(encrypted, secret).apiKey;
+    }
+    if (legacyApiKey) return legacyApiKey;
+    throw new Error('Зашифрованные настройки r_keeper некорректны');
   }
 }

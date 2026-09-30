@@ -4,6 +4,8 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { PaymentMethodName } from './payment-gateway';
 
+export const PROVIDER_PAYMENT_WEBHOOK_QUEUE = 'provider-payment-webhooks';
+
 @Injectable()
 export class PaymentQueue implements OnModuleInit, OnModuleDestroy {
   private connection?: Redis;
@@ -17,8 +19,8 @@ export class PaymentQueue implements OnModuleInit, OnModuleDestroy {
     const url = this.config.get<string>('REDIS_URL');
     if (!url) return;
     this.connection = new Redis(url, { maxRetriesPerRequest: null });
-    this.queue = new Queue('payment-webhooks', { connection: this.connection });
-    this.worker = new Worker('payment-webhooks', async (job) => {
+    this.queue = new Queue(PROVIDER_PAYMENT_WEBHOOK_QUEUE, { connection: this.connection });
+    this.worker = new Worker(PROVIDER_PAYMENT_WEBHOOK_QUEUE, async (job) => {
       if (!this.handler) throw new Error('Payment webhook handler is not registered');
       const data = job.data as { method: PaymentMethodName; event: Record<string, unknown> };
       await this.handler(data.method, data.event);

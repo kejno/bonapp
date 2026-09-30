@@ -250,6 +250,10 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     this.io.to(`tenant_${tenantId}_kitchen`).emit(event, order);
   }
 
+  emitOrderPaymentUpdated(orderId: string, paymentId: string, status: 'COMPLETED'): void {
+    this.io.to(`order_${orderId}`).emit('order.payment.updated.v1', { version: 1, orderId, paymentId, status });
+  }
+
   emitServiceModeChanged(tenantId: string, serviceMode: ServiceMode): void {
     const event = { serviceMode };
     this.io.to(`tenant_${tenantId}_kitchen`).emit('tenant:service_mode_changed', event);

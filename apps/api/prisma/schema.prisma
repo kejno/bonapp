@@ -315,6 +315,7 @@ model Payment {
   payload               Json?
   createdAt             DateTime      @default(now()) @map("created_at")
 
+  @@unique([provider, providerTransactionId], map: "payments_provider_transaction_id_key")
   @@map("payments")
 }
 

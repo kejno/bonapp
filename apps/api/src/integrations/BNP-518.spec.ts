@@ -1,5 +1,21 @@
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { OnboardingController } from '../onboarding/onboarding.controller';
 import * as posNetwork from '../onboarding/pos-network';
+
+let mockWorkerProcessor: ((job: { data: { tenantId: string; items?: unknown[] }; updateProgress: jest.Mock }) => Promise<void>) | undefined;
+
+jest.mock('bullmq', () => ({
+  Queue: jest.fn().mockImplementation(() => ({
+    add: jest.fn(async (_name: string, data: { tenantId: string; items?: unknown[] }) => {
+      await mockWorkerProcessor?.({ data, updateProgress: jest.fn() });
+    }),
+    close: jest.fn(),
+  })),
+  Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor) => {
+    mockWorkerProcessor = processor;
+    return { on: jest.fn(), close: jest.fn(), waitUntilReady: jest.fn() };
+  }),
+}));
 
 jest.mock('../onboarding/pos-network', () => ({
   requestPosMenu: jest.fn(),
@@ -34,32 +50,43 @@ describe('BNP-518: r_keeper menu import', () => {
       findMany: jest.fn(() => [...items.values()].map(({ id, posItemId }) => ({ id, posItemId }))),
       updateMany: jest.fn(),
     };
-    const tenantUpdate = jest.fn<void, [unknown]>();
+    const tenantUpdate = jest.fn<Promise<void>, [unknown]>().mockImplementation(() => Promise.resolve());
+    let state: Record<string, unknown> = { status: 'idle', imported: 0 };
+    const tenantRecord = {
+      posType: 'r_keeper', posUrl: 'https://keeper.example', posApiKey: 'secret',
+      posImportState: state,
+    };
+    const tenantDb = {
+      findUnique: jest.fn(() => Promise.resolve({ ...tenantRecord, posImportState: state })),
+      update: tenantUpdate,
+      updateMany: jest.fn(({ data }: { data: { posImportState: Record<string, unknown> } }) => {
+        state = data.posImportState;
+        return { count: 1 };
+      }),
+    };
+    tenantUpdate.mockImplementation((args: unknown) => {
+      state = (args as { data: { posImportState: Record<string, unknown> } }).data.posImportState;
+      return Promise.resolve();
+    });
     const prisma = {
+      db: { tenant: tenantDb },
       forTenant: () => ({
-        tenant: { findUnique: jest.fn().mockResolvedValue({
-          posType: 'r_keeper', posUrl: 'https://keeper.example', posApiKey: 'secret',
-          posImportState: { imported: 0 },
-        }), update: tenantUpdate },
+        tenant: tenantDb,
         menuCategory,
         menuItem,
       }),
       transactionForTenant: (_tenantId: string, operation: (tx: unknown) => Promise<unknown>) => operation({ menuCategory, menuItem }),
     };
-    const service = Object.create(OnboardingService.prototype) as OnboardingService;
-    Object.defineProperties(service, {
-      prisma: { value: prisma },
-      allowedPosHosts: { value: 'keeper.example' },
-    });
+    const service = new OnboardingService(prisma as never, { getTenantId: () => 'tenant-518' } as never,
+      { get: (key: string, fallback: string) => key === 'POS_ALLOWED_HOSTS' ? 'keeper.example' : fallback } as never);
+    const controller = new OnboardingController(service);
     (posNetwork.requestPosMenu as jest.Mock).mockResolvedValue([
       { id: 'rk-1', name: 'Обновлённое блюдо', price: 12.5, categoryId: 'rk-cat-1', categoryName: 'Супы' },
       { id: 'rk-2', name: 'Новое блюдо', price: 8, categoryId: 'rk-cat-1', categoryName: 'Супы' },
     ]);
-    const job = { data: { tenantId: 'tenant-518' }, updateProgress: jest.fn() };
-
-    await (service as unknown as {
-      processImport: (job: { data: { tenantId: string }; updateProgress: jest.Mock }) => Promise<void>;
-    }).processImport(job);
+    const accepted = await controller.importMenu();
+    expect(accepted.jobId).toMatch(/^menu-import-tenant-518-/);
+    expect(await controller.importStatus()).toMatchObject({ status: 'completed', imported: 2 });
 
     expect(posNetwork.requestPosMenu).toHaveBeenCalledWith(new URL('https://keeper.example'), 'secret', 'keeper.example', 15000);
     expect(menuCategory.create).toHaveBeenCalledTimes(1);

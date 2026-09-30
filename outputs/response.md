@@ -1,32 +1,31 @@
-# Доработка PR #223 — BNP-530
+# Повторная проверка PR #210 — BNP-157
 
 ## Issues/Notes
 
-- Устранен блокирующий регресс: сохраненные iiko-интеграции в `posIntegrationConfig` снова запускают прежнюю очередь `iiko-sync-menu`, а endpoint статуса продолжает читать состояние этого импорта.
-- Для конфигураций без legacy iiko-записи маршрут использует onboarding-импорт; это сохраняет запуск r_keeper и новых POS-конфигураций.
-- Старый ответ `{ jobId, status: 'PENDING' }` сохранен для legacy iiko-клиентов.
-- В `pr_discussions_raw.json` оба неразрешенных обсуждения содержат `rootCommentId: null` и `threadId: null`. Поэтому нельзя подготовить адресные GitHub-ответы с обязательными идентификаторами; `review_replies.json` оставлен пустым. В контексте отсутствуют `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt` и `ticket.md`; сведения о задаче взяты из `request.md` и `bug_001_description.md`.
+- **BLOCKING: не подтверждён контракт Оплати™.** Цель тикета включает создание QR-платежа через API провайдера и обработку webhook. В описании PR указано, что официальные endpoint, форматы запроса/ответа и webhook, параметры HMAC и sandbox-реквизиты отсутствуют. Совместимость реализации с реальным сервисом поэтому не подтверждена. Для исправления нужен официальный контракт и тестовые реквизиты от владельца интеграции; подстановка предположительных форматов небезопасна.
+- Последняя сводка review относится к HEAD `88191b70ab4fc9ccdb5ac879631a9b83be6ebea2` и сообщает о том же блокере без новых замечаний к текущему diff.
+- `ci_failures.md`, `ci_failures_full.log`, `pr_files.txt`, `instruction.md`, `merge_conflicts.md` и отдельный `ticket.md` не приложены. Проверил доступный контекст: `request.md`, `pr_info.md`, `pr_diff.txt`, `pr_discussions.md`, `pr_discussions_raw.json`, `comments.md` и `existing_questions.json`.
+- В `pr_discussions_raw.json` нет открытых inline-тредов с `threadId` и `rootCommentId`; `outputs/review_replies.json` содержит `{ "replies": [] }`.
 
 ## Approach
 
-- Контроллер сначала пробует legacy iiko-сервис. При `BadRequestException` от отсутствующей старой конфигурации передает запуск onboarding-сервису; остальные ошибки не маскируются fallback-логикой.
-- Регрессионные тесты проверяют сохранение ответа старого API и запуск onboarding-пути при отсутствии legacy-конфигурации.
-- Проверено существующее покрытие BNP-518: оно проверяет сохранение `posItemId` и категории POS, обновление существующего блюда и отсутствие дублирования при импорте r_keeper.
+- Сверил требования тикета, описание PR, diff и последнюю сводку review.
+- Код интеграции и тесты не менял: без официальной спецификации нельзя написать достоверный тест совместимости или обоснованно выбрать формат взаимодействия с провайдером.
+- CodeGraph недоступен. Для изменения очередей проверены producers/consumers поиском по платёжному модулю и существующим `payment-queue.spec.ts`.
+- Проверка миграций показывает две новые миграции; существующие миграции PR не меняет.
 
 ## Files Modified
 
-- `apps/api/src/onboarding/pos-sync.controller.ts` — восстановлен совместимый запуск старой iiko-синхронизации с fallback на onboarding.
-- `apps/api/src/onboarding/pos-sync.controller.spec.ts` — добавлены регрессионные проверки для legacy-ответа и fallback.
-- `outputs/response.md` и `outputs/review_replies.json` — отчет о доработке и статус адресных ответов.
+- `outputs/response.md` — зафиксированы актуальные замечания и результаты проверок.
 
 ## Test Coverage
 
-- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнена проверка списка измененных файлов PR.
-- `git status --short` — подтверждены изменения только в контроллере и его тесте.
-- RED: `npx jest --runInBand src/onboarding/pos-sync.controller.spec.ts` — новая проверка legacy-ответа упала до исправления.
-- GREEN: `npx jest --runInBand src/onboarding/pos-sync.controller.spec.ts` — пройдено, 3 теста.
-- `npx eslint apps/api/src/onboarding/pos-sync.controller.ts apps/api/src/onboarding/pos-sync.controller.spec.ts` — пройдено.
-- `npm run typecheck` — пройдено для всех четырех workspace.
-- `npm test` — пройдено: API 100 наборов / 646 тестов, guest-web 10 / 33, admin-web 64 / 126; сборки workspace и проверка design tokens также прошли.
+- `git diff --diff-filter=ACM --name-only origin/main...HEAD` — выполнено; список файлов PR просмотрен.
+- `git status --short` — выполнено; до этого отчёта рабочее дерево было чистым.
+- `npx eslint` — не запускался: в этом раунде изменён только Markdown-файл отчёта, для него ESLint неприменим.
+- `npm run typecheck` — пройдено во всех 4 workspace.
+- `npm test` — пройдено: API — 103 набора / 650 тестов, guest-web — 10 файлов / 33 теста, admin-web — 64 файла / 126 тестов; сборки workspace и проверка design tokens также прошли. Jest сообщил о worker-процессе, завершённом принудительно после успешных тестов; сборка admin-web выдала предупреждение о чанке более 500 КБ.
 - `git diff --check` — пройдено.
-- Изменения не затрагивают схему, миграции, глобальные провайдеры или публичные сигнатуры; CodeGraph недоступен. Проверены вызовы маршрута и сервисов поиском `rg` по `apps/api/src` и `apps/api/test`.
+- `git diff --name-status origin/main...HEAD -- '*/migrations/*'` — выполнено: добавлены две новые миграции, существующие миграции не изменены.
+- Blast-radius очередей: проверены producers и consumers платёжного модуля поиском по исходникам; `payment-queue.spec.ts` проверяет раздельное использование очередей Оплати™, ERIP и bePaid.
+- CI-логи отсутствуют во входных материалах, поэтому независимо проверить опубликованные CI-сбои нельзя.
