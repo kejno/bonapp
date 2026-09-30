@@ -1,7 +1,0 @@
-{
-  "status": "passed",
-  "passed": 8,
-  "failed": 0,
-  "skipped": 0,
-  "summary": "Пройдены UI-тесты PayPage (4) и API-тесты BNP-533/BNP-534/BNP-535/BNP-536 (4)."
-}
