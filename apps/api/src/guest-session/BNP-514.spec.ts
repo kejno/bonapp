@@ -44,6 +44,19 @@ describe('BNP-514 bePaid credential confidentiality', () => {
     expect(serialized).not.toContain(publicKey);
   };
 
+  const captureConsoleOutput = () => {
+    const output: string[] = [];
+    const spies = (['debug', 'error', 'info', 'log', 'warn'] as const).map((method) =>
+      jest.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        output.push(args.map((arg) => String(arg)).join(' '));
+      }),
+    );
+    return {
+      output,
+      restore: () => spies.forEach((spy) => spy.mockRestore()),
+    };
+  };
+
   beforeEach(() => {
     process.env.PAYMENT_CREDENTIALS_SECRET = encryptionKey;
     jest.clearAllMocks();
@@ -64,15 +77,21 @@ describe('BNP-514 bePaid credential confidentiality', () => {
   });
 
   it('keeps credentials out of the successful payment API response and stored payment data', async () => {
-    const response = await service.createCardPayment('order-1', 'tenant-1', 'table-1');
+    const logs = captureConsoleOutput();
+    try {
+      const response = await service.createCardPayment('order-1', 'tenant-1', 'table-1');
 
-    expect(response).toEqual({ redirectUrl: 'https://checkout.bepaid.by/test' });
-    expectSafe(response);
-    expectSafe(paymentCreate.mock.calls);
-    expect(createCheckout).toHaveBeenCalledWith(expect.objectContaining({
-      shopId: 'private-shop-id', secret: gatewaySecret, amount: 1250,
-      paymentId: 'payment-1', orderId: 'order-1', test: true,
-    }));
+      expect(response).toEqual({ redirectUrl: 'https://checkout.bepaid.by/test' });
+      expectSafe(response);
+      expectSafe(paymentCreate.mock.calls);
+      expectSafe(logs.output);
+      expect(createCheckout).toHaveBeenCalledWith(expect.objectContaining({
+        shopId: 'private-shop-id', secret: gatewaySecret, amount: 1250,
+        paymentId: 'payment-1', orderId: 'order-1', test: true,
+      }));
+    } finally {
+      logs.restore();
+    }
   });
 
   it('returns a guest-safe checkout error without credentials', async () => {
@@ -90,6 +109,7 @@ describe('BNP-514 bePaid credential confidentiality', () => {
       { enqueue: jest.fn() },
       new BepaidClient(),
     );
+    const logs = captureConsoleOutput();
 
     try {
       let guestMessage = '';
@@ -102,11 +122,13 @@ describe('BNP-514 bePaid credential confidentiality', () => {
 
       expect(guestMessage).toBe('Не удалось создать платёж. Попробуйте ещё раз');
       expectSafe(guestMessage);
+      expectSafe(logs.output);
       expect(paymentUpdate).toHaveBeenCalledWith({
         where: { id: 'payment-1' }, data: { status: 'FAILED' },
       });
     } finally {
       jest.restoreAllMocks();
+      logs.restore();
       if (previousGuestUrl === undefined) delete process.env.GUEST_WEB_URL;
       else process.env.GUEST_WEB_URL = previousGuestUrl;
       if (previousApiUrl === undefined) delete process.env.API_PUBLIC_URL;
