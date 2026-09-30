@@ -2,14 +2,24 @@ import { FiscalizationService } from './fiscalization.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptCredentials } from '../tenant/payment-credentials';
 
-let mockWorkerProcessor: ((job: { data: { tenantId: string; paymentId: string } }) => Promise<void>) | undefined;
-let mockWorkerOptions: { settings: { backoffStrategy: (attemptsMade: number, type: string) => number } } | undefined;
+type JobData = { tenantId: string; paymentId: string };
+type MockJob = { data: JobData; attemptsMade: number; opts: { attempts?: number } };
+type QueueOptions = { attempts: number; backoff: { type: string; delay: number } };
+type QueueAdd = (name: string, data: JobData, options: QueueOptions) => Promise<unknown>;
+type MockWorkerOptions = { settings: { backoffStrategy: (attemptsMade: number, type: string) => number } };
+
+let mockWorkerProcessor: ((job: { data: JobData }) => Promise<void>) | undefined;
+let mockWorkerOptions: MockWorkerOptions | undefined;
 let mockFailedHandler: ((job: MockJob | undefined, error: Error) => void) | undefined;
-let mockQueueAdd: jest.Mock;
-type MockJob = { data: { tenantId: string; paymentId: string }; attemptsMade: number; opts: { attempts?: number } };
+let mockQueueAdd: jest.MockedFunction<QueueAdd>;
+let mockQueueCompletion: Promise<void> | undefined;
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ getJob: jest.fn(), add: mockQueueAdd, close: jest.fn() })),
+  Queue: jest.fn().mockImplementation(() => ({
+    getJob: jest.fn(),
+    add: (...args: [string, JobData, { attempts: number; backoff: { type: string; delay: number } }]) => mockQueueAdd(...args),
+    close: jest.fn(),
+  })),
   Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor, options: typeof mockWorkerOptions) => {
     mockWorkerProcessor = processor;
     mockWorkerOptions = options;
@@ -18,7 +28,36 @@ jest.mock('bullmq', () => ({
 }));
 
 describe('BNP-538: исчерпание попыток фискализации', () => {
-  it('повторно вызывает СКНО три раза с настройками backoff и сохраняет fiscal_failed без номера чека', async () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockQueueCompletion = undefined;
+    mockQueueAdd = jest.fn((_name: string, data: JobData, options: QueueOptions) => {
+      mockQueueCompletion = new Promise<void>((resolve) => {
+        const runAttempt = async (attemptsMade: number): Promise<void> => {
+          try {
+            await mockWorkerProcessor?.({ data });
+            resolve();
+          } catch (error) {
+            if (attemptsMade < options.attempts) {
+              const delay = mockWorkerOptions?.settings.backoffStrategy(attemptsMade, options.backoff.type) ?? options.backoff.delay;
+              setTimeout(() => { void runAttempt(attemptsMade + 1); }, delay);
+              return;
+            }
+            mockFailedHandler?.({ data, attemptsMade, opts: { attempts: options.attempts } }, error as Error);
+            resolve();
+          }
+        };
+        void runAttempt(1);
+      });
+      return Promise.resolve({});
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('обрабатывает поставленную задачу с тремя ошибками, backoff 5/30 секунд и помечает платёж без номера чека', async () => {
     const paymentUpdate = jest.fn().mockResolvedValue({ count: 1 });
     const payment = {
       id: 'payment-1',
@@ -37,7 +76,6 @@ describe('BNP-538: исчерпание попыток фискализации'
       },
     } as unknown as PrismaService;
     const skno = { issueReceipt: jest.fn().mockRejectedValue(new Error('SKNO unavailable')) };
-    mockQueueAdd = jest.fn().mockResolvedValue({});
     const service = new FiscalizationService(prisma, skno);
     const previousSecret = process.env.PAYMENT_CREDENTIALS_SECRET;
     process.env.PAYMENT_CREDENTIALS_SECRET = 'test-secret';
@@ -45,17 +83,24 @@ describe('BNP-538: исчерпание попыток фискализации'
 
     try {
       await service.enqueue('tenant-1', 'payment-1');
-      expect(mockQueueAdd).toHaveBeenCalledWith('fiscalize-payment', { tenantId: 'tenant-1', paymentId: 'payment-1' }, expect.objectContaining({ attempts: 3, backoff: { type: 'fiscalization', delay: 5000 } }));
-      expect(mockWorkerOptions?.settings.backoffStrategy(1, 'fiscalization')).toBe(5000);
-      expect(mockWorkerOptions?.settings.backoffStrategy(2, 'fiscalization')).toBe(30000);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(skno.issueReceipt).toHaveBeenCalledTimes(1);
 
-      const jobData = { tenantId: 'tenant-1', paymentId: 'payment-1' };
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        await expect(mockWorkerProcessor?.({ data: jobData })).rejects.toThrow('SKNO unavailable');
-        if (attempt === 3) mockFailedHandler?.({ data: jobData, attemptsMade: attempt, opts: { attempts: 3 } }, new Error('SKNO unavailable'));
-      }
-      await new Promise((resolve) => setImmediate(resolve));
+      await jest.advanceTimersByTimeAsync(4999);
+      expect(skno.issueReceipt).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(skno.issueReceipt).toHaveBeenCalledTimes(2);
 
+      await jest.advanceTimersByTimeAsync(29999);
+      expect(skno.issueReceipt).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1);
+      await mockQueueCompletion;
+      await Promise.resolve();
+
+      expect(mockQueueAdd).toHaveBeenCalledWith('fiscalize-payment', { tenantId: 'tenant-1', paymentId: 'payment-1' }, expect.objectContaining({
+        attempts: 3,
+        backoff: { type: 'fiscalization', delay: 5000 },
+      }));
       expect(skno.issueReceipt).toHaveBeenCalledTimes(3);
       expect(paymentUpdate).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 'payment-1', fiscalReceiptNumber: null },
