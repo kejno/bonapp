@@ -31,12 +31,15 @@ export class FiscalizationService implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy() { await this.worker.close(); await this.queue.close(); }
 
   async enqueue(tenantId: string, paymentId: string): Promise<void> {
+    const jobId = `fiscalize-${tenantId}-${paymentId}`;
+    const existingJob = await this.queue.getJob(jobId);
+    if (existingJob && await existingJob.getState() === 'failed') await existingJob.remove();
     await this.prisma.transactionForTenant(tenantId, (tx) => tx.payment.updateMany({
       where: { id: paymentId, tenantId, status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED] } },
       data: { fiscalizationStatus: FiscalizationStatus.PENDING },
     }));
     await this.queue.add(QUEUE_NAME, { tenantId, paymentId }, {
-      jobId: `fiscalize-${tenantId}-${paymentId}`,
+      jobId,
       attempts: 3,
       backoff: { type: 'fiscalization', delay: 5000 },
       removeOnComplete: true,

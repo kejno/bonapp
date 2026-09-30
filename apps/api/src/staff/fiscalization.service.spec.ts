@@ -8,9 +8,11 @@ let mockWorkerProcessor: ((job: { data: { tenantId: string; paymentId: string } 
 let mockWorkerOptions: unknown;
 type MockJob = { data: { tenantId: string; paymentId: string }; attemptsMade: number; opts: { attempts?: number } };
 let mockFailedHandler: ((job: MockJob | undefined, error: Error) => void) | undefined;
+let mockQueueJob: { getState: jest.Mock<Promise<string>>; remove: jest.Mock<Promise<void>> } | undefined;
+let mockQueueAdd: jest.Mock;
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ add: jest.fn(), close: jest.fn() })),
+  Queue: jest.fn().mockImplementation(() => ({ getJob: jest.fn().mockImplementation(() => Promise.resolve(mockQueueJob)), add: mockQueueAdd, close: jest.fn() })),
   Worker: jest.fn().mockImplementation((_name: string, processor: typeof mockWorkerProcessor, options: unknown) => {
     mockWorkerProcessor = processor;
     mockWorkerOptions = options;
@@ -19,6 +21,11 @@ jest.mock('bullmq', () => ({
 }));
 
 describe('FiscalizationService', () => {
+  beforeEach(() => {
+    mockQueueJob = undefined;
+    mockQueueAdd = jest.fn().mockResolvedValue({});
+  });
+
   it('queues fiscalization with three attempts and 5/30 second retry delays', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const prisma = { transactionForTenant: jest.fn((_tenantId: string, operation: (tx: unknown) => unknown) => Promise.resolve(operation({ payment: { updateMany } })) ) } as unknown as PrismaService;
@@ -37,6 +44,20 @@ describe('FiscalizationService', () => {
     expect(jobOptions).toEqual(expect.objectContaining({ attempts: 3, backoff: { type: 'fiscalization', delay: 5000 } }));
     const options = mockWorkerOptions as { settings: { backoffStrategy: (attemptsMade: number, type: string) => number } };
     expect([options.settings.backoffStrategy(1, 'fiscalization'), options.settings.backoffStrategy(2, 'fiscalization')]).toEqual([5000, 30000]);
+  });
+
+  it('removes a previously failed BullMQ job before re-enqueueing its payment', async () => {
+    const failedJob = { getState: jest.fn().mockResolvedValue('failed'), remove: jest.fn().mockResolvedValue(undefined) };
+    mockQueueJob = failedJob;
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = { transactionForTenant: jest.fn((_tenantId: string, operation: (tx: unknown) => unknown) => Promise.resolve(operation({ payment: { updateMany } }))) } as unknown as PrismaService;
+    const service = new FiscalizationService(prisma, { issueReceipt: jest.fn() });
+
+    await service.enqueue('tenant-1', 'payment-1');
+
+    expect(failedJob.remove).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledWith('fiscalize-payment', { tenantId: 'tenant-1', paymentId: 'payment-1' }, expect.objectContaining({ jobId: 'fiscalize-tenant-1-payment-1' }));
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { fiscalizationStatus: 'PENDING' } }));
   });
 
   it('stores the receipt number after a successful payment is fiscalized', async () => {
