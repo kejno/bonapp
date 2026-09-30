@@ -1,16 +1,26 @@
-### Root Cause
-- `AnalyticsService.tips` увеличивал `transactionsCount` для каждого завершённого платежа в периоде, включая платежи с нулевыми чаевыми.
-- При таких платежах сумма чаевых оставалась верной, но API возвращал завышенное количество транзакций по официанту.
+h2. Issues/Notes
 
-### Fix
-- `apps/api/src/analytics/analytics.service.ts`: пропускает платежи с нулевыми чаевыми при построении агрегатов.
-- `apps/api/src/analytics/analytics.service.spec.ts`: добавлен платеж без чаевых в сценарий группировки.
+* Устранено замечание о недостаточном покрытии BNP-535: уже добавленный `PayPage.test.tsx` проверяет безопасное сообщение гостю, повтор через интерфейс и отсутствие тестового секрета в DOM и консольных логах.
+* Ветка содержала старые `apps/api/src/payments/BNP-534.spec.ts` и `BNP-535.spec.ts`, ссылающиеся на удалённый `PaymentsService`. Сценарии перенесены в `apps/api/src/guest-session/`; старые дубли удалены при разрешении конфликта с `origin/main`.
+* Открытых адресных тредов нет: треды 1–3 помечены разрешёнными; у остальных замечаний в `pr_discussions_raw.json` отсутствуют идентификаторы. `outputs/review_replies.json` оставлен пустым.
+* Отдельные CI-файлы во входных материалах отсутствуют.
 
-### Test Coverage
-- `BNP-541.e2e-spec.ts` — PASSED; до исправления падал на `transactionsCount` (2 вместо 1).
-- Unit-тест аналитики — PASSED (2 теста).
-- Полный API unit-набор — PASSED (103 набора, 653 теста).
-- Полный API e2e-набор — не завершён: отсутствует `DATABASE_URL`, недоступен образ MinIO, есть несвязанные таймауты/ошибки.
+h2. Approach
 
-### Notes
-- Во время связанного e2e-теста NestJS также вывел ошибку восстановления POS-очереди из-за отсутствующего tenant context; сам тест прошёл.
+* Слил `origin/main` и разрешил конфликты, сохранив актуальные BNP-534/BNP-535 тесты в `guest-session` и отчёт этой задачи.
+* Проверил все замечания PR-wide и соответствующее покрытие в UI и API.
+* Запустил focused-тесты guest-web и API для BNP-534/BNP-535; оба запуска завершились успешно.
+
+h2. Files Modified
+
+* `apps/api/src/guest-session/BNP-534.spec.ts` — проверка повторного использования активного запроса ЕРИП.
+* `apps/api/src/guest-session/BNP-535.spec.ts` — проверка безопасного сбоя, состояния платежа, серверных логов и повторной попытки.
+* `apps/guest-web/src/PayPage.test.tsx` — проверка сообщения, повтора через интерфейс и отсутствия секрета.
+* `outputs/response.md` — результат переработки и разрешение конфликта.
+* `outputs/pr_body.md`, `outputs/test_automation_result.json`, `outputs/review_replies.json` — PR-описание, результат и список адресных ответов.
+
+h2. Test Coverage
+
+* `npm run test -w apps/guest-web -- PayPage.test.tsx` — пройдено: 1 набор, 4 теста.
+* `npm run test -w apps/api -- BNP-533 BNP-534 BNP-535 BNP-536` — пройдено: 4 набора, 4 теста.
+* `git diff --check` — пройдено.
