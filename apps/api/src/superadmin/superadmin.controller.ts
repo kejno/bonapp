@@ -18,6 +18,8 @@ export class SuperadminController {
 
   @Get('overview') overview() { return this.service.overview(); }
 
+  @Get('platform/stats') platformStats() { return this.service.platformStats(); }
+
   @Patch('tenants/:id/plan') updatePlan(@Param('id') id: string, @Body() body: { plan?: unknown }) {
     if (typeof body?.plan !== 'string' || !plans.has(body.plan as PlanType)) throw new BadRequestException('Некорректный тарифный план');
     return this.service.updatePlan(id, body.plan as PlanType);
