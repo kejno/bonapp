@@ -28,6 +28,7 @@ const { LABELS } = require('./config.js');
 var feedbackLoop = require('./common/feedbackLoop.js');
 var tokenUsageComment = require('./common/tokenUsageComment.js');
 var configLoader = require('./configLoader.js');
+var fieldText = require('./common/fieldText.js');
 const { JIRA_FIELDS } = require('./config.js');
 
 function readFile(path) {
@@ -186,25 +187,18 @@ function getFailedReasonFieldName(config, customParams) {
         || 'Failed Reason';
 }
 
-function getFailedReasonForTc(tcKey, fieldName) {
-    if (!tcKey || !fieldName) return '';
+// Same lookup order as prepareBulkBugsCreationContext.getFailedReasonFieldId.
+function getFailedReasonFieldId(config, customParams, fieldName) {
+    return (customParams && customParams.failedReasonFieldId)
+        || (config && config.jira && config.jira.fields && config.jira.fields.failedReasonId)
+        || (fieldName && fieldName.indexOf('customfield_') !== -1 ? fieldName : '');
+}
+
+function getFailedReasonForTc(tcKey, fieldName, fieldId) {
+    if (!tcKey || (!fieldName && !fieldId)) return '';
     try {
         var result = jira_get_ticket({ key: tcKey });
-        var fields = result && result.fields ? result.fields : {};
-        var raw = fields[fieldName];
-        if (typeof raw === 'string') return raw;
-        if (raw && typeof raw.value === 'string') return raw.value;
-        // Fallback: dmtools may transform customfield_12345 into "Name (customfield_12345)".
-        if (fieldName.indexOf('customfield_') !== -1) {
-            for (var key in fields) {
-                if (fields.hasOwnProperty(key) && key.indexOf(fieldName) !== -1) {
-                    var v = fields[key];
-                    if (typeof v === 'string') return v;
-                    if (v && typeof v.value === 'string') return v.value;
-                }
-            }
-        }
-        return '';
+        return fieldText.readFieldText(result && result.fields ? result.fields : {}, fieldId, fieldName);
     } catch (e) {
         console.warn('Could not read Failed Reason for', tcKey, ':', e);
         return '';
@@ -265,6 +259,7 @@ function action(params) {
         var projectConfig = configLoader.loadProjectConfig(actualParams);
         var jiraConfig = projectConfig.jira;
         var failedReasonFieldName = getFailedReasonFieldName(projectConfig, customParams);
+        var failedReasonFieldId = getFailedReasonFieldId(projectConfig, customParams, failedReasonFieldName);
 
         console.log('=== Processing bulk bug creation decisions ===');
 
@@ -346,7 +341,7 @@ function action(params) {
                 }
             }
             if (!description && linkedTCs.length > 0) {
-                var failedReason = getFailedReasonForTc(linkedTCs[0], failedReasonFieldName);
+                var failedReason = getFailedReasonForTc(linkedTCs[0], failedReasonFieldName, failedReasonFieldId);
                 if (failedReason) {
                     description = failedReason;
                     console.log('  ℹ️ Using Failed Reason from', linkedTCs[0], 'as bug description fallback');
@@ -551,5 +546,5 @@ function action(params) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action };
+    module.exports = { action, getFailedReasonForTc, getFailedReasonFieldId };
 }
