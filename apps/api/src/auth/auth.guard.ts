@@ -44,6 +44,12 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.getBearerToken(request.headers.authorization);
     const payload = this.verifyToken(token);
+    const tenant = await this.prisma.forTenant(payload.tenantId).tenant.findUnique({
+      where: { id: payload.tenantId }, select: { status: true, isActive: true },
+    });
+    if (tenant?.status === 'BLOCKED' || tenant?.isActive === false) {
+      throw new ForbiddenException('Ваш аккаунт заблокирован. Обратитесь в поддержку.');
+    }
     request.user = {
       tenantId: payload.tenantId,
       ...(payload.userId ? { userId: payload.userId } : {}),

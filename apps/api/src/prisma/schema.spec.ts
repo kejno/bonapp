@@ -32,6 +32,13 @@ const orderRlsMigrationPath = join(
   '20260922020000_enable_rls_for_orders_and_payments',
   'migration.sql',
 );
+const superadminRlsMigrationPath = join(
+  process.cwd(),
+  'prisma',
+  'migrations',
+  '20261001180000_superadmin_payments_read',
+  'migration.sql',
+);
 const packageJson = JSON.parse(
   readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
 ) as { scripts: Record<string, string> };
@@ -136,5 +143,11 @@ describe('Prisma core schema', () => {
     expect(migration).toContain('ALTER TABLE "orders" ENABLE ROW LEVEL SECURITY');
     expect(migration).toContain('ALTER TABLE "payments" ENABLE ROW LEVEL SECURITY');
     expect(migration).toMatch(/"tenant_id" = current_setting/);
+  });
+
+  it('allows superadmin scoped reads from payments', () => {
+    const migration = readFileSync(superadminRlsMigrationPath, 'utf8');
+
+    expect(migration).toMatch(/CREATE POLICY superadmin_payment_read ON "payments"[\s\S]*?FOR SELECT[\s\S]*?USING \(current_setting\('app\.current_scope', true\) = 'superadmin'\)/);
   });
 });
