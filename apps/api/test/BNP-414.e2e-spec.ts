@@ -21,6 +21,7 @@ describe('BNP-414: авторизация административного API
         userId: fixture.userId,
         tenantId: fixture.tenantId,
         role: UserRole.OWNER,
+        scope: 'tenant',
         type: 'access',
         jti: 'expired-test-token',
         sessionVersion: 0,

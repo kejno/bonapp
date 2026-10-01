@@ -82,8 +82,9 @@ model Tenant {
   delivery               Boolean         @default(false)
   isActive               Boolean         @default(true) @map("is_active")
   trialEndsAt            DateTime?       @map("trial_ends_at")
-  subscriptionPlan       String          @default("free") @map("subscription_plan")
+  subscriptionPlan       String          @default("TRIAL") @map("subscription_plan")
   plan                   PlanType        @default(TRIAL)
+  isActiveBeforeBlock    Boolean?        @map("is_active_before_block")
   createdAt              DateTime        @default(now()) @map("created_at")
   updatedAt              DateTime        @updatedAt @map("updated_at")
   users                  User[]

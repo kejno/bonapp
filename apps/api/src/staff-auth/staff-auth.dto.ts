@@ -32,6 +32,7 @@ export interface StaffJwtPayload {
   userId: string;
   tenantId: string;
   role: UserRole;
+  scope?: 'tenant' | 'superadmin';
   type: 'access' | 'refresh';
   jti: string;
   sessionVersion?: number;

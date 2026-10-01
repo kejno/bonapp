@@ -5,3 +5,6 @@ process.env.S3_PUBLIC_ENDPOINT ??= process.env.S3_ENDPOINT;
 process.env.S3_BUCKET ??= 'bonapp-e2e';
 process.env.S3_ACCESS_KEY ??= 'e2e-access-key';
 process.env.S3_SECRET_KEY ??= 'e2e-secret-key';
+process.env.PLAN_STANDARD_PRICE_BYN ??= '50';
+process.env.PLAN_PRO_PRICE_BYN ??= '100';
+process.env.PLAN_ENTERPRISE_PRICE_BYN ??= '200';

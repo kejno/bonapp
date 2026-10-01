@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
+import { StaffAuthModule } from '../staff-auth/staff-auth.module';
 import { MenuModule } from '../menu/menu.module';
-import { SuperadminController, SuperadminOnlyGuard } from './superadmin.controller';
+import { SuperadminController } from './superadmin.controller';
 import { SuperadminService } from './superadmin.service';
 
-@Module({ imports: [AuthModule, MenuModule], controllers: [SuperadminController], providers: [SuperadminService, SuperadminOnlyGuard] })
+@Module({ imports: [StaffAuthModule, MenuModule], controllers: [SuperadminController], providers: [SuperadminService] })
 export class SuperadminModule {}

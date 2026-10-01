@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PlanType, TenantStatus, PaymentStatus, PaymentType } from '@prisma/client';
+import { PaymentStatus, PaymentType, PlanType, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantLocalDate } from '../orders/daily-order-number';
 import { MenuGateway } from '../menu/menu.gateway';
@@ -40,23 +40,29 @@ export class SuperadminService {
 
   async updatePlan(id: string, plan: PlanType) {
     if (!Object.values(PlanType).includes(plan)) throw new BadRequestException('Некорректный тарифный план');
-    return this.updateTenant(id, { plan });
+    return this.updateTenant(id, { plan, subscriptionPlan: plan });
   }
 
   async setBlocked(id: string, blocked: boolean) {
-    const tenant = await this.prisma.superadminTransaction(async (db) => {
-      const current = await db.tenant.findUnique({ where: { id }, select: { status: true, statusBeforeBlock: true } });
+    const result = await this.prisma.superadminTransaction(async (db) => {
+      const current = await db.tenant.findUnique({ where: { id }, select: { status: true, statusBeforeBlock: true, isActive: true, isActiveBeforeBlock: true } });
       if (!current) throw new NotFoundException('Тенант не найден');
       const status = blocked ? TenantStatus.BLOCKED : current.statusBeforeBlock ?? TenantStatus.ACTIVE;
+      const isActive = blocked ? false : current.isActiveBeforeBlock ?? true;
       const updated = await db.tenant.update({
         where: { id },
-        data: { status, isActive: !blocked, statusBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.statusBeforeBlock : current.status) : null },
+        data: {
+          status,
+          isActive,
+          statusBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.statusBeforeBlock : current.status) : null,
+          isActiveBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.isActiveBeforeBlock : current.isActive) : null,
+        },
         select: { id: true, name: true, plan: true, status: true, trialEndsAt: true },
       });
-      return { tenant: updated, status };
+      return updated;
     });
     if (blocked) this.menuGateway.disconnectTenantStaff(id);
-    return tenant.tenant;
+    return result;
   }
 
   async extendTrial(id: string) {
@@ -68,7 +74,7 @@ export class SuperadminService {
     return this.updateTenant(id, { trialEndsAt: new Date(base.getTime() + 30 * 86400000) });
   }
 
-  private async updateTenant(id: string, data: { plan?: PlanType; status?: TenantStatus; isActive?: boolean; trialEndsAt?: Date }) {
+  private async updateTenant(id: string, data: { plan?: PlanType; subscriptionPlan?: string; status?: TenantStatus; isActive?: boolean; trialEndsAt?: Date }) {
     try { return await this.prisma.superadminTransaction((db) => db.tenant.update({ where: { id }, data, select: { id: true, name: true, plan: true, status: true, trialEndsAt: true } })); }
     catch { throw new NotFoundException('Тенант не найден'); }
   }

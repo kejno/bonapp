@@ -68,6 +68,7 @@ export function verifyToken(
       typeof payload['userId'] !== 'string' ||
       typeof payload['tenantId'] !== 'string' ||
       typeof payload['role'] !== 'string' ||
+      (payload['scope'] !== undefined && payload['scope'] !== 'tenant' && payload['scope'] !== 'superadmin') ||
       typeof payload['type'] !== 'string' ||
       typeof payload['jti'] !== 'string'
     ) {
@@ -98,6 +99,7 @@ export function buildTokenPair(
       userId,
       tenantId,
       role,
+      scope: role === UserRole.SUPER_ADMIN ? 'superadmin' : 'tenant',
       type: 'access',
       jti: accessJti,
       sessionVersion,
@@ -112,6 +114,7 @@ export function buildTokenPair(
       userId,
       tenantId,
       role,
+      scope: role === UserRole.SUPER_ADMIN ? 'superadmin' : 'tenant',
       type: 'refresh',
       jti: refreshJti,
       sessionVersion,

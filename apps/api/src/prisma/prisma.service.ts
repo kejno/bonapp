@@ -234,7 +234,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async superadminTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.client.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.is_superadmin', 'true', true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', '', true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_scope', 'superadmin', true)`;
       return operation(tx);
     });
   }
