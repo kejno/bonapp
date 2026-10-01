@@ -16,6 +16,8 @@ const plans = new Set(Object.values(PlanType));
 export class SuperadminController {
   constructor(private readonly service: SuperadminService) {}
 
+  @Get('tenants') listTenants() { return this.service.listTenants(); }
+
   @Get('overview') overview() { return this.service.overview(); }
 
   @Get('tenants') tenants() { return this.service.tenants(); }
