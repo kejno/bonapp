@@ -23,6 +23,15 @@ describe('BNP-548 analytics transaction CSV export (e2e)', () => {
         provider: 'test', method: 'BANK_CARD', status: 'COMPLETED', createdAt,
       },
     });
+    const outsidePeriodOrder = await fixture.prisma.order.create({
+      data: { tenantId: fixture.tenantId, tableId: table.id, dailyOrderNumber: 549, totalAmountByn: '7.00' },
+    });
+    await fixture.prisma.payment.create({
+      data: {
+        tenantId: fixture.tenantId, orderId: outsidePeriodOrder.id, amountByn: '7.00', tipsAmountByn: '0.00',
+        provider: 'test', method: 'BANK_CARD', status: 'COMPLETED', createdAt: new Date('2026-03-07T10:30:00.000Z'),
+      },
+    });
 
     const response = await fixture.adminRequest()
       .get('/api/v1/admin/analytics/transactions/export?from=2026-03-08&to=2026-03-08')
@@ -32,5 +41,6 @@ describe('BNP-548 analytics transaction CSV export (e2e)', () => {
     expect(response.headers['content-disposition']).toContain('attachment; filename="transactions.csv"');
     expect(response.text).toContain('\uFEFF"Дата";"Заказ";"Метод оплаты";"Статус";"Сумма BYN";"Чаевые BYN"');
     expect(response.text).toContain('"2026-03-08T10:30:00.000Z";"548";"BANK_CARD";"COMPLETED";"12.50";"1.25"');
+    expect(response.text).not.toContain('"2026-03-07T10:30:00.000Z";"549";"BANK_CARD";"COMPLETED";"7.00";"0.00"');
   });
 });
