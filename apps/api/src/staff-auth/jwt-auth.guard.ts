@@ -16,6 +16,7 @@ export interface StaffRequest extends Request {
     userId: string;
     tenantId: string;
     role: UserRole;
+    scope: 'tenant' | 'superadmin';
   };
 }
 
@@ -60,6 +61,7 @@ export class JwtAuthGuard implements CanActivate {
       userId: payload.userId,
       tenantId: payload.tenantId,
       role: user.role,
+      scope: payload.scope ?? 'tenant',
     };
 
     return true;
