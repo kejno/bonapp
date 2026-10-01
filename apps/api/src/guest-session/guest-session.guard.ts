@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +28,9 @@ export class GuestSessionGuard implements CanActivate {
     const table = await this.prisma.findTableByQrToken(qrToken);
     if (!table) {
       throw new UnauthorizedException('Invalid QR token');
+    }
+    if (table.tenant.status === 'BLOCKED' || !table.tenant.isActive) {
+      throw new ForbiddenException('Ресторан временно не принимает заказы');
     }
 
     const req = request as QrTokenRequest;

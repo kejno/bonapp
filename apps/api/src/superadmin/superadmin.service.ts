@@ -1,88 +1,160 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PaymentStatus, PaymentType, PlanType, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { tenantDayBounds } from '../analytics/analytics-time';
-import { Prisma } from '@prisma/client';
+import { tenantLocalDate } from '../orders/daily-order-number';
+import { MenuGateway } from '../menu/menu.gateway';
 
-export type SubscriptionPlan = 'TRIAL' | 'STANDARD' | 'PRO' | 'ENTERPRISE';
-export interface TenantUpdate {
-  subscription_plan?: SubscriptionPlan;
-  trial_ends_at?: string;
-  is_active?: boolean;
-}
+const paidStatuses = [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED];
 
 @Injectable()
 export class SuperadminService {
-  private readonly prices: Record<SubscriptionPlan, number>;
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly menuGateway: MenuGateway,
+    private readonly config?: ConfigService,
+  ) {}
 
-  constructor(private readonly prisma: PrismaService, config: ConfigService) {
-    this.prices = {
-      TRIAL: 0,
-      STANDARD: this.requiredPrice(config, 'PLAN_STANDARD_PRICE_BYN'),
-      PRO: this.requiredPrice(config, 'PLAN_PRO_PRICE_BYN'),
-      ENTERPRISE: this.requiredPrice(config, 'PLAN_ENTERPRISE_PRICE_BYN'),
-    };
+  async overview() {
+    const now = new Date();
+    const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day) - 3 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, qrOrders, payments] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, name: true, plan: true, status: true, trialEndsAt: true, isActive: true } }),
+        db.order.count({ where: { createdAt: { gte: start, lt: end }, guestSessionId: { not: null }, isTest: false } }),
+        db.payment.findMany({ where: { type: PaymentType.SUBSCRIPTION, status: { in: paidStatuses }, createdAt: { gte: new Date(now.getFullYear(), now.getMonth() - 11, 1) } }, select: { amountByn: true, tenantId: true, createdAt: true } }),
+      ]);
+      const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const payments30 = await db.payment.groupBy({ by: ['tenantId'], where: { type: PaymentType.SUBSCRIPTION, status: { in: paidStatuses }, createdAt: { gte: recent, lte: now } }, _sum: { amountByn: true } });
+      const revenueByTenant = new Map(payments30.map((row) => [row.tenantId, Number(row._sum.amountByn ?? 0)]));
+      const activeTenantIds = new Set(tenants.filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive).map((tenant) => tenant.id));
+      const monthly = Array.from({ length: 12 }, (_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
+        const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+        return { month: date.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), subscriptionRevenueByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= date && payment.createdAt < next).reduce((sum, payment) => sum + Number(payment.amountByn), 0) };
+      });
+      return {
+        metrics: { subscriptionRevenueByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= new Date(now.getFullYear(), now.getMonth(), 1)).reduce((sum, payment) => sum + Number(payment.amountByn), 0), activeRestaurants: activeTenantIds.size, qrOrdersToday: qrOrders },
+        growth: monthly,
+        tenants: tenants.map((tenant) => ({ ...tenant, revenue30dByn: revenueByTenant.get(tenant.id) ?? 0 })),
+      };
+    });
   }
 
-  async listTenants() {
-    return this.prisma.superadminTransaction(async (tx) => {
-      const tenants = await tx.tenant.findMany({
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true, slug: true, subscriptionPlan: true, isActive: true, trialEndsAt: true },
-      });
-      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const orderCounts = await tx.order.groupBy({
-        by: ['tenantId'],
-        where: { createdAt: { gte: since } },
-        _count: { _all: true },
-      });
-      const countsByTenant = new Map(orderCounts.map((row) => [row.tenantId, row._count._all]));
+  async tenants() {
+    const now = new Date();
+    const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, orderCounts] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, name: true, slug: true, plan: true, isActive: true, trialEndsAt: true } }),
+        db.order.groupBy({ by: ['tenantId'], where: { createdAt: { gte: recent, lte: now }, isTest: false }, _count: { id: true } }),
+      ]);
+      const ordersByTenant = new Map(orderCounts.map((row) => [row.tenantId, row._count.id]));
       return tenants.map((tenant) => ({
         id: tenant.id,
         name: tenant.name,
         slug: tenant.slug,
-        plan: tenant.subscriptionPlan,
+        plan: tenant.plan,
         is_active: tenant.isActive,
         trial_ends_at: tenant.trialEndsAt,
-        order_count_30d: countsByTenant.get(tenant.id) ?? 0,
-        monthly_revenue_byn: tenant.isActive ? this.prices[tenant.subscriptionPlan as SubscriptionPlan] ?? 0 : 0,
+        order_count_30d: ordersByTenant.get(tenant.id) ?? 0,
+        monthly_revenue_byn: tenant.isActive && tenant.plan !== PlanType.TRIAL ? this.planPrice(tenant.plan) : 0,
       }));
     });
   }
 
-  async updateTenant(id: string, update: TenantUpdate) {
-    return this.prisma.superadminTransaction(async (tx) => {
-      const existing = await tx.tenant.findUnique({ where: { id }, select: { id: true } });
-      if (!existing) throw new NotFoundException('Tenant not found');
-      const data: Prisma.TenantUpdateInput = {};
-      if (update.subscription_plan !== undefined) data.subscriptionPlan = update.subscription_plan;
-      if (update.trial_ends_at !== undefined) data.trialEndsAt = new Date(update.trial_ends_at);
-      if (update.is_active !== undefined) data.isActive = update.is_active;
-      return tx.tenant.update({
-        where: { id }, data,
-        select: { id: true, name: true, slug: true, subscriptionPlan: true, isActive: true, trialEndsAt: true },
-      });
-    });
+  private planPrice(plan: PlanType): number {
+    if (plan === PlanType.TRIAL) return 0;
+    const key = `PLAN_${plan}_PRICE_BYN`;
+    const raw = this.config?.get<string>(key) ?? process.env[key];
+    const price = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
+    if (!Number.isFinite(price) || price < 0) throw new Error(`${key} must be configured as a non-negative number`);
+    return price;
   }
 
   async platformStats() {
-    const { start, end } = tenantDayBounds('Europe/Minsk');
-    return this.prisma.superadminTransaction(async (tx) => {
-      const [tenants, totalTenants, activeTenants, qrOrders] = await Promise.all([
-        tx.tenant.findMany({ where: { isActive: true }, select: { subscriptionPlan: true } }),
-        tx.tenant.count(),
-        tx.tenant.count({ where: { isActive: true } }),
-        tx.order.count({ where: { guestSessionId: { not: null }, createdAt: { gte: start, lt: end } } }),
+    const now = new Date();
+    const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day) - 3 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1) - 3 * 60 * 60 * 1000);
+    const monthEnd = new Date(Date.UTC(year, month, 1) - 3 * 60 * 60 * 1000);
+
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, qrOrders, payments] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, status: true, isActive: true, plan: true } }),
+        db.order.count({ where: { createdAt: { gte: start, lt: end }, guestSessionId: { not: null }, isTest: false } }),
+        db.payment.findMany({
+          where: {
+            type: PaymentType.SUBSCRIPTION,
+            status: { in: paidStatuses },
+            createdAt: { gte: monthStart, lt: monthEnd },
+          },
+          select: { tenantId: true, amountByn: true },
+        }),
       ]);
-      const mrr = tenants.reduce((total, tenant) => tenant.subscriptionPlan === 'TRIAL' ? total : total + (this.prices[tenant.subscriptionPlan as SubscriptionPlan] ?? 0), 0);
-      return { mrr_byn: mrr, total_tenants: totalTenants, active_tenants: activeTenants, qr_orders_today: qrOrders };
+      const activePaidTenantIds = new Set(
+        tenants
+          .filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive && tenant.plan !== PlanType.TRIAL)
+          .map((tenant) => tenant.id),
+      );
+      return {
+        mrr_byn: payments
+          .filter((payment) => activePaidTenantIds.has(payment.tenantId))
+          .reduce((sum, payment) => sum + Number(payment.amountByn), 0),
+        total_tenants: tenants.length,
+        active_tenants: tenants.filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive).length,
+        qr_orders_today: qrOrders,
+      };
     });
   }
 
-  private requiredPrice(config: ConfigService, key: string): number {
-    const raw = config.get<string>(key);
-    const value = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
-    if (!Number.isFinite(value) || value < 0) throw new Error(`${key} must be configured as a non-negative number`);
-    return value;
+  async updatePlan(id: string, plan: PlanType) {
+    if (!Object.values(PlanType).includes(plan)) throw new BadRequestException('Некорректный тарифный план');
+    return this.updateTenant(id, { plan, subscriptionPlan: plan });
+  }
+
+  async updateTenantFields(id: string, data: { plan?: PlanType; trialEndsAt?: Date; isActive?: boolean }) {
+    const { isActive, ...tenantFields } = data;
+    const updated = await this.updateTenant(id, { ...tenantFields, ...(data.plan ? { subscriptionPlan: data.plan } : {}) });
+    return isActive === undefined ? updated : this.setBlocked(id, !isActive);
+  }
+
+  async setBlocked(id: string, blocked: boolean) {
+    const result = await this.prisma.superadminTransaction(async (db) => {
+      const current = await db.tenant.findUnique({ where: { id }, select: { status: true, statusBeforeBlock: true, isActive: true, isActiveBeforeBlock: true } });
+      if (!current) throw new NotFoundException('Тенант не найден');
+      const status = blocked ? TenantStatus.BLOCKED : current.statusBeforeBlock ?? TenantStatus.ACTIVE;
+      const isActive = blocked ? false : current.isActiveBeforeBlock ?? true;
+      const updated = await db.tenant.update({
+        where: { id },
+        data: {
+          status,
+          isActive,
+          statusBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.statusBeforeBlock : current.status) : null,
+          isActiveBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.isActiveBeforeBlock : current.isActive) : null,
+        },
+        select: { id: true, name: true, plan: true, status: true, trialEndsAt: true },
+      });
+      return updated;
+    });
+    if (blocked) this.menuGateway.disconnectTenantStaff(id);
+    return result;
+  }
+
+  async extendTrial(id: string) {
+    const tenant = await this.prisma.superadminTransaction((db) => db.tenant.findUnique({ where: { id }, select: { status: true, trialEndsAt: true } }));
+    if (!tenant) throw new NotFoundException('Тенант не найден');
+    if (tenant.status !== TenantStatus.TRIAL) throw new BadRequestException('Продлить можно только пробный период');
+    const now = new Date();
+    const base = tenant.trialEndsAt && tenant.trialEndsAt > now ? tenant.trialEndsAt : now;
+    return this.updateTenant(id, { trialEndsAt: new Date(base.getTime() + 30 * 86400000) });
+  }
+
+  private async updateTenant(id: string, data: { plan?: PlanType; subscriptionPlan?: string; status?: TenantStatus; isActive?: boolean; trialEndsAt?: Date }) {
+    try { return await this.prisma.superadminTransaction((db) => db.tenant.update({ where: { id }, data, select: { id: true, name: true, plan: true, status: true, trialEndsAt: true } })); }
+    catch { throw new NotFoundException('Тенант не найден'); }
   }
 }

@@ -28,6 +28,13 @@ import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
 import WelcomePage from './pages/WelcomePage';
 import AnalyticsPage from './analytics/AnalyticsPage';
+import SuperadminPage from './superadmin/SuperadminPage';
+
+function SuperadminRoute() {
+  const role = useAuthStore((state) => state.user?.role);
+  if (role !== 'SUPER_ADMIN') return <Navigate to="/dashboard" replace />;
+  return <ProtectedRoute><SuperadminPage /></ProtectedRoute>;
+}
 
 const queryClient = new QueryClient();
 
@@ -54,6 +61,7 @@ function App() {
       <Router>
         <WaiterCallNotifications />
         <Routes>
+          <Route path="/superadmin" element={<SuperadminRoute />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/onboarding/step-1" element={<ProtectedRoute><OnboardingStep1Page /></ProtectedRoute>} />

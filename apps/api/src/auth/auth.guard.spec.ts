@@ -45,6 +45,7 @@ function makeGuard(secret = 'test-jwt-secret'): AuthGuard {
   const config = { getOrThrow: () => secret } as unknown as ConfigService;
   const prisma = {
     forTenant: () => ({
+      tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) },
       user: {
         findFirst: jest.fn().mockResolvedValue({
           mustChangePassword: false,
@@ -85,7 +86,7 @@ describe('AuthGuard', () => {
       role: 'WAITER',
     });
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
-    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const prisma = { forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst } }) };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
       { tenantId: 'tenant-1', userId: 'staff-1', type: 'access', role: 'OWNER' },
@@ -163,6 +164,7 @@ describe('AuthGuard', () => {
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
     const prisma = {
       forTenant: () => ({
+        tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) },
         user: { findFirst: jest.fn().mockResolvedValue({ mustChangePassword: true }) },
       }),
     };
@@ -180,7 +182,7 @@ describe('AuthGuard', () => {
   it('blocks staff using a legacy access token with only the sub claim', async () => {
     const findFirst = jest.fn().mockResolvedValue({ mustChangePassword: true });
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
-    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const prisma = { forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst } }) };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
       { tenantId: 'tenant-1', sub: 'staff-1', role: 'OWNER' },
@@ -200,7 +202,7 @@ describe('AuthGuard', () => {
     const findFirst = jest.fn().mockResolvedValue(null);
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
     const prisma = {
-      forTenant: () => ({ user: { findFirst } }),
+      forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst } }),
     };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
@@ -223,7 +225,7 @@ describe('AuthGuard', () => {
       sessionVersion: 2,
     });
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
-    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const prisma = { forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst } }) };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
       {
@@ -251,7 +253,7 @@ describe('AuthGuard', () => {
       sessionVersion: 1,
     });
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
-    const prisma = { forTenant: () => ({ user: { findFirst } }) };
+    const prisma = { forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst } }) };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(
       { tenantId: 'tenant-1', sub: 'staff-1', role: 'OWNER' },
@@ -266,7 +268,7 @@ describe('AuthGuard', () => {
   it('preserves valid legacy tenant tokens without a matching staff account', async () => {
     const config = { getOrThrow: () => 'test-jwt-secret' } as unknown as ConfigService;
     const prisma = {
-      forTenant: () => ({ user: { findFirst: jest.fn().mockResolvedValue(null) } }),
+      forTenant: () => ({ tenant: { findUnique: jest.fn().mockResolvedValue({ status: 'TRIAL', isActive: true }) }, user: { findFirst: jest.fn().mockResolvedValue(null) } }),
     };
     const guarded = new AuthGuard(config, prisma as unknown as PrismaService);
     const token = createToken(

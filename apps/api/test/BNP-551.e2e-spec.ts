@@ -19,16 +19,16 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
   }, 120_000);
   afterAll(async () => fixture.stop());
 
-  it('counts active paid plans in MRR and reports tenant and QR order totals', async () => {
+  it('counts monthly revenue only for active paid tenants and reports daily totals', async () => {
     await fixture.prisma.tenant.update({
       where: { id: fixture.tenantId },
-      data: { subscriptionPlan: 'PRO', isActive: true },
+      data: { plan: 'PRO', subscriptionPlan: 'PRO', status: 'ACTIVE', isActive: true },
     });
     await fixture.prisma.tenant.createMany({
       data: [
-        { id: 'bnp551-standard', slug: 'bnp551-standard', name: 'BNP-551 Standard', subscriptionPlan: 'STANDARD', isActive: true },
-        { id: 'bnp551-trial', slug: 'bnp551-trial', name: 'BNP-551 Trial', subscriptionPlan: 'TRIAL', isActive: true },
-        { id: 'bnp551-inactive', slug: 'bnp551-inactive', name: 'BNP-551 Inactive', subscriptionPlan: 'ENTERPRISE', isActive: false },
+        { id: 'bnp551-paid', slug: 'bnp551-paid', name: 'BNP-551 Paid', plan: 'STARTER', subscriptionPlan: 'STARTER', status: 'ACTIVE', isActive: true },
+        { id: 'bnp551-free', slug: 'bnp551-free', name: 'BNP-551 Free', plan: 'TRIAL', status: 'ACTIVE', isActive: true },
+        { id: 'bnp551-inactive', slug: 'bnp551-inactive', name: 'BNP-551 Inactive', plan: 'ENTERPRISE', subscriptionPlan: 'ENTERPRISE', status: 'BLOCKED', isActive: false },
       ],
     });
 
@@ -38,7 +38,7 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
     const table = await fixture.prisma.table.create({
       data: { tenantId: fixture.tenantId, areaId: area.id, tableNumber: 551, qrToken: 'bnp551-qr-token' },
     });
-    await fixture.prisma.order.create({
+    const order = await fixture.prisma.order.create({
       data: {
         tenantId: fixture.tenantId,
         tableId: table.id,
@@ -48,11 +48,38 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
       },
     });
 
+    await fixture.prisma.payment.create({
+      data: { tenantId: fixture.tenantId, orderId: order.id, amountByn: '120.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'COMPLETED' },
+    });
+    const paidArea = await fixture.prisma.diningArea.create({
+      data: { tenantId: 'bnp551-paid', name: 'BNP-551 paid area' },
+    });
+    const paidTable = await fixture.prisma.table.create({
+      data: { tenantId: 'bnp551-paid', areaId: paidArea.id, tableNumber: 552, qrToken: 'bnp551-paid-qr-token' },
+    });
+    const paidOrder = await fixture.prisma.order.create({
+      data: { tenantId: 'bnp551-paid', tableId: paidTable.id, dailyOrderNumber: 552 },
+    });
+    await fixture.prisma.payment.create({
+      data: { tenantId: 'bnp551-paid', orderId: paidOrder.id, amountByn: '55.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'SUCCEEDED' },
+    });
+    const inactiveArea = await fixture.prisma.diningArea.create({
+      data: { tenantId: 'bnp551-inactive', name: 'BNP-551 inactive area' },
+    });
+    const inactiveTable = await fixture.prisma.table.create({
+      data: { tenantId: 'bnp551-inactive', areaId: inactiveArea.id, tableNumber: 553, qrToken: 'bnp551-inactive-qr-token' },
+    });
+    const inactiveOrder = await fixture.prisma.order.create({
+      data: { tenantId: 'bnp551-inactive', tableId: inactiveTable.id, dailyOrderNumber: 553 },
+    });
+    await fixture.prisma.payment.create({
+      data: { tenantId: 'bnp551-inactive', orderId: inactiveOrder.id, amountByn: '500.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'COMPLETED' },
+    });
+
     const stats = await fixture.adminRequest()
       .get('/api/v1/superadmin/platform/stats')
       .set('Authorization', authorization)
       .expect(200);
-
-    expect(stats.body as unknown as Record<string, number>).toEqual({ mrr_byn: 150, total_tenants: 4, active_tenants: 3, qr_orders_today: 1 });
+    expect(stats.body).toEqual({ mrr_byn: 175, total_tenants: 4, active_tenants: 3, qr_orders_today: 1 });
   });
 });

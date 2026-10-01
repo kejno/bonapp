@@ -235,6 +235,9 @@ export class GuestSessionService {
     if (!tableRow) {
       throw new NotFoundException('QR token not found');
     }
+    if (tableRow.tenant.status === 'BLOCKED' || !tableRow.tenant.isActive) {
+      throw new ForbiddenException('Ресторан временно не принимает заказы');
+    }
 
     const { tenant, area, id, tableNumber, tenantId } = tableRow;
     const tableSessionToken = randomBytes(32).toString('base64url');

@@ -52,6 +52,7 @@ export default function App() {
   const [menuSearch, setMenuSearch] = useState('')
   const [menuLoaded, setMenuLoaded] = useState(false)
   const [error, setError] = useState(invalidRouteQrToken && !queryQrToken)
+  const [tenantBlocked, setTenantBlocked] = useState(false)
   const [menuError, setMenuError] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [callStatus, setCallStatus] = useState('')
@@ -132,6 +133,7 @@ export default function App() {
     let sessionResolved = false
     fetch(`${API_BASE}/guest/session/${encodeURIComponent(qrToken)}`, { signal: controller.signal })
       .then((response) => {
+        if (response.status === 403) { setTenantBlocked(true); throw new Error('Tenant is blocked') }
         if (!response.ok) throw new Error('Unable to resolve table QR token')
         return response.json() as Promise<GuestSession>
       })
@@ -157,7 +159,7 @@ export default function App() {
       })
       .catch((requestError: unknown) => {
         if (requestError instanceof Error && requestError.name === 'AbortError') return
-        if (!sessionResolved) setError(true)
+        if (!sessionResolved && !(requestError instanceof Error && requestError.message === 'Tenant is blocked')) setError(true)
         else setMenuError(true)
       })
 
@@ -184,6 +186,7 @@ export default function App() {
       <section className="w-full max-w-2xl px-4 text-center">
         <header className="flex items-center justify-between"><h1 className="text-2xl font-semibold text-primary">Bonapp</h1><span aria-label="Количество товаров в корзине">Корзина · {cartCount}</span></header>
         {!qrToken && <p>Сканируйте QR-код</p>}
+        {tenantBlocked && <section role="status"><h2>Ресторан временно не принимает заказы</h2><p>Создание новых заказов недоступно.</p></section>}
         {qrToken && !session && !error && <p>Открываем стол…</p>}
         {session && tenantConfig && <>
           <div className="flex items-center justify-center gap-2">{tenantConfig?.logoUrl && <img src={tenantConfig.logoUrl} alt="Логотип заведения" className="h-10 w-10 object-contain" />}<h2>{session.tenant.name}</h2></div>

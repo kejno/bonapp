@@ -43,6 +43,7 @@ export default function DashboardPage() {
           {!isWaiter && <Link to="/analytics" className="text-primary hover:underline">Аналитика и выручка</Link>}
           {canOpenKds && <Link to="/kds" className="text-primary hover:underline">Live KDS</Link>}
           {!isWaiter && <Link to="/settings" className="text-primary hover:underline">Настройки заведения</Link>}
+          {user?.role === 'SUPER_ADMIN' && <Link to="/superadmin" className="text-primary hover:underline">Консоль суперадминистратора</Link>}
           <Link to="/tables" className="text-primary hover:underline">{isWaiter ? 'Мои столы' : 'Схема зала'}</Link>
         </nav>
       </div>

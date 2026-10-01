@@ -16,7 +16,12 @@ module.exports = {
 
     jira: {
         project: 'BNP',
-        parentTicket: ''
+        parentTicket: '',
+        // A Jira search returns a custom field only when it is requested by id. The Failed Reason
+        // (Paragraph, Test Case) id is needed to hand the failure to the bulk bug creation agent.
+        fields: {
+            failedReasonId: 'customfield_10177'
+        }
     },
 
     git: {

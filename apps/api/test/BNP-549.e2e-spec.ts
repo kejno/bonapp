@@ -16,8 +16,18 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
   }, 120_000);
   afterAll(async () => fixture.stop());
 
-  it('allows SUPER_ADMIN, rejects OWNER, and requires authentication', async () => {
-    await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+  it('allows SUPER_ADMIN, rejects OWNER, and requires authentication for SuperAdmin endpoints', async () => {
+    const tenantsResponse = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+    expect(tenantsResponse.body).toContainEqual({
+      id: fixture.tenantId,
+      name: 'Auth E2E Tenant',
+      slug: fixture.tenantId,
+      plan: 'TRIAL',
+      is_active: true,
+      trial_ends_at: null,
+      order_count_30d: 0,
+      monthly_revenue_byn: 0,
+    });
     await fixture.adminRequest().get('/api/v1/superadmin/platform/stats').expect(200);
 
     await fixture.prisma.user.update({ where: { id: fixture.userId }, data: { role: 'OWNER' } });
@@ -31,6 +41,11 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
       .get('/api/v1/superadmin/tenants')
       .set('Authorization', `Bearer ${ownerBody.accessToken}`)
       .expect(403);
+    await fixture.adminRequest()
+      .get('/api/v1/superadmin/platform/stats')
+      .set('Authorization', `Bearer ${ownerBody.accessToken}`)
+      .expect(403);
     await fixture.adminRequest().get('/api/v1/superadmin/tenants').set('Authorization', '').expect(401);
+    await fixture.adminRequest().get('/api/v1/superadmin/platform/stats').set('Authorization', '').expect(401);
   });
 });
