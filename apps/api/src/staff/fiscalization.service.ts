@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { FiscalizationStatus, PaymentStatus } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptCredentials, isEncryptedCredentials } from '../tenant/payment-credentials';
 import { SKNO_FISCAL_CLIENT } from './skno-client';
@@ -90,5 +91,6 @@ export class FiscalizationService implements OnModuleInit, OnModuleDestroy {
       data: { fiscalizationStatus: FiscalizationStatus.FISCAL_FAILED },
     }).catch((updateError: unknown) => this.logger.error('Не удалось сохранить статус ошибки фискализации', updateError instanceof Error ? updateError.stack : undefined));
     this.logger.error(`Фискализация платежа ${data.paymentId} исчерпала три попытки`, error.stack);
+    Sentry.captureException(error);
   }
 }

@@ -1,7 +1,12 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import * as Sentry from '@sentry/node';
 import { AppModule } from './app.module';
 import { trustedProxySetting } from './trusted-proxies';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
