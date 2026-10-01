@@ -60,6 +60,7 @@ model Tenant {
   slug                   String          @unique
   name                   String
   status                 TenantStatus    @default(TRIAL)
+  statusBeforeBlock      TenantStatus?   @map("status_before_block")
   venueType              VenueType       @default(RESTAURANT) @map("venue_type")
   legalName              String?         @map("legal_name")
   unp                    String?

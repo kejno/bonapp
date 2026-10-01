@@ -2,12 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PlanType, TenantStatus, PaymentStatus, PaymentType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantLocalDate } from '../orders/daily-order-number';
+import { MenuGateway } from '../menu/menu.gateway';
 
 const paidStatuses = [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED];
 
 @Injectable()
 export class SuperadminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway) {}
 
   async overview() {
     const now = new Date();
@@ -27,10 +28,10 @@ export class SuperadminService {
       const monthly = Array.from({ length: 12 }, (_, index) => {
         const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
         const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-        return { month: date.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), mrrByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= date && payment.createdAt < next).reduce((sum, payment) => sum + Number(payment.amountByn), 0) };
+        return { month: date.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), subscriptionRevenueByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= date && payment.createdAt < next).reduce((sum, payment) => sum + Number(payment.amountByn), 0) };
       });
       return {
-        metrics: { mrrByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= new Date(now.getFullYear(), now.getMonth(), 1)).reduce((sum, payment) => sum + Number(payment.amountByn), 0), activeRestaurants: activeTenantIds.size, qrOrdersToday: qrOrders },
+        metrics: { subscriptionRevenueByn: payments.filter((payment) => activeTenantIds.has(payment.tenantId) && payment.createdAt >= new Date(now.getFullYear(), now.getMonth(), 1)).reduce((sum, payment) => sum + Number(payment.amountByn), 0), activeRestaurants: activeTenantIds.size, qrOrdersToday: qrOrders },
         growth: monthly,
         tenants: tenants.map((tenant) => ({ ...tenant, revenue30dByn: revenueByTenant.get(tenant.id) ?? 0 })),
       };
@@ -43,14 +44,27 @@ export class SuperadminService {
   }
 
   async setBlocked(id: string, blocked: boolean) {
-    return this.updateTenant(id, { status: blocked ? TenantStatus.BLOCKED : TenantStatus.ACTIVE, isActive: !blocked });
+    const tenant = await this.prisma.superadminTransaction(async (db) => {
+      const current = await db.tenant.findUnique({ where: { id }, select: { status: true, statusBeforeBlock: true } });
+      if (!current) throw new NotFoundException('Тенант не найден');
+      const status = blocked ? TenantStatus.BLOCKED : current.statusBeforeBlock ?? TenantStatus.ACTIVE;
+      const updated = await db.tenant.update({
+        where: { id },
+        data: { status, isActive: !blocked, statusBeforeBlock: blocked ? (current.status === TenantStatus.BLOCKED ? current.statusBeforeBlock : current.status) : null },
+        select: { id: true, name: true, plan: true, status: true, trialEndsAt: true },
+      });
+      return { tenant: updated, status };
+    });
+    if (blocked) this.menuGateway.disconnectTenantStaff(id);
+    return tenant.tenant;
   }
 
   async extendTrial(id: string) {
     const tenant = await this.prisma.superadminTransaction((db) => db.tenant.findUnique({ where: { id }, select: { status: true, trialEndsAt: true } }));
     if (!tenant) throw new NotFoundException('Тенант не найден');
     if (tenant.status !== TenantStatus.TRIAL) throw new BadRequestException('Продлить можно только пробный период');
-    const base = tenant.trialEndsAt ?? new Date();
+    const now = new Date();
+    const base = tenant.trialEndsAt && tenant.trialEndsAt > now ? tenant.trialEndsAt : now;
     return this.updateTenant(id, { trialEndsAt: new Date(base.getTime() + 30 * 86400000) });
   }
 

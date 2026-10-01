@@ -9,8 +9,8 @@ vi.mock('./superadmin.api', () => ({ getOverview: vi.fn(), changePlan: vi.fn(), 
 
 describe('SuperadminPage', () => {
   beforeEach(() => vi.mocked(getOverview).mockResolvedValue({
-    metrics: { mrrByn: 120, activeRestaurants: 2, qrOrdersToday: 9 },
-    growth: [{ month: 'окт. 26', mrrByn: 120 }],
+    metrics: { subscriptionRevenueByn: 120, activeRestaurants: 2, qrOrdersToday: 9 },
+    growth: [{ month: 'окт. 26', subscriptionRevenueByn: 120 }],
     tenants: [
       { id: 't1', name: 'Кафе', plan: 'PRO', status: 'ACTIVE', trialEndsAt: null, revenue30dByn: 80 },
       { id: 't2', name: 'Ресторан', plan: 'TRIAL', status: 'TRIAL', trialEndsAt: '2026-10-31T00:00:00Z', revenue30dByn: 0 },
@@ -21,6 +21,7 @@ describe('SuperadminPage', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter><SuperadminPage /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText('120,00 BYN')).toBeInTheDocument();
+    expect(screen.getByText('Подписочная выручка за месяц')).toBeInTheDocument();
     expect(screen.getByText('Кафе')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Фильтр по статусу'), { target: { value: 'TRIAL' } });
     expect(screen.queryByText('Кафе')).not.toBeInTheDocument();

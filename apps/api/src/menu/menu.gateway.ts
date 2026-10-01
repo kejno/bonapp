@@ -143,6 +143,11 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
       select: { id: true, tenantId: true, role: true },
     });
     if (!user) throw new Error('Invalid staff session');
+    const tenant = await this.prisma.forTenant(payload.tenantId).tenant.findUnique({
+      where: { id: payload.tenantId },
+      select: { status: true, isActive: true },
+    });
+    if (!tenant || tenant.status === 'BLOCKED' || !tenant.isActive) throw new Error('Tenant is blocked');
     const requested = data['room'];
     if (requested !== 'kitchen' && requested !== 'hall') throw new Error('Invalid tenant room');
     if (
@@ -194,6 +199,11 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
     }).catch((error: unknown) => this.logger.error(`Could not route payment update: ${String(error)}`));
   }
 
+  disconnectTenantStaff(tenantId: string): void {
+    this.io.in(`tenant_${tenantId}_hall`).disconnectSockets(true);
+    this.io.in(`tenant_${tenantId}_kitchen`).disconnectSockets(true);
+  }
+
   private async updateOrderStatus(socket: Socket, value: unknown): Promise<void> {
     const staff = (socket.data as Record<string, unknown>)['staff'] as { tenantId: string; userId: string; role: string } | undefined;
     const data = record(value);
@@ -202,6 +212,11 @@ export class MenuGateway implements OnModuleInit, OnModuleDestroy {
       typeof data['orderId'] !== 'string' ||
       typeof data['department'] !== 'string'
     ) throw new Error('Chef access and department are required');
+    const tenant = await this.prisma.forTenant(staff.tenantId).tenant.findUnique({
+      where: { id: staff.tenantId },
+      select: { status: true, isActive: true },
+    });
+    if (!tenant || tenant.status === 'BLOCKED' || !tenant.isActive) throw new Error('Tenant is blocked');
     const order = await this.ordersService.updateKitchenStatusForTenant(
       staff.tenantId, data['orderId'], 'COOKING', data['department'], staff.userId, UserRole.CHEF,
     );

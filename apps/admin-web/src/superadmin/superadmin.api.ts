@@ -3,7 +3,7 @@ import { useAuthStore } from '../auth/auth.store';
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 export type PlanType = 'TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
 export type TenantStatus = 'TRIAL' | 'ACTIVE' | 'BLOCKED';
-export interface Overview { metrics: { mrrByn: number; activeRestaurants: number; qrOrdersToday: number }; growth: { month: string; mrrByn: number }[]; tenants: { id: string; name: string; plan: PlanType; status: TenantStatus; trialEndsAt: string | null; revenue30dByn: number }[] }
+export interface Overview { metrics: { subscriptionRevenueByn: number; activeRestaurants: number; qrOrdersToday: number }; growth: { month: string; subscriptionRevenueByn: number }[]; tenants: { id: string; name: string; plan: PlanType; status: TenantStatus; trialEndsAt: string | null; revenue30dByn: number }[] }
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const token = useAuthStore.getState().accessToken;
