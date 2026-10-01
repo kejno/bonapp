@@ -36,6 +36,14 @@ describe('AnalyticsService.tips', () => {
     });
   });
 
+  it('converts calendar dates using the tenant timezone and includes the end date', async () => {
+    await service.tips('tenant-1', '2026-09-28', '2026-09-30');
+    expect(findMany.mock.calls[0][0].where.createdAt).toEqual({
+      gte: new Date('2026-09-27T21:00:00.000Z'),
+      lt: new Date('2026-09-30T21:00:00.000Z'),
+    });
+  });
+
   it('rejects an invalid requested date range', async () => {
     await expect(service.tips('tenant-1', 'bad-date', '2026-09-30T00:00:00.000Z')).rejects.toBeInstanceOf(BadRequestException);
   });

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { tenantDayBounds } from './analytics-time';
+import { tenantDateBounds, tenantDayBounds } from './analytics-time';
 
 const paidStatuses = [OrderStatus.PAID];
 const completedPayments = [PaymentStatus.COMPLETED, PaymentStatus.SUCCEEDED];
@@ -46,8 +46,7 @@ export class AnalyticsService {
     if (!['hour', 'day', 'week'].includes(granularity)) throw new BadRequestException('granularity must be hour, day, or week');
     const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
     const { start: todayStart, end: todayEnd } = tenantDayBounds(tenant?.timezone ?? 'Europe/Minsk');
-    const start = from ? new Date(from) : todayStart;
-    const end = to ? new Date(to) : todayEnd;
+    const { start, end } = this.requestedBounds(from, to, tenant?.timezone ?? 'Europe/Minsk', todayStart, todayEnd);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) throw new BadRequestException('from and to must define a valid range');
     const rows = await this.prisma.db.order.findMany({ where: { tenantId, status: { in: paidStatuses }, paidAt: { gte: start, lt: end }, isTest: false }, select: { paidAt: true, totalAmountByn: true }, orderBy: { paidAt: 'asc' } });
     const totals = new Map<string, number>();
@@ -67,9 +66,9 @@ export class AnalyticsService {
   }
 
   async paymentsSplit(tenantId: string, from?: string, to?: string) {
-    const { start: dayStart, end: dayEnd } = await this.dayBounds(tenantId);
-    const start = from ? new Date(from) : dayStart;
-    const end = to ? new Date(to) : dayEnd;
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const { start: dayStart, end: dayEnd } = tenantDayBounds(tenant?.timezone ?? 'Europe/Minsk');
+    const { start, end } = this.requestedBounds(from, to, tenant?.timezone ?? 'Europe/Minsk', dayStart, dayEnd);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) throw new BadRequestException('from and to must define a valid range');
     const rows = await this.prisma.db.payment.groupBy({ by: ['method'], where: { tenantId, status: { in: completedPayments }, createdAt: { gte: start, lt: end }, order: { isTest: false } }, _sum: { amountByn: true }, _count: { _all: true } });
     const byMethod = new Map(rows.map(({ method, _sum, _count }) => [method, { amountByn: Number(_sum.amountByn ?? 0), transactionsCount: _count._all }]));
@@ -77,9 +76,9 @@ export class AnalyticsService {
   }
 
   async tips(tenantId: string, from?: string, to?: string) {
-    const { start: dayStart, end: dayEnd } = await this.dayBounds(tenantId);
-    const start = from ? new Date(from) : dayStart;
-    const end = to ? new Date(to) : dayEnd;
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const { start: dayStart, end: dayEnd } = tenantDayBounds(tenant?.timezone ?? 'Europe/Minsk');
+    const { start, end } = this.requestedBounds(from, to, tenant?.timezone ?? 'Europe/Minsk', dayStart, dayEnd);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) throw new BadRequestException('from and to must define a valid range');
     const payments = await this.prisma.db.payment.findMany({ where: { tenantId, status: { in: completedPayments }, createdAt: { gte: start, lt: end }, order: { isTest: false } }, select: { tipsAmountByn: true, order: { select: { id: true, assignedWaiterId: true, assignedWaiter: { select: { fullName: true } } } } } });
     const totals = new Map<string, { waiterName: string; tipsByn: number; transactionsCount: number; orders: Set<string>; anonymousOrders: number }>();
@@ -118,16 +117,28 @@ export class AnalyticsService {
   }
 
   async exportTransactions(tenantId: string, from?: string, to?: string) {
-    const start = from ? new Date(from) : new Date(0);
-    const end = to ? new Date(to) : new Date();
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const { start, end } = this.requestedBounds(from, to, tenant?.timezone ?? 'Europe/Minsk', new Date(0), new Date());
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) throw new BadRequestException('from and to must define a valid range');
     const payments = await this.prisma.db.payment.findMany({ where: { tenantId, createdAt: { gte: start, lt: end }, order: { isTest: false } }, include: { order: { select: { dailyOrderNumber: true } } }, orderBy: { createdAt: 'asc' } });
     const cell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     return '\uFEFF' + [['Дата', 'Заказ', 'Метод оплаты', 'Статус', 'Сумма BYN', 'Чаевые BYN'], ...payments.map((payment) => [payment.createdAt.toISOString(), payment.order.dailyOrderNumber, payment.method, payment.status, Number(payment.amountByn).toFixed(2), Number(payment.tipsAmountByn).toFixed(2)])].map((row) => row.map(cell).join(';')).join('\r\n');
   }
 
-  private async dayBounds(tenantId: string) {
-    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
-    return tenantDayBounds(tenant?.timezone ?? 'Europe/Minsk');
+  private requestedBounds(from: string | undefined, to: string | undefined, timezone: string, defaultStart: Date, defaultEnd: Date) {
+    if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.nextDate(from);
+      const bounds = tenantDateBounds(from, this.nextDate(to), timezone);
+      return bounds;
+    }
+    return { start: from ? new Date(from) : defaultStart, end: to ? new Date(to) : defaultEnd };
+  }
+
+  private nextDate(date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00.000Z`)) || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) {
+      throw new BadRequestException('from and to must define a valid range');
+    }
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
   }
 }
