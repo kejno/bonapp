@@ -3,7 +3,9 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { GuestSessionController } from '../src/guest-session/guest-session.controller';
 import { GuestSessionService } from '../src/guest-session/guest-session.service';
+import { MenuGateway } from '../src/menu/menu.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { PosOrderDispatcher } from '../src/onboarding/pos-order-dispatcher';
 
 describe('BNP-378: unknown guest QR token', () => {
   let app: INestApplication;
@@ -15,7 +17,12 @@ describe('BNP-378: unknown guest QR token', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [GuestSessionController],
-      providers: [GuestSessionService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        GuestSessionService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: MenuGateway, useValue: {} },
+        { provide: PosOrderDispatcher, useValue: { enqueue: jest.fn() } },
+      ],
     }).compile();
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1');

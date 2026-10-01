@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { TableStatus } from '@prisma/client';
 jest.mock('puppeteer', () => ({}), { virtual: true });
 jest.mock('qrcode', () => ({}), { virtual: true });
@@ -68,8 +68,30 @@ describe('TablesController', () => {
 
       const result = await controller.list(req);
 
-      expect(service.listTables).toHaveBeenCalledWith('tenant-1');
+      expect(service.listTables).toHaveBeenCalledWith('tenant-1', undefined);
       expect(result).toBe(tables);
+    });
+
+    it('passes the authenticated waiter identity to the server-side table query', async () => {
+      const waiterRequest = {
+        user: { tenantId: 'tenant-1', userId: 'waiter-1', role: 'WAITER' },
+      } as TenantRequest;
+      const tables = [{ id: 'own-table' }];
+      service.listTables.mockResolvedValue(tables);
+
+      const result = await controller.list(waiterRequest);
+
+      expect(service.listTables).toHaveBeenCalledWith('tenant-1', 'waiter-1');
+      expect(result).toEqual([{ id: 'own-table' }]);
+    });
+
+    it('does not return tables to a waiter without an authenticated user identity', () => {
+      const waiterRequest = {
+        user: { tenantId: 'tenant-1', role: 'WAITER' },
+      } as TenantRequest;
+
+      expect(() => controller.list(waiterRequest)).toThrow(ForbiddenException);
+      expect(service.listTables).not.toHaveBeenCalled();
     });
   });
 

@@ -8,15 +8,16 @@ import {
 export type PaymentGateway = 'oplati' | 'erip' | 'bepaid' | 'skno';
 export type PaymentCredentialInput =
   | { gateway: 'oplati'; merchantId: string }
-  | { gateway: 'erip'; serviceId: string; secret: string }
+  | { gateway: 'erip'; shopId: string; serviceId: string; secret: string; publicKey?: string }
   | {
       gateway: 'bepaid';
       provider: 'bepaid' | 'webpay';
       shopId: string;
       secret: string;
+      publicKey?: string;
       environment: 'TEST' | 'PROD';
     }
-  | { gateway: 'skno'; cashRegisterSerial: string; unp: string };
+  | { gateway: 'skno'; cashRegisterSerial: string; unp: string; host: string; username: string; password: string };
 
 export interface EncryptedCredentials {
   version: 1;
@@ -26,7 +27,7 @@ export interface EncryptedCredentials {
 }
 
 export function encryptCredentials(
-  credentials: PaymentCredentialInput,
+  credentials: object,
   secret: string,
 ): EncryptedCredentials {
   const iv = randomBytes(12);
@@ -79,29 +80,35 @@ export function validateCredentials(input: unknown): PaymentCredentialInput {
       gateway: 'oplati',
       merchantId: (value.merchantId as string).trim(),
     };
-  if (value.gateway === 'erip' && required('serviceId', 'secret'))
+  if (value.gateway === 'erip' && required('shopId', 'serviceId', 'secret'))
     return {
       gateway: 'erip',
+      shopId: (value.shopId as string).trim(),
       serviceId: (value.serviceId as string).trim(),
       secret: value.secret as string,
+      ...(typeof value.publicKey === 'string' && value.publicKey.trim() ? { publicKey: value.publicKey.trim() } : {}),
     };
   if (
     value.gateway === 'bepaid' &&
     (value.provider === 'bepaid' || value.provider === 'webpay') &&
     (value.environment === 'TEST' || value.environment === 'PROD') &&
-    required('shopId', 'secret')
+    required('shopId', 'secret', ...(value.provider === 'bepaid' ? ['publicKey'] : []))
   )
     return {
       gateway: 'bepaid',
       provider: value.provider,
       shopId: (value.shopId as string).trim(),
       secret: value.secret as string,
+      ...(value.provider === 'bepaid' ? { publicKey: (value.publicKey as string).trim() } : {}),
       environment: value.environment,
     };
-  if (value.gateway === 'skno' && required('cashRegisterSerial', 'unp'))
+  if (value.gateway === 'skno' && required('cashRegisterSerial', 'host', 'username', 'password', 'unp') && /^\d{9}$/.test((value.unp as string).trim()))
     return {
       gateway: 'skno',
       cashRegisterSerial: (value.cashRegisterSerial as string).trim(),
+      host: (value.host as string).trim(),
+      username: (value.username as string).trim(),
+      password: value.password as string,
       unp: (value.unp as string).trim(),
     };
   throw new Error('Заполните обязательные поля платёжного шлюза');

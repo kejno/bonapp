@@ -44,7 +44,7 @@ describe('BNP-456: payment gateway credentials', () => {
 
   it('stores gateway credentials encrypted, reports connected status, and never logs secrets', async () => {
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    const credentials = { gateway: 'erip', serviceId: 'service-456', secret: 'private-secret-456' };
+    const credentials = { gateway: 'erip', shopId: 'shop-456', serviceId: 'service-456', secret: 'private-secret-456' };
 
     const statuses = await service.savePaymentCredentials(credentials);
 

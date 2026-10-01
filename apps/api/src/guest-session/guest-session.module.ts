@@ -1,14 +1,20 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { GuestSessionController } from './guest-session.controller';
 import { GuestOrdersController } from './guest-orders.controller';
 import { GuestSessionGuard } from './guest-session.guard';
 import { GuestSessionService } from './guest-session.service';
 import { MenuModule } from '../menu/menu.module';
+import { OnboardingModule } from '../onboarding/onboarding.module';
+import { BepaidClient } from './bepaid.client';
+import { BepaidWebhookController, BepaidWebhookService } from './bepaid-webhook';
+import { EripClient } from './erip.client';
+import { EripWebhookController, EripWebhookService } from './erip-webhook';
+import { StaffModule } from '../staff/staff.module';
 
 @Module({
-  imports: [MenuModule],
-  controllers: [GuestSessionController, GuestOrdersController],
-  providers: [GuestSessionService, GuestSessionGuard],
+  imports: [forwardRef(() => MenuModule), OnboardingModule, StaffModule],
+  controllers: [GuestSessionController, GuestOrdersController, BepaidWebhookController, EripWebhookController],
+  providers: [GuestSessionService, GuestSessionGuard, BepaidClient, BepaidWebhookService, EripClient, EripWebhookService],
   exports: [GuestSessionGuard],
 })
 export class GuestSessionModule {}
