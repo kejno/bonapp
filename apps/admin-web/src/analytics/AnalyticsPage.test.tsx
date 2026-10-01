@@ -2,10 +2,10 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AnalyticsPage, { rangeFor } from './AnalyticsPage';
-import { getPaymentsSplit, getRevenue, getShiftReport, getTips } from './analytics.api';
+import { getPaymentsSplit, getRevenue, getShiftReport, getTenantDate, getTips } from './analytics.api';
 
 vi.mock('./analytics.api', () => ({
-  exportTransactions: vi.fn(), getPaymentsSplit: vi.fn(), getRevenue: vi.fn(), getShiftReport: vi.fn(), getTips: vi.fn(),
+  exportTransactions: vi.fn(), getPaymentsSplit: vi.fn(), getRevenue: vi.fn(), getShiftReport: vi.fn(), getTenantDate: vi.fn(), getTips: vi.fn(),
 }));
 
 
@@ -20,6 +20,7 @@ describe('AnalyticsPage', () => {
     vi.mocked(getPaymentsSplit).mockRejectedValue(new Error('payments error'));
     vi.mocked(getTips).mockRejectedValue(new Error('tips error'));
     vi.mocked(getShiftReport).mockResolvedValue(null);
+    vi.mocked(getTenantDate).mockResolvedValue('2026-03-08');
   });
 
   it('reports payment and tips request failures separately from empty results', async () => {
@@ -31,7 +32,12 @@ describe('AnalyticsPage', () => {
   });
 
   it('builds calendar date ranges without converting them to browser-timezone instants', () => {
-    expect(rangeFor('custom', '2026-03-08', '2026-03-09')).toEqual({ from: '2026-03-08', to: '2026-03-09', days: 2 });
-    expect(rangeFor('week', '', '', new Date('2026-03-09T02:00:00Z'))).toEqual({ from: '2026-03-03', to: '2026-03-09', days: 7 });
+    expect(rangeFor('custom', '2026-03-08', '2026-03-09', '2026-03-09')).toEqual({ from: '2026-03-08', to: '2026-03-09', days: 2 });
+    expect(rangeFor('week', '', '', '2026-03-09')).toEqual({ from: '2026-03-03', to: '2026-03-09', days: 7 });
+  });
+
+  it('uses the restaurant date rather than the browser date for presets', () => {
+    expect(rangeFor('today', '', '', '2026-03-08')).toEqual({ from: '2026-03-08', to: '2026-03-08', days: 1 });
+    expect(rangeFor('week', '', '', '2026-03-08')).toEqual({ from: '2026-03-02', to: '2026-03-08', days: 7 });
   });
 });

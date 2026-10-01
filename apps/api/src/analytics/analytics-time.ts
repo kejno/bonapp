@@ -29,10 +29,14 @@ export function tenantDateBounds(from: string, to: string, timezone: string) {
 }
 
 export function tenantDayBounds(timezone: string, now = new Date()) {
+  const date = tenantDate(timezone, now);
+  return tenantDateBounds(date, addDays(date, 1), timezone);
+}
+
+export function tenantDate(timezone: string, now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(now);
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  const date = `${values['year']}-${values['month']}-${values['day']}`;
-  return tenantDateBounds(date, addDays(date, 1), timezone);
+  return `${values['year']}-${values['month']}-${values['day']}`;
 }

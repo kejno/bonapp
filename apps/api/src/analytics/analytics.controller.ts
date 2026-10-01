@@ -11,6 +11,7 @@ import { AnalyticsService } from './analytics.service';
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService, private readonly tenantContext: TenantContextService) {}
 
+  @Get('current-date') currentDate() { return this.analytics.currentTenantDate(this.tenantId()); }
   @Get('daily-summary') dailySummary() { return this.analytics.dailySummary(this.tenantId()); }
   @Get('revenue') revenue(@Query('from') from?: string, @Query('to') to?: string, @Query('granularity') granularity?: string) { return this.analytics.revenue(this.tenantId(), from, to, granularity); }
   @Get('payments-split') paymentsSplit(@Query('from') from?: string, @Query('to') to?: string) { return this.analytics.paymentsSplit(this.tenantId(), from, to); }

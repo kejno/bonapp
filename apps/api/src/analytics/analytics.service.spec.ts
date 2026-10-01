@@ -48,3 +48,18 @@ describe('AnalyticsService.tips', () => {
     await expect(service.tips('tenant-1', 'bad-date', '2026-09-30T00:00:00.000Z')).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('AnalyticsService.currentTenantDate', () => {
+  const tenantFindUnique = jest.fn();
+  const service = new AnalyticsService({ db: { tenant: { findUnique: tenantFindUnique } } } as never);
+
+  it('returns the current calendar date in the tenant timezone', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-08T23:30:00.000Z'));
+    tenantFindUnique.mockResolvedValue({ timezone: 'Europe/Minsk' });
+    try {
+      await expect(service.currentTenantDate('tenant-1')).resolves.toEqual({ date: '2026-03-09' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

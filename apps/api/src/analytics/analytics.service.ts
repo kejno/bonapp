@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { tenantDateBounds, tenantDayBounds } from './analytics-time';
+import { tenantDate, tenantDateBounds, tenantDayBounds } from './analytics-time';
 
 const paidStatuses = [OrderStatus.PAID];
 const completedPayments = [PaymentStatus.COMPLETED, PaymentStatus.SUCCEEDED];
@@ -9,6 +9,11 @@ const completedPayments = [PaymentStatus.COMPLETED, PaymentStatus.SUCCEEDED];
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async currentTenantDate(tenantId: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    return { date: tenantDate(tenant?.timezone ?? 'Europe/Minsk') };
+  }
 
   async dailySummary(tenantId: string) {
     const db = this.prisma.db;

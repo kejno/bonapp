@@ -19,6 +19,7 @@ export async function getDailySummary(): Promise<DailySummary> {
 }
 
 export interface RevenuePoint { period: string; revenueByn: number }
+export const getTenantDate = async () => (await analyticsRequest<{ date: string }>('current-date')).date;
 export interface PaymentSplit { method: 'OPLATI_QR' | 'ERIP_EPOS' | 'BANK_CARD' | 'CASH_TO_WAITER'; amountByn: number; transactionsCount: number }
 export interface TipRow { waiterName: string; tipsByn: number; transactionsCount: number }
 export interface ShiftReport { id: string; openedAt: string; closedAt: string | null; zReportNumber: number | null; ordersCount: number; revenueByn: number; payments: PaymentSplit[]; refundsByn: number }
