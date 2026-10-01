@@ -18,6 +18,25 @@ export class SuperadminController {
 
   @Get('overview') overview() { return this.service.overview(); }
 
+  @Get('tenants') tenants() { return this.service.tenants(); }
+
+  @Patch('tenants/:id') updateTenant(@Param('id') id: string, @Body() body: { subscription_plan?: unknown; trial_ends_at?: unknown; is_active?: unknown }) {
+    const data: { plan?: PlanType; trialEndsAt?: Date; isActive?: boolean } = {};
+    if (body?.subscription_plan !== undefined) {
+      if (typeof body.subscription_plan !== 'string' || !plans.has(body.subscription_plan as PlanType)) throw new BadRequestException('Некорректный тарифный план');
+      data.plan = body.subscription_plan as PlanType;
+    }
+    if (body?.trial_ends_at !== undefined) {
+      if (typeof body.trial_ends_at !== 'string' || Number.isNaN(Date.parse(body.trial_ends_at))) throw new BadRequestException('Некорректная дата окончания пробного периода');
+      data.trialEndsAt = new Date(body.trial_ends_at);
+    }
+    if (body?.is_active !== undefined) {
+      if (typeof body.is_active !== 'boolean') throw new BadRequestException('Некорректное состояние активности');
+      data.isActive = body.is_active;
+    }
+    if (Object.keys(data).length === 0) throw new BadRequestException('Укажите данные для изменения тенанта');
+    return this.service.updateTenantFields(id, data);
+  }
   @Get('platform/stats') platformStats() { return this.service.platformStats(); }
 
   @Patch('tenants/:id/plan') updatePlan(@Param('id') id: string, @Body() body: { plan?: unknown }) {

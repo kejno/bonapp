@@ -38,6 +38,30 @@ export class SuperadminService {
     });
   }
 
+  async tenants() {
+    const now = new Date();
+    const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, orderCounts, revenues] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, name: true, slug: true, plan: true, isActive: true, trialEndsAt: true } }),
+        db.order.groupBy({ by: ['tenantId'], where: { createdAt: { gte: recent, lte: now }, isTest: false }, _count: { id: true } }),
+        db.payment.groupBy({ by: ['tenantId'], where: { type: PaymentType.SUBSCRIPTION, status: { in: paidStatuses }, createdAt: { gte: recent, lte: now } }, _sum: { amountByn: true } }),
+      ]);
+      const ordersByTenant = new Map(orderCounts.map((row) => [row.tenantId, row._count.id]));
+      const revenueByTenant = new Map(revenues.map((row) => [row.tenantId, Number(row._sum.amountByn ?? 0)]));
+      return tenants.map((tenant) => ({
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        plan: tenant.plan,
+        is_active: tenant.isActive,
+        trial_ends_at: tenant.trialEndsAt,
+        order_count_30d: ordersByTenant.get(tenant.id) ?? 0,
+        monthly_revenue_byn: revenueByTenant.get(tenant.id) ?? 0,
+      }));
+    });
+  }
+
   async platformStats() {
     const now = new Date();
     const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
@@ -78,6 +102,12 @@ export class SuperadminService {
   async updatePlan(id: string, plan: PlanType) {
     if (!Object.values(PlanType).includes(plan)) throw new BadRequestException('Некорректный тарифный план');
     return this.updateTenant(id, { plan, subscriptionPlan: plan });
+  }
+
+  async updateTenantFields(id: string, data: { plan?: PlanType; trialEndsAt?: Date; isActive?: boolean }) {
+    const { isActive, ...tenantFields } = data;
+    const updated = await this.updateTenant(id, { ...tenantFields, ...(data.plan ? { subscriptionPlan: data.plan } : {}) });
+    return isActive === undefined ? updated : this.setBlocked(id, !isActive);
   }
 
   async setBlocked(id: string, blocked: boolean) {
