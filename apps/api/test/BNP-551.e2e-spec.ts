@@ -26,9 +26,26 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
     });
     await fixture.prisma.tenant.createMany({
       data: [
+        { id: 'bnp551-standard', slug: 'bnp551-standard', name: 'BNP-551 Standard', subscriptionPlan: 'STANDARD', isActive: true },
         { id: 'bnp551-trial', slug: 'bnp551-trial', name: 'BNP-551 Trial', subscriptionPlan: 'TRIAL', isActive: true },
         { id: 'bnp551-inactive', slug: 'bnp551-inactive', name: 'BNP-551 Inactive', subscriptionPlan: 'ENTERPRISE', isActive: false },
       ],
+    });
+
+    const area = await fixture.prisma.diningArea.create({
+      data: { tenantId: fixture.tenantId, name: 'BNP-551 QR area' },
+    });
+    const table = await fixture.prisma.table.create({
+      data: { tenantId: fixture.tenantId, areaId: area.id, tableNumber: 551, qrToken: 'bnp551-qr-token' },
+    });
+    await fixture.prisma.order.create({
+      data: {
+        tenantId: fixture.tenantId,
+        tableId: table.id,
+        dailyOrderNumber: 1,
+        guestSessionId: 'bnp551-guest-session',
+        createdAt: new Date(),
+      },
     });
 
     const stats = await fixture.adminRequest()
@@ -36,6 +53,6 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
       .set('Authorization', authorization)
       .expect(200);
 
-    expect(stats.body as unknown as Record<string, number>).toEqual({ mrr_byn: 100, total_tenants: 3, active_tenants: 2, qr_orders_today: 0 });
+    expect(stats.body as unknown as Record<string, number>).toEqual({ mrr_byn: 150, total_tenants: 4, active_tenants: 3, qr_orders_today: 1 });
   });
 });
