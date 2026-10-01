@@ -38,6 +38,43 @@ export class SuperadminService {
     });
   }
 
+  async platformStats() {
+    const now = new Date();
+    const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day) - 3 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1) - 3 * 60 * 60 * 1000);
+    const monthEnd = new Date(Date.UTC(year, month, 1) - 3 * 60 * 60 * 1000);
+
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, qrOrders, payments] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, status: true, isActive: true, plan: true } }),
+        db.order.count({ where: { createdAt: { gte: start, lt: end }, guestSessionId: { not: null }, isTest: false } }),
+        db.payment.findMany({
+          where: {
+            type: PaymentType.SUBSCRIPTION,
+            status: { in: paidStatuses },
+            createdAt: { gte: monthStart, lt: monthEnd },
+          },
+          select: { tenantId: true, amountByn: true },
+        }),
+      ]);
+      const activePaidTenantIds = new Set(
+        tenants
+          .filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive && tenant.plan !== PlanType.TRIAL)
+          .map((tenant) => tenant.id),
+      );
+      return {
+        mrr_byn: payments
+          .filter((payment) => activePaidTenantIds.has(payment.tenantId))
+          .reduce((sum, payment) => sum + Number(payment.amountByn), 0),
+        total_tenants: tenants.length,
+        active_tenants: tenants.filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive).length,
+        qr_orders_today: qrOrders,
+      };
+    });
+  }
+
   async updatePlan(id: string, plan: PlanType) {
     if (!Object.values(PlanType).includes(plan)) throw new BadRequestException('Некорректный тарифный план');
     return this.updateTenant(id, { plan, subscriptionPlan: plan });
