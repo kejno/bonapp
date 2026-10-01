@@ -3,7 +3,7 @@ import { AnalyticsService } from './analytics.service';
 
 describe('AnalyticsService.tips', () => {
   type TipsQuery = { where: { createdAt: { gte: Date; lt: Date } } };
-  type TipPayment = { tipsAmountByn: number; order: { assignedWaiterId: string | null; assignedWaiter: { fullName: string } | null } };
+  type TipPayment = { tipsAmountByn: number; order: { id?: string; assignedWaiterId: string | null; assignedWaiter: { fullName: string } | null } };
   const findMany = jest.fn<Promise<TipPayment[]>, [TipsQuery]>();
   const tenantFindUnique = jest.fn();
   const service = new AnalyticsService({
@@ -20,10 +20,10 @@ describe('AnalyticsService.tips', () => {
 
   it('uses the requested date range when aggregating waiter tips', async () => {
     findMany.mockResolvedValue([
-      { tipsAmountByn: 3, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 0, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 2, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 4, order: { assignedWaiterId: 'w2', assignedWaiter: { fullName: 'Иван' } } },
+      { tipsAmountByn: 3, order: { id: 'o1', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 0, order: { id: 'o1', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 2, order: { id: 'o2', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 4, order: { id: 'o3', assignedWaiterId: 'w2', assignedWaiter: { fullName: 'Иван' } } },
     ]);
 
     await expect(service.tips('tenant-1', '2026-09-28T00:00:00.000Z', '2026-09-30T00:00:00.000Z')).resolves.toEqual([
@@ -36,7 +36,30 @@ describe('AnalyticsService.tips', () => {
     });
   });
 
+  it('converts calendar dates using the tenant timezone and includes the end date', async () => {
+    await service.tips('tenant-1', '2026-09-28', '2026-09-30');
+    expect(findMany.mock.calls[0][0].where.createdAt).toEqual({
+      gte: new Date('2026-09-27T21:00:00.000Z'),
+      lt: new Date('2026-09-30T21:00:00.000Z'),
+    });
+  });
+
   it('rejects an invalid requested date range', async () => {
     await expect(service.tips('tenant-1', 'bad-date', '2026-09-30T00:00:00.000Z')).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('AnalyticsService.currentTenantDate', () => {
+  const tenantFindUnique = jest.fn();
+  const service = new AnalyticsService({ db: { tenant: { findUnique: tenantFindUnique } } } as never);
+
+  it('returns the current calendar date in the tenant timezone', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-08T23:30:00.000Z'));
+    tenantFindUnique.mockResolvedValue({ timezone: 'Europe/Minsk' });
+    try {
+      await expect(service.currentTenantDate('tenant-1')).resolves.toEqual({ date: '2026-03-09' });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

@@ -40,6 +40,7 @@ export default function DashboardPage() {
         </>}
         <nav className="mt-8 flex flex-wrap gap-4 text-sm">
           {!isWaiter && <Link to="/menu" className="text-primary hover:underline">Каталог меню</Link>}
+          {!isWaiter && <Link to="/analytics" className="text-primary hover:underline">Аналитика и выручка</Link>}
           {canOpenKds && <Link to="/kds" className="text-primary hover:underline">Live KDS</Link>}
           {!isWaiter && <Link to="/settings" className="text-primary hover:underline">Настройки заведения</Link>}
           <Link to="/tables" className="text-primary hover:underline">{isWaiter ? 'Мои столы' : 'Схема зала'}</Link>
