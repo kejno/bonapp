@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PaymentStatus, PaymentType, PlanType, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantLocalDate } from '../orders/daily-order-number';
@@ -8,47 +9,11 @@ const paidStatuses = [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED];
 
 @Injectable()
 export class SuperadminService {
-  constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway) {}
-
-  async listTenants() {
-    const now = new Date();
-    const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const [year, month] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
-    const monthStart = new Date(Date.UTC(year, month - 1, 1) - 3 * 60 * 60 * 1000);
-
-    return this.prisma.superadminTransaction(async (db) => {
-      const [tenants, recentOrders, monthlyRevenue] = await Promise.all([
-        db.tenant.findMany({
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, slug: true, plan: true, isActive: true, trialEndsAt: true },
-        }),
-        db.order.groupBy({
-          by: ['tenantId'],
-          where: { createdAt: { gte: recent }, isTest: false },
-          _count: { _all: true },
-        }),
-        db.order.groupBy({
-          by: ['tenantId'],
-          where: { createdAt: { gte: monthStart }, isTest: false, isPaid: true },
-          _sum: { totalAmountByn: true },
-        }),
-      ]);
-      const orderCountByTenant = new Map(recentOrders.map((row) => [row.tenantId, row._count._all]));
-      const revenueByTenant = new Map(
-        monthlyRevenue.map((row) => [row.tenantId, Number(row._sum.totalAmountByn ?? 0)]),
-      );
-
-      return tenants.map((tenant) => ({
-        name: tenant.name,
-        slug: tenant.slug,
-        plan: tenant.plan,
-        is_active: tenant.isActive,
-        trial_ends_at: tenant.trialEndsAt,
-        order_count_30d: orderCountByTenant.get(tenant.id) ?? 0,
-        monthly_revenue_byn: revenueByTenant.get(tenant.id) ?? 0,
-      }));
-    });
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly menuGateway: MenuGateway,
+    private readonly config?: ConfigService,
+  ) {}
 
   async overview() {
     const now = new Date();
@@ -82,13 +47,11 @@ export class SuperadminService {
     const now = new Date();
     const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     return this.prisma.superadminTransaction(async (db) => {
-      const [tenants, orderCounts, revenues] = await Promise.all([
+      const [tenants, orderCounts] = await Promise.all([
         db.tenant.findMany({ select: { id: true, name: true, slug: true, plan: true, isActive: true, trialEndsAt: true } }),
         db.order.groupBy({ by: ['tenantId'], where: { createdAt: { gte: recent, lte: now }, isTest: false }, _count: { id: true } }),
-        db.payment.groupBy({ by: ['tenantId'], where: { type: PaymentType.SUBSCRIPTION, status: { in: paidStatuses }, createdAt: { gte: recent, lte: now } }, _sum: { amountByn: true } }),
       ]);
       const ordersByTenant = new Map(orderCounts.map((row) => [row.tenantId, row._count.id]));
-      const revenueByTenant = new Map(revenues.map((row) => [row.tenantId, Number(row._sum.amountByn ?? 0)]));
       return tenants.map((tenant) => ({
         id: tenant.id,
         name: tenant.name,
@@ -97,9 +60,18 @@ export class SuperadminService {
         is_active: tenant.isActive,
         trial_ends_at: tenant.trialEndsAt,
         order_count_30d: ordersByTenant.get(tenant.id) ?? 0,
-        monthly_revenue_byn: revenueByTenant.get(tenant.id) ?? 0,
+        monthly_revenue_byn: tenant.isActive && tenant.plan !== PlanType.TRIAL ? this.planPrice(tenant.plan) : 0,
       }));
     });
+  }
+
+  private planPrice(plan: PlanType): number {
+    if (plan === PlanType.TRIAL) return 0;
+    const key = `PLAN_${plan}_PRICE_BYN`;
+    const raw = this.config?.get<string>(key) ?? process.env[key];
+    const price = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
+    if (!Number.isFinite(price) || price < 0) throw new Error(`${key} must be configured as a non-negative number`);
+    return price;
   }
 
   async platformStats() {

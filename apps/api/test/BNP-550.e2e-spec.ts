@@ -68,6 +68,7 @@ describe('BNP-550 SuperAdmin tenant management (e2e)', () => {
     const tenants = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
     expect(Array.isArray(tenants.body)).toBe(true);
     const tenant = (tenants.body as Array<Record<string, unknown>>).find((item) => item['id'] === fixture.tenantId);
+    expect(tenant?.['id']).toBe(fixture.tenantId);
     expect(tenant?.['name']).toBe('Auth E2E Tenant');
     expect(typeof tenant?.['slug']).toBe('string');
     expect(typeof tenant?.['plan']).toBe('string');
