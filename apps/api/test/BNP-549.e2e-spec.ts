@@ -27,7 +27,7 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
     expect(typeof overviewBody.metrics.qrOrdersToday).toBe('number');
     expect(typeof overviewBody.metrics.subscriptionRevenueByn).toBe('number');
     expect(Array.isArray(overviewBody.growth)).toBe(true);
-    expect(overviewBody.tenants).toContainEqual({ id: fixture.tenantId, name: 'Auth E2E Tenant' });
+    expect(overviewBody.tenants).toContainEqual(expect.objectContaining({ id: fixture.tenantId, name: 'Auth E2E Tenant' }));
 
     await fixture.prisma.user.update({ where: { id: fixture.userId }, data: { role: 'OWNER' } });
     const ownerLogin = await loginRequest(fixture.app.getHttpServer()).send({

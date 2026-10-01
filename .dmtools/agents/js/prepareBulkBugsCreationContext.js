@@ -15,6 +15,7 @@
 
 var configLoader = require('./configLoader.js');
 const { JIRA_FIELDS } = require('./config.js');
+const { readFieldText } = require('./common/fieldText.js');
 
 function summarizeDoneBug(bug) {
     var fields = bug.fields || {};
@@ -34,22 +35,17 @@ function getFailedReasonFieldName(config, customParams) {
         || 'Failed Reason';
 }
 
-function extractFailedReason(fields, fieldName) {
-    if (!fields || !fieldName) return '';
-    var raw = fields[fieldName];
-    if (typeof raw === 'string') return raw;
-    if (raw && typeof raw.value === 'string') return raw.value;
-    // Fallback: dmtools may transform customfield_12345 into "Name (customfield_12345)".
-    if (fieldName.indexOf('customfield_') !== -1) {
-        for (var key in fields) {
-            if (fields.hasOwnProperty(key) && key.indexOf(fieldName) !== -1) {
-                var v = fields[key];
-                if (typeof v === 'string') return v;
-                if (v && typeof v.value === 'string') return v.value;
-            }
-        }
-    }
-    return '';
+// A Jira search only returns custom fields that are requested by id, so the id must be known:
+// customParams.failedReasonFieldId, then jira.fields.failedReasonId in .dmtools/config.js, then a
+// failed-reason field name that is already an id.
+function getFailedReasonFieldId(config, customParams, fieldName) {
+    return (customParams && customParams.failedReasonFieldId)
+        || (config && config.jira && config.jira.fields && config.jira.fields.failedReasonId)
+        || (fieldName && fieldName.indexOf('customfield_') !== -1 ? fieldName : '');
+}
+
+function extractFailedReason(fields, fieldName, fieldId) {
+    return readFieldText(fields, fieldId, fieldName);
 }
 
 function extractAttachmentNames(fields) {
@@ -92,7 +88,8 @@ function action(params) {
 
         var config = configLoader.loadProjectConfig(actualParams);
         var failedReasonFieldName = getFailedReasonFieldName(config, customParams);
-        console.log('Failed Reason field name:', failedReasonFieldName);
+        var failedReasonFieldId = getFailedReasonFieldId(config, customParams, failedReasonFieldName);
+        console.log('Failed Reason field name:', failedReasonFieldName, '| id:', failedReasonFieldId || '(not configured — the field will not be fetched)');
 
         console.log('=== Preparing bulk bugs creation context ===');
         console.log('Project:', projectKey, '| batchSize:', batchSize);
@@ -102,8 +99,8 @@ function action(params) {
         var failedTCs = [];
         try {
             var tcFields = ['key', 'summary', 'description', 'comment', 'status', 'labels', 'parent', 'attachment'];
-            if (failedReasonFieldName && failedReasonFieldName.indexOf('customfield_') !== -1) {
-                tcFields.push(failedReasonFieldName);
+            if (failedReasonFieldId) {
+                tcFields.push(failedReasonFieldId);
             }
             var tcResults = jira_search_by_jql({
                 jql: failedTCsJql,
@@ -137,7 +134,7 @@ function action(params) {
                 key: tc.key,
                 summary: fields.summary || '',
                 description: fields.description || '',
-                failedReason: extractFailedReason(fields, failedReasonFieldName),
+                failedReason: extractFailedReason(fields, failedReasonFieldName, failedReasonFieldId),
                 attachmentNames: extractAttachmentNames(fields),
                 lastComment: lastComment,
                 parent: fields.parent ? fields.parent.key + ' — ' + (fields.parent.fields && fields.parent.fields.summary || '') : '',
@@ -205,6 +202,8 @@ function action(params) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         action: action,
-        fetchHistoricalDoneBugs: fetchHistoricalDoneBugs
+        fetchHistoricalDoneBugs: fetchHistoricalDoneBugs,
+        extractFailedReason: extractFailedReason,
+        getFailedReasonFieldId: getFailedReasonFieldId
     };
 }

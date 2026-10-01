@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PaymentStatus, PaymentType, PlanType, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantLocalDate } from '../orders/daily-order-number';
@@ -8,7 +9,11 @@ const paidStatuses = [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED];
 
 @Injectable()
 export class SuperadminService {
-  constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly menuGateway: MenuGateway,
+    private readonly config?: ConfigService,
+  ) {}
 
   async overview() {
     const now = new Date();
@@ -38,9 +43,83 @@ export class SuperadminService {
     });
   }
 
+  async tenants() {
+    const now = new Date();
+    const recent = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, orderCounts] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, name: true, slug: true, plan: true, isActive: true, trialEndsAt: true } }),
+        db.order.groupBy({ by: ['tenantId'], where: { createdAt: { gte: recent, lte: now }, isTest: false }, _count: { id: true } }),
+      ]);
+      const ordersByTenant = new Map(orderCounts.map((row) => [row.tenantId, row._count.id]));
+      return tenants.map((tenant) => ({
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        plan: tenant.plan,
+        is_active: tenant.isActive,
+        trial_ends_at: tenant.trialEndsAt,
+        order_count_30d: ordersByTenant.get(tenant.id) ?? 0,
+        monthly_revenue_byn: tenant.isActive && tenant.plan !== PlanType.TRIAL ? this.planPrice(tenant.plan) : 0,
+      }));
+    });
+  }
+
+  private planPrice(plan: PlanType): number {
+    if (plan === PlanType.TRIAL) return 0;
+    const key = `PLAN_${plan}_PRICE_BYN`;
+    const raw = this.config?.get<string>(key) ?? process.env[key];
+    const price = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
+    if (!Number.isFinite(price) || price < 0) throw new Error(`${key} must be configured as a non-negative number`);
+    return price;
+  }
+
+  async platformStats() {
+    const now = new Date();
+    const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day) - 3 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1) - 3 * 60 * 60 * 1000);
+    const monthEnd = new Date(Date.UTC(year, month, 1) - 3 * 60 * 60 * 1000);
+
+    return this.prisma.superadminTransaction(async (db) => {
+      const [tenants, qrOrders, payments] = await Promise.all([
+        db.tenant.findMany({ select: { id: true, status: true, isActive: true, plan: true } }),
+        db.order.count({ where: { createdAt: { gte: start, lt: end }, guestSessionId: { not: null }, isTest: false } }),
+        db.payment.findMany({
+          where: {
+            type: PaymentType.SUBSCRIPTION,
+            status: { in: paidStatuses },
+            createdAt: { gte: monthStart, lt: monthEnd },
+          },
+          select: { tenantId: true, amountByn: true },
+        }),
+      ]);
+      const activePaidTenantIds = new Set(
+        tenants
+          .filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive && tenant.plan !== PlanType.TRIAL)
+          .map((tenant) => tenant.id),
+      );
+      return {
+        mrr_byn: payments
+          .filter((payment) => activePaidTenantIds.has(payment.tenantId))
+          .reduce((sum, payment) => sum + Number(payment.amountByn), 0),
+        total_tenants: tenants.length,
+        active_tenants: tenants.filter((tenant) => tenant.status === TenantStatus.ACTIVE && tenant.isActive).length,
+        qr_orders_today: qrOrders,
+      };
+    });
+  }
+
   async updatePlan(id: string, plan: PlanType) {
     if (!Object.values(PlanType).includes(plan)) throw new BadRequestException('Некорректный тарифный план');
     return this.updateTenant(id, { plan, subscriptionPlan: plan });
+  }
+
+  async updateTenantFields(id: string, data: { plan?: PlanType; trialEndsAt?: Date; isActive?: boolean }) {
+    const { isActive, ...tenantFields } = data;
+    const updated = await this.updateTenant(id, { ...tenantFields, ...(data.plan ? { subscriptionPlan: data.plan } : {}) });
+    return isActive === undefined ? updated : this.setBlocked(id, !isActive);
   }
 
   async setBlocked(id: string, blocked: boolean) {

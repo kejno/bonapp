@@ -464,14 +464,24 @@ function getFailedReasonField(config) {
         || 'Failed Reason';
 }
 
-function attachFailedDescription(tcKey, filePath) {
+function attachFailedDescription(tcKey, filePath, workingDir) {
     try {
         if (!filePath) return null;
         var name = filePath.split('/').pop();
+        // jira_attach_file_to_ticket resolves relative paths from the JSRunner cwd (.dmtools/), but
+        // the CLI agent writes the report under the repo root (workingDir/outputs/). Read it the
+        // same way the other post-actions do and stage a copy where the attach tool can see it.
+        var report = outputFiles.readOutputFileDetailed(filePath, { workingDir: workingDir });
+        if (!report) {
+            console.warn('Failed description not found for', tcKey, ':', filePath);
+            return null;
+        }
+        var stagedPath = 'outputs/' + name;
+        file_write({ path: stagedPath, content: report.content });
         jira_attach_file_to_ticket({
             ticketKey: tcKey,
             name: name,
-            filePath: filePath,
+            filePath: stagedPath,
             contentType: 'text/markdown'
         });
         console.log('✅ Attached failed description to', tcKey, ':', name);
@@ -510,7 +520,7 @@ function updateTestCaseStatus(tcKey, status, workingDir, storyKey, config) {
             var filePath = resultItem && resultItem.failedDescriptionFile
                 ? resultItem.failedDescriptionFile
                 : 'outputs/failed_description_' + tcKey + '.md';
-            var attachmentName = attachFailedDescription(tcKey, filePath);
+            var attachmentName = attachFailedDescription(tcKey, filePath, workingDir);
             updateFailedReasonField(tcKey, attachmentName, resultItem ? resultItem.failureSummary : '', getFailedReasonField(config));
         }
     } catch (e) {
@@ -902,5 +912,5 @@ function action(params) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { action };
+    module.exports = { action, attachFailedDescription };
 }
