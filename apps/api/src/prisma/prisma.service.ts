@@ -232,13 +232,24 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async superadminTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_superadmin', 'true', true)`;
+      return operation(tx);
+    });
+  }
+
   /**
    * Looks up a table by its globally-unique QR token without tenant scoping.
    * Used only for guest session initialization where the tenant must first be
    * resolved from the token before scoped queries can proceed.
    */
   findTableByQrToken(qrToken: string) {
-    return this.client.table.findUnique({
+    return this.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.qr_token', ${qrToken}, true)`;
+      const table = await tx.table.findUnique({ where: { qrToken }, select: { tenantId: true } });
+      return table?.tenantId ?? null;
+    }).then((tenantId) => tenantId ? this.forTenant(tenantId).table.findUnique({
       where: { qrToken },
       include: {
         area: { select: { name: true } },
@@ -250,10 +261,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
             logoUrl: true,
             brandColor: true,
             currency: true,
+            status: true,
+            isActive: true,
           },
         },
       },
-    });
+      }) : null);
   }
 
   /**

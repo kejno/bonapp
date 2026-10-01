@@ -28,6 +28,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { WaiterCallModule } from './waiter-call/waiter-call.module';
 import { WelcomeModule } from './welcome/welcome.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { SuperadminModule } from './superadmin/superadmin.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     WaiterCallModule,
     WelcomeModule,
     AnalyticsModule,
+    SuperadminModule,
   ],
   controllers: [AppController],
   providers: [

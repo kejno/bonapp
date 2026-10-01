@@ -19,6 +19,15 @@ enum UserRole {
 
 enum TenantStatus {
   TRIAL
+  ACTIVE
+  BLOCKED
+}
+
+enum PlanType {
+  TRIAL
+  STARTER
+  PRO
+  ENTERPRISE
 }
 
 enum VenueType {
@@ -73,6 +82,7 @@ model Tenant {
   isActive               Boolean         @default(true) @map("is_active")
   trialEndsAt            DateTime?       @map("trial_ends_at")
   subscriptionPlan       String          @default("free") @map("subscription_plan")
+  plan                   PlanType        @default(TRIAL)
   createdAt              DateTime        @default(now()) @map("created_at")
   updatedAt              DateTime        @updatedAt @map("updated_at")
   users                  User[]
@@ -249,6 +259,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentType {
+  ORDER
+  SUBSCRIPTION
+}
+
 enum FiscalizationStatus {
   NOT_REQUIRED
   PENDING
@@ -314,6 +329,7 @@ model Payment {
   amountByn             Decimal       @map("amount_byn") @db.Decimal(12, 2)
   tipsAmountByn         Decimal       @default(0) @map("tips_amount_byn") @db.Decimal(12, 2)
   provider              String
+  type                  PaymentType    @default(ORDER)
   method                PaymentMethod @default(BANK_CARD)
   providerTransactionId String?       @map("provider_transaction_id")
   eripOrderNumber       String?       @map("erip_order_number")

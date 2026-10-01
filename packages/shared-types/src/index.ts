@@ -46,6 +46,17 @@ export interface TenantDto {
   createdAt: string;
 }
 
+export type PlanType = 'TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
+export type SuperAdminTenantStatus = 'TRIAL' | 'ACTIVE' | 'BLOCKED';
+export interface SuperAdminTenantDto {
+  id: string;
+  name: string;
+  plan: PlanType;
+  status: SuperAdminTenantStatus;
+  trialEndsAt: string | null;
+  revenue30dByn: number;
+}
+
 export interface TableDto {
   id: string;
   tenantId: string;
