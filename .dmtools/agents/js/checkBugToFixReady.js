@@ -73,6 +73,22 @@ function action(params) {
         })) || [];
     }
 
+    // Bugs of any status linked to this Story's Test Cases. checkStoryTestsPassed moves a Story to
+    // Bug To Fix when one of its Test Cases has an open Bug, even if the Bug is linked only to the
+    // Test Case (a Test Case shared by several Stories gets its Bug linked to just one of them).
+    function findBugKeysInLinkedTestCases() {
+        var keys = [];
+        findLinkedTestCases().forEach(function(tcRaw) {
+            var tc = toPlain(tcRaw);
+            if (!tc.key) return;
+            findLinkedBugs(tc.key).forEach(function(bugRaw) {
+                var bug = toPlain(bugRaw);
+                if (bug.key) keys.push(bug.key);
+            });
+        });
+        return keys;
+    }
+
     function findPendingBugsInLinkedTestCases() {
         var testCases = findLinkedTestCases();
         var pending = [];
@@ -97,8 +113,14 @@ function action(params) {
         console.log('=== Bug To Fix ready check for', ticketKey, '(' + issueType + ') ===');
 
         const linkedBugs = findLinkedBugs();
-        const totalBugs = linkedBugs.length;
-        console.log('Linked Bugs:', totalBugs);
+        const allBugKeys = linkedBugs.map(function(bugRaw) { return toPlain(bugRaw).key; });
+        if (issueType === jiraConfig.issueTypes.STORY) {
+            findBugKeysInLinkedTestCases().forEach(function(key) {
+                if (allBugKeys.indexOf(key) === -1) allBugKeys.push(key);
+            });
+        }
+        const totalBugs = allBugKeys.length;
+        console.log('Linked Bugs (direct' + (issueType === jiraConfig.issueTypes.STORY ? ' + via Test Cases' : '') + '):', totalBugs);
 
         if (totalBugs === 0) {
             console.log('No linked Bugs found — releasing lock, will re-check next cycle');
