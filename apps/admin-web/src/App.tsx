@@ -27,6 +27,7 @@ import type { ReactNode } from 'react';
 import StaffPage from './pages/StaffPage';
 import SettingsPage from './settings/SettingsPage';
 import WelcomePage from './pages/WelcomePage';
+import AnalyticsPage from './analytics/AnalyticsPage';
 
 const queryClient = new QueryClient();
 
@@ -81,6 +82,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/analytics" element={<NonWaiterRoute><AnalyticsPage /></NonWaiterRoute>} />
           <Route path="/onboarding/step-2" element={<ProtectedRoute><OnboardingStep2Page /></ProtectedRoute>} />
           <Route
             path="/onboarding/step-3"

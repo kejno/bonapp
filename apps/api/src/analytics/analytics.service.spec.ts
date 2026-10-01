@@ -3,7 +3,7 @@ import { AnalyticsService } from './analytics.service';
 
 describe('AnalyticsService.tips', () => {
   type TipsQuery = { where: { createdAt: { gte: Date; lt: Date } } };
-  type TipPayment = { tipsAmountByn: number; order: { assignedWaiterId: string | null; assignedWaiter: { fullName: string } | null } };
+  type TipPayment = { tipsAmountByn: number; order: { id?: string; assignedWaiterId: string | null; assignedWaiter: { fullName: string } | null } };
   const findMany = jest.fn<Promise<TipPayment[]>, [TipsQuery]>();
   const tenantFindUnique = jest.fn();
   const service = new AnalyticsService({
@@ -20,10 +20,10 @@ describe('AnalyticsService.tips', () => {
 
   it('uses the requested date range when aggregating waiter tips', async () => {
     findMany.mockResolvedValue([
-      { tipsAmountByn: 3, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 0, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 2, order: { assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
-      { tipsAmountByn: 4, order: { assignedWaiterId: 'w2', assignedWaiter: { fullName: 'Иван' } } },
+      { tipsAmountByn: 3, order: { id: 'o1', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 0, order: { id: 'o1', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 2, order: { id: 'o2', assignedWaiterId: 'w1', assignedWaiter: { fullName: 'Анна' } } },
+      { tipsAmountByn: 4, order: { id: 'o3', assignedWaiterId: 'w2', assignedWaiter: { fullName: 'Иван' } } },
     ]);
 
     await expect(service.tips('tenant-1', '2026-09-28T00:00:00.000Z', '2026-09-30T00:00:00.000Z')).resolves.toEqual([
