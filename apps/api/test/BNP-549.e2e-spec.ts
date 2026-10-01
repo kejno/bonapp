@@ -19,6 +19,7 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
   it('allows SUPER_ADMIN, rejects OWNER, and requires authentication for SuperAdmin endpoints', async () => {
     const tenantsResponse = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
     expect(tenantsResponse.body).toContainEqual({
+      id: fixture.tenantId,
       name: 'Auth E2E Tenant',
       slug: fixture.tenantId,
       plan: 'TRIAL',
