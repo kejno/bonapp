@@ -67,10 +67,12 @@ describe('BNP-553 фильтрация и управление тенантам�
     expect(screen.getByRole('row', { name: /Ресторан/ })).toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /Столовая/ })).not.toBeInTheDocument();
 
+    fireEvent.change(statusFilter, { target: { value: 'ALL' } });
     fireEvent.change(screen.getByLabelText('Фильтр по плану'), { target: { value: 'PRO' } });
+    expect(screen.getByRole('row', { name: /Кафе/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /Столовая/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /Ресторан/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Фильтр по плану'), { target: { value: 'ALL' } });
-    fireEvent.change(statusFilter, { target: { value: 'ALL' } });
     expect(screen.getByRole('row', { name: /Кафе/ })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Столовая/ })).toBeInTheDocument();
 
