@@ -4,13 +4,14 @@ import { SkipTenantGuard } from '../tenant/tenant.constants';
 import { JwtAuthGuard } from '../staff-auth/jwt-auth.guard';
 import { Roles } from '../staff-auth/roles.decorator';
 import { RolesGuard } from '../staff-auth/roles.guard';
+import { SuperadminScopeGuard } from '../staff-auth/superadmin-scope.guard';
 import { SuperadminService, TenantUpdate } from './superadmin.service';
 
 const PLANS = new Set(['TRIAL', 'STANDARD', 'PRO', 'ENTERPRISE']);
 
 @Controller('superadmin')
 @SkipTenantGuard()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, SuperadminScopeGuard)
 @Roles(UserRole.SUPER_ADMIN)
 export class SuperadminController {
   constructor(private readonly service: SuperadminService) {}
