@@ -37,6 +37,7 @@ export class SuperadminController {
     if (Object.keys(data).length === 0) throw new BadRequestException('Укажите данные для изменения тенанта');
     return this.service.updateTenantFields(id, data);
   }
+  @Get('platform/stats') platformStats() { return this.service.platformStats(); }
 
   @Patch('tenants/:id/plan') updatePlan(@Param('id') id: string, @Body() body: { plan?: unknown }) {
     if (typeof body?.plan !== 'string' || !plans.has(body.plan as PlanType)) throw new BadRequestException('Некорректный тарифный план');

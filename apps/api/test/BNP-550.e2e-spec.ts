@@ -61,18 +61,19 @@ describe('BNP-550 SuperAdmin tenant management (e2e)', () => {
 
   it('lists tenants and updates plan, trial end, and activity through the documented contract', async () => {
     const trialEndsAt = new Date(Date.now() + 10 * 86400000);
-    await fixture.prisma.tenant.update({ where: { id: fixture.tenantId }, data: { isActive: true } });
+    await fixture.prisma.tenant.update({
+      where: { id: fixture.tenantId },
+      data: { status: 'ACTIVE', statusBeforeBlock: null, isActive: true, isActiveBeforeBlock: null },
+    });
     const tenants = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
     expect(Array.isArray(tenants.body)).toBe(true);
     const tenant = (tenants.body as Array<Record<string, unknown>>).find((item) => item['id'] === fixture.tenantId);
-    expect(tenant).toMatchObject({
-      name: 'Auth E2E Tenant',
-      slug: expect.any(String),
-      plan: expect.any(String),
-      is_active: true,
-      order_count_30d: expect.any(Number),
-      monthly_revenue_byn: expect.any(Number),
-    });
+    expect(tenant?.['name']).toBe('Auth E2E Tenant');
+    expect(typeof tenant?.['slug']).toBe('string');
+    expect(typeof tenant?.['plan']).toBe('string');
+    expect(tenant?.['is_active']).toBe(true);
+    expect(typeof tenant?.['order_count_30d']).toBe('number');
+    expect(typeof tenant?.['monthly_revenue_byn']).toBe('number');
     expect(tenant?.['trial_ends_at']).toBeDefined();
 
     await fixture.adminRequest()
@@ -91,6 +92,9 @@ describe('BNP-550 SuperAdmin tenant management (e2e)', () => {
     const updatedTenants = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
     const updated = (updatedTenants.body as Array<Record<string, unknown>>).find((item) => item['id'] === fixture.tenantId);
     expect(updated).toMatchObject({ plan: 'PRO', is_active: false });
+    const persisted = await fixture.prisma.tenant.findUniqueOrThrow({ where: { id: fixture.tenantId } });
+    expect(persisted.status).toBe('BLOCKED');
+    expect(persisted.isActive).toBe(false);
     expect(new Date(String(updated?.['trial_ends_at'])).toISOString()).toBe(trialEndsAt.toISOString());
   });
 });
