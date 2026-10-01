@@ -58,4 +58,39 @@ describe('BNP-550 SuperAdmin tenant management (e2e)', () => {
     expect(persisted.isActive).toBe(false);
     expect(persisted.trialEndsAt?.toISOString()).toBe(extendedDate.toISOString());
   });
+
+  it('lists tenants and updates plan, trial end, and activity through the documented contract', async () => {
+    const trialEndsAt = new Date(Date.now() + 10 * 86400000);
+    await fixture.prisma.tenant.update({ where: { id: fixture.tenantId }, data: { isActive: true } });
+    const tenants = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+    expect(Array.isArray(tenants.body)).toBe(true);
+    const tenant = (tenants.body as Array<Record<string, unknown>>).find((item) => item['id'] === fixture.tenantId);
+    expect(tenant).toMatchObject({
+      name: 'Auth E2E Tenant',
+      slug: expect.any(String),
+      plan: expect.any(String),
+      is_active: true,
+      order_count_30d: expect.any(Number),
+      monthly_revenue_byn: expect.any(Number),
+    });
+    expect(tenant?.['trial_ends_at']).toBeDefined();
+
+    await fixture.adminRequest()
+      .patch(`/api/v1/superadmin/tenants/${fixture.tenantId}`)
+      .send({ subscription_plan: 'PRO' })
+      .expect(200);
+    await fixture.adminRequest()
+      .patch(`/api/v1/superadmin/tenants/${fixture.tenantId}`)
+      .send({ trial_ends_at: trialEndsAt.toISOString() })
+      .expect(200);
+    await fixture.adminRequest()
+      .patch(`/api/v1/superadmin/tenants/${fixture.tenantId}`)
+      .send({ is_active: false })
+      .expect(200);
+
+    const updatedTenants = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+    const updated = (updatedTenants.body as Array<Record<string, unknown>>).find((item) => item['id'] === fixture.tenantId);
+    expect(updated).toMatchObject({ plan: 'PRO', is_active: false });
+    expect(new Date(String(updated?.['trial_ends_at'])).toISOString()).toBe(trialEndsAt.toISOString());
+  });
 });
