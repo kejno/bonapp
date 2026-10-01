@@ -32,6 +32,36 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
       ],
     });
 
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const paidPayments = [
+      { tenantId: fixture.tenantId, tableNumber: 1551, amountByn: '120.00', status: 'COMPLETED' as const },
+      { tenantId: 'bnp551-standard', tableNumber: 552, amountByn: '55.00', status: 'SUCCEEDED' as const },
+      { tenantId: 'bnp551-trial', tableNumber: 553, amountByn: '40.00', status: 'COMPLETED' as const },
+      { tenantId: 'bnp551-inactive', tableNumber: 554, amountByn: '500.00', status: 'COMPLETED' as const },
+    ];
+    for (const payment of paidPayments) {
+      const area = await fixture.prisma.diningArea.create({
+        data: { tenantId: payment.tenantId, name: `BNP-551 payment area ${payment.tableNumber}` },
+      });
+      const table = await fixture.prisma.table.create({
+        data: { tenantId: payment.tenantId, areaId: area.id, tableNumber: payment.tableNumber, qrToken: `bnp551-payment-${payment.tableNumber}` },
+      });
+      const order = await fixture.prisma.order.create({
+        data: { tenantId: payment.tenantId, tableId: table.id, dailyOrderNumber: payment.tableNumber },
+      });
+      await fixture.prisma.payment.create({
+        data: {
+          tenantId: payment.tenantId,
+          orderId: order.id,
+          amountByn: payment.amountByn,
+          provider: 'test',
+          type: 'SUBSCRIPTION',
+          status: payment.status,
+          createdAt: monthStart,
+        },
+      });
+    }
+
     const area = await fixture.prisma.diningArea.create({
       data: { tenantId: fixture.tenantId, name: 'BNP-551 QR area' },
     });
@@ -57,13 +87,15 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
       growth: Array<{ month: string; subscriptionRevenueByn: number }>;
       tenants: Array<{ id: string; plan: string; status: string; revenue30dByn: number }>;
     };
-    expect(body.metrics).toEqual({ subscriptionRevenueByn: 0, activeRestaurants: 2, qrOrdersToday: 1 });
+    expect(body.metrics).toEqual({ subscriptionRevenueByn: 175, activeRestaurants: 2, qrOrdersToday: 1 });
     expect(body.growth).toHaveLength(12);
     expect(body.growth.every((month) => typeof month.month === 'string' && typeof month.subscriptionRevenueByn === 'number')).toBe(true);
+    expect(body.growth.at(-1)?.subscriptionRevenueByn).toBe(175);
     expect(body.tenants).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: fixture.tenantId, plan: 'PRO', status: 'ACTIVE', revenue30dByn: 0 }),
-      expect.objectContaining({ id: 'bnp551-trial', plan: 'TRIAL', status: 'TRIAL', revenue30dByn: 0 }),
-      expect.objectContaining({ id: 'bnp551-inactive', plan: 'ENTERPRISE', status: 'BLOCKED', revenue30dByn: 0 }),
+      expect.objectContaining({ id: fixture.tenantId, plan: 'PRO', status: 'ACTIVE', revenue30dByn: 120 }),
+      expect.objectContaining({ id: 'bnp551-standard', plan: 'STARTER', status: 'ACTIVE', revenue30dByn: 55 }),
+      expect.objectContaining({ id: 'bnp551-trial', plan: 'TRIAL', status: 'TRIAL', revenue30dByn: 40 }),
+      expect.objectContaining({ id: 'bnp551-inactive', plan: 'ENTERPRISE', status: 'BLOCKED', revenue30dByn: 500 }),
     ]));
   });
 });
