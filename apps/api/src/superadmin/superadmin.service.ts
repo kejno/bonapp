@@ -10,6 +10,15 @@ const paidStatuses = [PaymentStatus.SUCCEEDED, PaymentStatus.COMPLETED];
 export class SuperadminService {
   constructor(private readonly prisma: PrismaService, private readonly menuGateway: MenuGateway) {}
 
+  async listTenants() {
+    return this.prisma.superadminTransaction((db) =>
+      db.tenant.findMany({
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, plan: true, status: true, trialEndsAt: true, isActive: true },
+      }),
+    );
+  }
+
   async overview() {
     const now = new Date();
     const [year, month, day] = tenantLocalDate('Europe/Minsk', now).split('-').map(Number);
