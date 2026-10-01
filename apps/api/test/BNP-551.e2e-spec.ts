@@ -19,18 +19,48 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
   }, 120_000);
   afterAll(async () => fixture.stop());
 
-  it('counts monthly revenue only for active paid tenants and reports daily totals', async () => {
+  it('returns overview metrics, monthly growth, and tenant data', async () => {
     await fixture.prisma.tenant.update({
       where: { id: fixture.tenantId },
       data: { plan: 'PRO', subscriptionPlan: 'PRO', status: 'ACTIVE', isActive: true },
     });
     await fixture.prisma.tenant.createMany({
       data: [
-        { id: 'bnp551-paid', slug: 'bnp551-paid', name: 'BNP-551 Paid', plan: 'STARTER', subscriptionPlan: 'STARTER', status: 'ACTIVE', isActive: true },
-        { id: 'bnp551-free', slug: 'bnp551-free', name: 'BNP-551 Free', plan: 'TRIAL', status: 'ACTIVE', isActive: true },
+        { id: 'bnp551-standard', slug: 'bnp551-standard', name: 'BNP-551 Standard', plan: 'STARTER', subscriptionPlan: 'STARTER', status: 'ACTIVE', isActive: true },
+        { id: 'bnp551-trial', slug: 'bnp551-trial', name: 'BNP-551 Trial', plan: 'TRIAL', status: 'TRIAL', isActive: true },
         { id: 'bnp551-inactive', slug: 'bnp551-inactive', name: 'BNP-551 Inactive', plan: 'ENTERPRISE', subscriptionPlan: 'ENTERPRISE', status: 'BLOCKED', isActive: false },
       ],
     });
+
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const paidPayments = [
+      { tenantId: fixture.tenantId, tableNumber: 1551, amountByn: '120.00', status: 'COMPLETED' as const },
+      { tenantId: 'bnp551-standard', tableNumber: 552, amountByn: '55.00', status: 'SUCCEEDED' as const },
+      { tenantId: 'bnp551-trial', tableNumber: 553, amountByn: '40.00', status: 'COMPLETED' as const },
+      { tenantId: 'bnp551-inactive', tableNumber: 554, amountByn: '500.00', status: 'COMPLETED' as const },
+    ];
+    for (const payment of paidPayments) {
+      const area = await fixture.prisma.diningArea.create({
+        data: { tenantId: payment.tenantId, name: `BNP-551 payment area ${payment.tableNumber}` },
+      });
+      const table = await fixture.prisma.table.create({
+        data: { tenantId: payment.tenantId, areaId: area.id, tableNumber: payment.tableNumber, qrToken: `bnp551-payment-${payment.tableNumber}` },
+      });
+      const order = await fixture.prisma.order.create({
+        data: { tenantId: payment.tenantId, tableId: table.id, dailyOrderNumber: payment.tableNumber },
+      });
+      await fixture.prisma.payment.create({
+        data: {
+          tenantId: payment.tenantId,
+          orderId: order.id,
+          amountByn: payment.amountByn,
+          provider: 'test',
+          type: 'SUBSCRIPTION',
+          status: payment.status,
+          createdAt: monthStart,
+        },
+      });
+    }
 
     const area = await fixture.prisma.diningArea.create({
       data: { tenantId: fixture.tenantId, name: 'BNP-551 QR area' },
@@ -38,7 +68,7 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
     const table = await fixture.prisma.table.create({
       data: { tenantId: fixture.tenantId, areaId: area.id, tableNumber: 551, qrToken: 'bnp551-qr-token' },
     });
-    const order = await fixture.prisma.order.create({
+    await fixture.prisma.order.create({
       data: {
         tenantId: fixture.tenantId,
         tableId: table.id,
@@ -48,38 +78,24 @@ describe('BNP-551 SuperAdmin platform metrics (e2e)', () => {
       },
     });
 
-    await fixture.prisma.payment.create({
-      data: { tenantId: fixture.tenantId, orderId: order.id, amountByn: '120.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'COMPLETED' },
-    });
-    const paidArea = await fixture.prisma.diningArea.create({
-      data: { tenantId: 'bnp551-paid', name: 'BNP-551 paid area' },
-    });
-    const paidTable = await fixture.prisma.table.create({
-      data: { tenantId: 'bnp551-paid', areaId: paidArea.id, tableNumber: 552, qrToken: 'bnp551-paid-qr-token' },
-    });
-    const paidOrder = await fixture.prisma.order.create({
-      data: { tenantId: 'bnp551-paid', tableId: paidTable.id, dailyOrderNumber: 552 },
-    });
-    await fixture.prisma.payment.create({
-      data: { tenantId: 'bnp551-paid', orderId: paidOrder.id, amountByn: '55.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'SUCCEEDED' },
-    });
-    const inactiveArea = await fixture.prisma.diningArea.create({
-      data: { tenantId: 'bnp551-inactive', name: 'BNP-551 inactive area' },
-    });
-    const inactiveTable = await fixture.prisma.table.create({
-      data: { tenantId: 'bnp551-inactive', areaId: inactiveArea.id, tableNumber: 553, qrToken: 'bnp551-inactive-qr-token' },
-    });
-    const inactiveOrder = await fixture.prisma.order.create({
-      data: { tenantId: 'bnp551-inactive', tableId: inactiveTable.id, dailyOrderNumber: 553 },
-    });
-    await fixture.prisma.payment.create({
-      data: { tenantId: 'bnp551-inactive', orderId: inactiveOrder.id, amountByn: '500.00', provider: 'test', method: 'BANK_CARD', type: 'SUBSCRIPTION', status: 'COMPLETED' },
-    });
-
-    const stats = await fixture.adminRequest()
-      .get('/api/v1/superadmin/platform/stats')
+    const overview = await fixture.adminRequest()
+      .get('/api/v1/superadmin/overview')
       .set('Authorization', authorization)
       .expect(200);
-    expect(stats.body).toEqual({ mrr_byn: 175, total_tenants: 4, active_tenants: 3, qr_orders_today: 1 });
+    const body = overview.body as unknown as {
+      metrics: { subscriptionRevenueByn: number; activeRestaurants: number; qrOrdersToday: number };
+      growth: Array<{ month: string; subscriptionRevenueByn: number }>;
+      tenants: Array<{ id: string; plan: string; status: string; revenue30dByn: number }>;
+    };
+    expect(body.metrics).toEqual({ subscriptionRevenueByn: 175, activeRestaurants: 2, qrOrdersToday: 1 });
+    expect(body.growth).toHaveLength(12);
+    expect(body.growth.every((month) => typeof month.month === 'string' && typeof month.subscriptionRevenueByn === 'number')).toBe(true);
+    expect(body.growth.at(-1)?.subscriptionRevenueByn).toBe(175);
+    expect(body.tenants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: fixture.tenantId, plan: 'PRO', status: 'ACTIVE', revenue30dByn: 120 }),
+      expect.objectContaining({ id: 'bnp551-standard', plan: 'STARTER', status: 'ACTIVE', revenue30dByn: 55 }),
+      expect.objectContaining({ id: 'bnp551-trial', plan: 'TRIAL', status: 'TRIAL', revenue30dByn: 40 }),
+      expect.objectContaining({ id: 'bnp551-inactive', plan: 'ENTERPRISE', status: 'BLOCKED', revenue30dByn: 500 }),
+    ]));
   });
 });

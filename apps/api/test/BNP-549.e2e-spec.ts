@@ -16,19 +16,18 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
   }, 120_000);
   afterAll(async () => fixture.stop());
 
-  it('allows SUPER_ADMIN, rejects OWNER, and requires authentication for SuperAdmin endpoints', async () => {
-    const tenantsResponse = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
-    expect(tenantsResponse.body).toContainEqual({
-      id: fixture.tenantId,
-      name: 'Auth E2E Tenant',
-      slug: fixture.tenantId,
-      plan: 'TRIAL',
-      is_active: true,
-      trial_ends_at: null,
-      order_count_30d: 0,
-      monthly_revenue_byn: 0,
-    });
-    await fixture.adminRequest().get('/api/v1/superadmin/platform/stats').expect(200);
+  it('allows SUPER_ADMIN to read the overview, rejects OWNER, and requires authentication', async () => {
+    const overview = await fixture.adminRequest().get('/api/v1/superadmin/overview').expect(200);
+    const overviewBody = overview.body as unknown as {
+      metrics: { activeRestaurants: number; qrOrdersToday: number; subscriptionRevenueByn: number };
+      growth: unknown[];
+      tenants: Array<{ id: string; name: string }>;
+    };
+    expect(typeof overviewBody.metrics.activeRestaurants).toBe('number');
+    expect(typeof overviewBody.metrics.qrOrdersToday).toBe('number');
+    expect(typeof overviewBody.metrics.subscriptionRevenueByn).toBe('number');
+    expect(Array.isArray(overviewBody.growth)).toBe(true);
+    expect(overviewBody.tenants).toContainEqual(expect.objectContaining({ id: fixture.tenantId, name: 'Auth E2E Tenant' }));
 
     await fixture.prisma.user.update({ where: { id: fixture.userId }, data: { role: 'OWNER' } });
     const ownerLogin = await loginRequest(fixture.app.getHttpServer()).send({
@@ -38,14 +37,9 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
     }).expect(200);
     const ownerBody = ownerLogin.body as unknown as { accessToken: string };
     await fixture.adminRequest()
-      .get('/api/v1/superadmin/tenants')
+      .get('/api/v1/superadmin/overview')
       .set('Authorization', `Bearer ${ownerBody.accessToken}`)
       .expect(403);
-    await fixture.adminRequest()
-      .get('/api/v1/superadmin/platform/stats')
-      .set('Authorization', `Bearer ${ownerBody.accessToken}`)
-      .expect(403);
-    await fixture.adminRequest().get('/api/v1/superadmin/tenants').set('Authorization', '').expect(401);
-    await fixture.adminRequest().get('/api/v1/superadmin/platform/stats').set('Authorization', '').expect(401);
+    await fixture.adminRequest().get('/api/v1/superadmin/overview').set('Authorization', '').expect(401);
   });
 });
