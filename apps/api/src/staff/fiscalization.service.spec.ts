@@ -3,6 +3,9 @@ import { FiscalizationService } from './fiscalization.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptCredentials } from '../tenant/payment-credentials';
 import { Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }));
 
 let mockWorkerProcessor: ((job: { data: { tenantId: string; paymentId: string } }) => Promise<void>) | undefined;
 let mockWorkerOptions: unknown;
@@ -97,6 +100,8 @@ describe('FiscalizationService', () => {
     const prisma = { forTenant: jest.fn().mockReturnValue({ payment: { updateMany } }) } as unknown as PrismaService;
     new FiscalizationService(prisma, { issueReceipt: jest.fn() });
     const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const captureException = jest.mocked(Sentry.captureException);
+    captureException.mockClear();
     mockFailedHandler?.({ data: { tenantId: 'tenant-1', paymentId: 'payment-1' }, attemptsMade: 3, opts: { attempts: 3 } }, new Error('SKNO unavailable'));
     await new Promise((resolve) => setImmediate(resolve));
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -104,6 +109,7 @@ describe('FiscalizationService', () => {
       data: { fiscalizationStatus: 'FISCAL_FAILED' },
     }));
     expect(logger).toHaveBeenCalledWith(expect.stringContaining('исчерпала три попытки'), expect.any(String));
+    expect(captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'SKNO unavailable' }));
     logger.mockRestore();
   });
 });

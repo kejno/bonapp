@@ -136,7 +136,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.12.0'
 
       - name: Install Claude Code CLI
         if: ${{ !startsWith((inputs.provider || vars.AI_AGENT_PROVIDER || 'claude-code'), 'codex') }}

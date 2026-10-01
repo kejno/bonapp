@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptCredentials } from '../tenant/payment-credentials';
 import { FiscalizationService } from './fiscalization.service';
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }));
 
 describe('BNP-538: исчерпание попыток фискализации', () => {
   jest.setTimeout(90_000);
@@ -53,6 +56,7 @@ describe('BNP-538: исчерпание попыток фискализации'
       }) };
       service = new FiscalizationService(prisma, skno);
       logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      jest.mocked(Sentry.captureException).mockClear();
 
       await service.onModuleInit();
       await service.enqueue('tenant-1', payment.id);
@@ -71,6 +75,7 @@ describe('BNP-538: исчерпание попыток фискализации'
       expect(paymentSave).not.toHaveBeenCalled();
       expect(payment.fiscalReceiptNumber).toBeNull();
       expect(logger).toHaveBeenCalledWith(expect.stringContaining('исчерпала три попытки'), expect.any(String));
+      expect(Sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'SKNO unavailable' }));
     } finally {
       try {
         if (service) await service.onModuleDestroy();
