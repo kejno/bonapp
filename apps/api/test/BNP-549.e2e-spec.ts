@@ -17,7 +17,16 @@ describe('BNP-549 SuperAdmin API access (e2e)', () => {
   afterAll(async () => fixture.stop());
 
   it('allows SUPER_ADMIN, rejects OWNER, and requires authentication for SuperAdmin endpoints', async () => {
-    await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+    const tenantsResponse = await fixture.adminRequest().get('/api/v1/superadmin/tenants').expect(200);
+    expect(tenantsResponse.body).toContainEqual({
+      name: 'Auth E2E Tenant',
+      slug: fixture.tenantId,
+      plan: 'TRIAL',
+      is_active: true,
+      trial_ends_at: null,
+      order_count_30d: 0,
+      monthly_revenue_byn: 0,
+    });
     await fixture.adminRequest().get('/api/v1/superadmin/platform/stats').expect(200);
 
     await fixture.prisma.user.update({ where: { id: fixture.userId }, data: { role: 'OWNER' } });
