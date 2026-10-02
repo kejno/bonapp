@@ -70,7 +70,7 @@ export class PublicRegistrationService {
     // MVP welcome email stub: delivery is intentionally deferred.
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({ tenantId, userId: created.user.id, role: 'OWNER', sessionVersion: created.user.sessionVersion, iat: now, exp: now + 24 * 60 * 60 })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ sub: created.user.id, userId: created.user.id, tenantId, role: 'OWNER', type: 'access', sessionVersion: created.user.sessionVersion, iat: now, exp: now + 24 * 60 * 60 })).toString('base64url');
     const signature = createHmac('sha256', this.config.getOrThrow<string>('JWT_SECRET')).update(`${header}.${payload}`).digest('base64url');
     return { tenantId: created.tenant.id, accessToken: `${header}.${payload}.${signature}`, user: { id: created.user.id, email, role: 'OWNER', tenantId, fullName: name } };
   }
