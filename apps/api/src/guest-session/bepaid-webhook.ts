@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { FiscalizationStatus, OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
 import { Job, JobsOptions, Queue, Worker } from 'bullmq';
@@ -98,9 +99,14 @@ export class BepaidWebhookService implements OnModuleInit, OnModuleDestroy {
 }
 
 @Controller('webhooks/bepaid')
+@ApiTags('Вебхуки bePaid')
 @SkipTenantGuard()
 export class BepaidWebhookController {
   constructor(private readonly service: BepaidWebhookService) {}
+  @ApiOperation({ summary: 'Принять уведомление bePaid', description: 'Вызов из Swagger UI без корректной подписи провайдера завершится ошибкой авторизации.' })
+  @ApiParam({ name: 'tenantId', description: 'Идентификатор ресторана', example: 'tenant-uuid' })
+  @ApiResponse({ status: 200, description: 'Уведомление принято' })
+  @ApiResponse({ status: 401, description: 'Подпись или авторизация провайдера неверна' })
   @Post(':tenantId')
   @HttpCode(200)
   async receive(@Param('tenantId') tenantId: string, @Req() req: Request & { rawBody?: Buffer }, @Headers('content-signature') signature?: string, @Headers('authorization') authorization?: string) {

@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -28,6 +29,8 @@ function record(body: unknown): Record<string, unknown> {
 }
 
 @Controller('admin')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard)
 export class StaffController {
   constructor(
@@ -35,16 +38,26 @@ export class StaffController {
     private readonly shifts: ShiftService,
   ) {}
 
+  @ApiOperation({ summary: 'Получить admin staff' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('staff')
   @UseGuards(AdminRoleGuard)
   list(@Req() req: TenantRequest) {
     return this.staff.list(req.user!.tenantId!);
   }
+  @ApiOperation({ summary: 'Получить admin kitchen-staff' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('kitchen-staff')
   @UseGuards(AdminRoleGuard)
   listKitchenStaff(@Req() req: TenantRequest) {
     return this.staff.listKitchenStaff(req.user!.tenantId!);
   }
+  @ApiOperation({ summary: 'Обновить admin staff/:id/kitchen-departments' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('staff/:id/kitchen-departments')
   @UseGuards(AdminRoleGuard)
   updateKitchenDepartments(
@@ -61,6 +74,9 @@ export class StaffController {
       departments as string[],
     );
   }
+  @ApiOperation({ summary: 'Создать или выполнить admin staff' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('staff')
   @UseGuards(AdminRoleGuard)
   create(@Req() req: TenantRequest, @Body() body: unknown) {
@@ -69,6 +85,9 @@ export class StaffController {
       record(body) as unknown as StaffInput,
     );
   }
+  @ApiOperation({ summary: 'Обновить admin staff/:id' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('staff/:id')
   @UseGuards(AdminRoleGuard)
   update(
@@ -78,18 +97,26 @@ export class StaffController {
   ) {
     return this.staff.update(req.user!.tenantId!, id, record(body));
   }
+  @ApiOperation({ summary: 'Удалить admin staff/:id' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete('staff/:id')
   @UseGuards(AdminRoleGuard)
   deactivate(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.staff.deactivate(req.user!.tenantId!, id);
   }
+  @ApiOperation({ summary: 'Изменить admin staff/:id/reset-pin' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch('staff/:id/reset-pin')
   @UseGuards(AdminRoleGuard)
   resetPin(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.staff.resetPin(req.user!.tenantId!, id);
   }
 
-  @Post('shifts/open') open(@Req() req: TenantRequest, @Body() body: unknown) {
+  @ApiOperation({ summary: 'Создать или выполнить shifts/open' })
+  @Post('shifts/open')
+  open(@Req() req: TenantRequest, @Body() body: unknown) {
     const shiftRoles = new Set<UserRole>([
       UserRole.CASHIER,
       UserRole.MANAGER,
@@ -106,11 +133,17 @@ export class StaffController {
       throw new ForbiddenException('Cashiers can only open their own shift');
     return this.shifts.open(req.user!.tenantId!, cashierId);
   }
+  @ApiOperation({ summary: 'Создать или выполнить admin shifts/close' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('shifts/close')
   @UseGuards(AdminRoleGuard)
   close(@Req() req: TenantRequest) {
     return this.shifts.close(req.user!.tenantId!);
   }
+  @ApiOperation({ summary: 'Получить admin shifts/current' })
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('shifts/current')
   @UseGuards(AdminRoleGuard)
   current(@Req() req: TenantRequest) {

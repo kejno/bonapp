@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -32,6 +33,8 @@ interface TenantRequest extends Request {
 }
 
 @Controller('admin/tenant')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TenantController {
   constructor(
@@ -39,11 +42,19 @@ export class TenantController {
     private readonly menuGateway: MenuGateway,
   ) {}
 
+  @ApiOperation({ summary: 'Получить admin/tenant settings' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('settings')
   getSettings(@Req() req: AuthenticatedRequest) {
     return this.tenantService.getSettings(req.user.tenantId);
   }
 
+  @ApiOperation({ summary: 'Обновить admin/tenant settings' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('settings')
   @UseGuards(AdminRoleGuard)
   async updateSettings(
@@ -81,28 +92,48 @@ export class TenantController {
     return updated;
   }
 
+  @ApiOperation({ summary: 'Получить admin/tenant onboarding/step3/payments' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('onboarding/step3/payments')
   @UseGuards(AdminRoleGuard)
   getPaymentStatuses() {
     return this.tenantService.getPaymentGatewayStatuses();
   }
 
+  @ApiOperation({ summary: 'Обновить admin/tenant onboarding/step3/payments' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('onboarding/step3/payments')
   @UseGuards(AdminRoleGuard)
   savePaymentCredentials(@Body() credentials: unknown) {
     return this.tenantService.savePaymentCredentials(credentials);
   }
 
+  @ApiOperation({ summary: 'Получить admin/tenant onboarding/slug-availability' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('onboarding/slug-availability')
   async checkSlug(@Query('slug') slug: string, @Req() req: TenantRequest) {
     return { available: await this.tenantService.isSlugAvailable(slug, req.user.tenantId) };
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/tenant onboarding/logo-upload' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('onboarding/logo-upload')
   async createLogoUpload(@Body() body: { contentType: string }, @Req() req: TenantRequest) {
     return this.tenantService.createLogoUpload(req.user.tenantId, body.contentType);
   }
 
+  @ApiOperation({ summary: 'Обновить admin/tenant onboarding/step1' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('onboarding/step1')
   async saveOnboardingStep1(@Body() body: {
     name: string; slug: string; legalName: string; unp: string; address: string;
@@ -111,6 +142,10 @@ export class TenantController {
     return this.tenantService.saveOnboardingStep1(req.user.tenantId, body);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/tenant logo' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('logo')
   @UseInterceptors(
     FileInterceptor('logo', { limits: { fileSize: MAX_LOGO_SIZE } }),

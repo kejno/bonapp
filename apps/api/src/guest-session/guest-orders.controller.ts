@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
@@ -6,11 +7,17 @@ import { GuestSessionGuard, QrTokenRequest } from './guest-session.guard';
 import { GuestSessionService } from './guest-session.service';
 
 @Controller('guest/orders')
+@ApiTags('Гостевые операции')
+@ApiSecurity('qr-token')
 @SkipTenantGuard()
 @UseGuards(GuestSessionGuard)
 export class GuestOrdersController {
   constructor(private readonly guestSessionService: GuestSessionService) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить guest/orders' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post()
   createOrder(@Req() request: Request, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;
@@ -26,12 +33,20 @@ export class GuestOrdersController {
     });
   }
 
+  @ApiOperation({ summary: 'Получить guest/orders :id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id')
   getOrderStatus(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;
     return this.guestSessionService.getOrderStatus(id, guestRequest.tenantId, guestRequest.tableId);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/pay/card' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post(':id/pay/card')
   createCardPayment(@Req() request: Request, @Param('id') id: string, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;
@@ -51,24 +66,40 @@ export class GuestOrdersController {
     return this.guestSessionService.createCardPayment(id, guestRequest.tenantId, guestRequest.tableId, tipsAmountByn);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/pay/erip' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post(':id/pay/erip')
   createEripPayment(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;
     return this.guestSessionService.createEripPayment(id, guestRequest.tenantId, guestRequest.tableId, request.ip ?? '0.0.0.0');
   }
 
+  @ApiOperation({ summary: 'Получить guest/orders :id/pay/erip/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id/pay/erip/status')
   getEripPaymentStatus(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;
     return this.guestSessionService.getEripPaymentStatus(id, guestRequest.tenantId, guestRequest.tableId);
   }
 
+  @ApiOperation({ summary: 'Получить guest/orders :id/pay/card/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id/pay/card/status')
   getCardPaymentStatus(@Req() request: Request, @Param('id') id: string) {
     const guestRequest = request as QrTokenRequest;
     return this.guestSessionService.getCardPaymentStatus(id, guestRequest.tenantId, guestRequest.tableId);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/items' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post(':id/items')
   addOrderItem(@Req() request: Request, @Param('id') id: string, @Body() body: unknown) {
     const guestRequest = request as QrTokenRequest;

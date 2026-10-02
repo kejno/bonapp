@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -20,9 +21,15 @@ interface UpdateStopListRequest {
 // Kitchen and service staff need to manage the stop list in real-time via the KDS.
 // The admin-only duplicate endpoint lives at /admin/menu/items/:itemId/stop-list (MenuAdminController).
 @Controller('stop-list')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 export class StopListController {
   constructor(private readonly menuAdminService: MenuAdminService) {}
 
+  @ApiOperation({ summary: 'Изменить stop-list' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch()
   @UseGuards(AuthGuard, TenantContextGuard)
   update(@Req() authenticatedRequest: TenantRequest, @Body() request: unknown) {

@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
@@ -6,10 +7,16 @@ import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { OrdersService } from './orders.service';
 
 @Controller('admin/orders')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class AdminOrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/orders' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post()
   create(@Body() body: unknown) {
     if (
@@ -42,11 +49,19 @@ export class AdminOrdersController {
       : this.ordersService.create(value.tableId.trim(), value.phone.trim(), orderItems);
   }
 
+  @ApiOperation({ summary: 'Получить admin/orders active' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('active')
   findActive() {
     return this.ordersService.findActive();
   }
 
+  @ApiOperation({ summary: 'Изменить admin/orders :orderId/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch(':orderId/status')
   changeStatus(@Param('orderId') id: string, @Body() body: unknown) {
     if (typeof body !== 'object' || body === null || typeof (body as Record<string, unknown>)['status'] !== 'string' || !Object.values(OrderStatus).includes((body as { status: OrderStatus }).status)) {
@@ -55,6 +70,10 @@ export class AdminOrdersController {
     return this.ordersService.changeStatus(id, (body as { status: OrderStatus }).status);
   }
 
+  @ApiOperation({ summary: 'Получить admin/orders :id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);

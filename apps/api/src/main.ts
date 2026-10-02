@@ -1,5 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
 import * as Sentry from '@sentry/node';
 import { AppModule } from './app.module';
 import { trustedProxySetting } from './trusted-proxies';
@@ -26,6 +28,19 @@ async function bootstrap() {
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api/v1');
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
+  if (swaggerEnabled) {
+    const config = new DocumentBuilder()
+      .setTitle('Bonapp API')
+      .setDescription('Интерактивная документация API Bonapp.')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addApiKey({ type: 'apiKey', in: 'header', name: 'X-QR-Token' }, 'qr-token')
+      .addServer(process.env.SWAGGER_SERVER_URL ?? `http://localhost:${process.env.PORT ?? 3000}`)
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/v1/docs', app, document, { jsonDocumentUrl: 'api/v1/docs-json' });
+  }
   await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();

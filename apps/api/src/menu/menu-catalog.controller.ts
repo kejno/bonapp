@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -37,21 +38,35 @@ function parseBooleanQuery(value: string | undefined): boolean | undefined {
 }
 
 @Controller('admin/menu')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class MenuCatalogController {
   constructor(private readonly catalogService: MenuCatalogService) {}
 
+  @ApiOperation({ summary: 'Получить admin/menu categories' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('categories')
   listCategories(@Req() req: TenantRequest) {
     return this.catalogService.listCategories(req.user!.tenantId!);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/menu categories' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('categories')
   createCategory(@Req() req: TenantRequest, @Body() body: unknown) {
     const dto = this.parseCreateCategory(body);
     return this.catalogService.createCategory(req.user!.tenantId!, dto);
   }
 
+  @ApiOperation({ summary: 'Обновить admin/menu categories/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('categories/:id')
   updateCategory(
     @Req() req: TenantRequest,
@@ -62,12 +77,20 @@ export class MenuCatalogController {
     return this.catalogService.updateCategory(req.user!.tenantId!, id, dto);
   }
 
+  @ApiOperation({ summary: 'Удалить admin/menu categories/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete('categories/:id')
   @HttpCode(204)
   deleteCategory(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.catalogService.deleteCategory(req.user!.tenantId!, id);
   }
 
+  @ApiOperation({ summary: 'Получить admin/menu items' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('items')
   listItems(
     @Req() req: TenantRequest,
@@ -83,6 +106,10 @@ export class MenuCatalogController {
     return this.catalogService.listItems(req.user!.tenantId!, filters);
   }
 
+  @ApiOperation({ summary: 'Изменить admin/menu items/reorder' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch('items/reorder')
   reorderItems(@Req() req: TenantRequest, @Body() body: unknown) {
     if (typeof body !== 'object' || body === null) throw new BadRequestException('Request body must be an object');
@@ -96,12 +123,20 @@ export class MenuCatalogController {
     return this.catalogService.reorderItems(req.user!.tenantId!, dto);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/menu items' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('items')
   createItem(@Req() req: TenantRequest, @Body() body: unknown) {
     const dto = this.parseCreateItem(body);
     return this.catalogService.createItem(req.user!.tenantId!, dto);
   }
 
+  @ApiOperation({ summary: 'Обновить admin/menu items/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('items/:id')
   updateItem(
     @Req() req: TenantRequest,
@@ -112,6 +147,10 @@ export class MenuCatalogController {
     return this.catalogService.updateItem(req.user!.tenantId!, id, dto);
   }
 
+  @ApiOperation({ summary: 'Удалить admin/menu items/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete('items/:id')
   @HttpCode(204)
   deleteItem(@Req() req: TenantRequest, @Param('id') id: string) {
@@ -270,6 +309,10 @@ export class MenuCatalogController {
 export class MediaController {
   constructor(private readonly catalogService: MenuCatalogService) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/menu presign' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('presign')
   presign(@Req() req: TenantRequest, @Body() body: unknown) {
     const contentType = this.parseContentType(body);
