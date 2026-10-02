@@ -15,7 +15,7 @@ export class GuestOrdersController {
   constructor(private readonly guestSessionService: GuestSessionService) {}
 
   @ApiOperation({ summary: 'Создать или выполнить guest/orders' })
-  @ApiBody({ schema: { type: 'object', required: ['qrToken', 'comment', 'items'], properties: { qrToken: { type: 'string', example: 'table-session-token' }, comment: { type: 'string', example: 'Без лука' }, guestSessionId: { type: 'string', nullable: true }, items: { type: 'array', items: { type: 'object', required: ['menuItemId', 'quantity', 'selectedModifiers'], properties: { menuItemId: { type: 'string', example: 'menu-item-uuid' }, quantity: { type: 'integer', minimum: 1, maximum: 20, example: 2 }, selectedModifiers: { type: 'array', items: { type: 'string' }, example: [] } } } } } } })
+  @ApiBody({ schema: { type: 'object', required: ['comment', 'items'], properties: { comment: { type: 'string', example: 'Без лука' }, guestSessionId: { type: 'string', nullable: true }, items: { type: 'array', items: { type: 'object', required: ['menuItemId', 'quantity', 'selectedModifiers'], properties: { menuItemId: { type: 'string', example: 'menu-item-uuid' }, quantity: { type: 'integer', minimum: 1, maximum: 20, example: 2 }, selectedModifiers: { type: 'array', items: { type: 'string' }, example: [] } } } } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -24,8 +24,8 @@ export class GuestOrdersController {
     const guestRequest = request as QrTokenRequest;
     if (typeof body !== 'object' || body === null) throw new BadRequestException('Order body is required');
     const input = body as Record<string, unknown>;
-    if (typeof input['qrToken'] !== 'string' || input['qrToken'] !== request.headers['x-qr-token'] || typeof input['comment'] !== 'string' || !Array.isArray(input['items'])) {
-      throw new BadRequestException('qrToken, items, and comment are required');
+    if (typeof request.headers['x-qr-token'] !== 'string' || typeof input['comment'] !== 'string' || !Array.isArray(input['items'])) {
+      throw new BadRequestException('X-QR-Token, items, and comment are required');
     }
     return this.guestSessionService.createGuestOrder(guestRequest.tenantId, guestRequest.tableId, {
       comment: input['comment'],
