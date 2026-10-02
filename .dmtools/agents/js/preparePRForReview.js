@@ -11,6 +11,25 @@ const gh = require('./common/githubHelpers.js');
 const gitOps = require('./common/gitOps.js');
 const fetchParentContextToInput = require('./fetchParentContextToInput.js');
 
+// Marks that pr_review.json is missing because there was never a PR to review
+// (not a crashed/incomplete agent run). Without this, postPRReviewComments.js's
+// handleMissingReviewData() treats any missing pr_review.json as a transient
+// failure worth retrying: it clears the SM trigger label so the next SM pass
+// re-fires pr_review — which finds the same missing PR and repeats forever.
+// Observed on BNP-401: bug_development decided no code change was needed (so
+// no PR was ever created), the ticket stayed in "In Review", and pr_review
+// re-ran every SM cycle for 2+ hours with the identical "no PR found" result.
+function markNoPrToReview(reason) {
+    try {
+        file_write({
+            path: 'outputs/pr_review_no_pr_found.json',
+            content: JSON.stringify({ reason: reason })
+        });
+    } catch (e) {
+        console.warn('Failed to write pr_review_no_pr_found.json:', e);
+    }
+}
+
 var REVIEWED_SHA_MARKER_RE = /<!--\s*pr_review:reviewed_sha=([0-9a-f]{7,40})\s*-->/;
 
 /**
@@ -80,9 +99,15 @@ function action(params) {
                         'Please ensure:\n' +
                         '* A PR has been created with the ticket key in the title or branch name\n' +
                         '* The PR is open and accessible\n\n' +
-                        '_Review cancelled — no PR to review._'
+                        '_Review cancelled — no PR to review. The SM trigger label was left in place; ' +
+                        'this will not automatically retry — a new PR (or a status change) is needed first._'
                 });
             } catch (e) {}
+            markNoPrToReview('no_open_pr_found');
+            // Do NOT remove the SM trigger label here — leaving it in place is
+            // what stops the next SM pass from immediately re-triggering this
+            // same no-op review. Unlike a crashed run, there is nothing that
+            // will be different on a bare retry.
             return false;
         }
         console.log('Found PR candidate #' + pr.number + ' with title: ' + (pr.title || '(no title)'));
