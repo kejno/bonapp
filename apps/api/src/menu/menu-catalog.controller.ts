@@ -1,4 +1,4 @@
-import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -54,6 +54,7 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить admin/menu categories' })
+  @ApiBody({ schema: { type: 'object', required: ['name', 'sortOrder', 'isVisible'], properties: { name: { type: 'string', example: 'Основное меню' }, sortOrder: { type: 'integer', example: 0 }, isVisible: { type: 'boolean', example: true }, posCategoryId: { type: 'string', nullable: true } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -64,6 +65,8 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Обновить admin/menu categories/:id' })
+  @ApiParam({ name: 'id', description: 'Идентификатор категории', example: 'category-uuid' })
+  @ApiBody({ schema: { type: 'object', properties: { name: { type: 'string', example: 'Напитки' }, sortOrder: { type: 'integer', example: 1 }, isVisible: { type: 'boolean', example: true }, posCategoryId: { type: 'string', nullable: true } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -78,6 +81,7 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Удалить admin/menu categories/:id' })
+  @ApiParam({ name: 'id', description: 'Идентификатор категории', example: 'category-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -88,6 +92,9 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Получить admin/menu items' })
+  @ApiQuery({ name: 'category', required: false, description: 'Фильтр по категории', example: 'category-uuid' })
+  @ApiQuery({ name: 'is_active', required: false, type: Boolean })
+  @ApiQuery({ name: 'is_in_stop_list', required: false, type: Boolean })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -107,6 +114,7 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Изменить admin/menu items/reorder' })
+  @ApiBody({ schema: { type: 'object', required: ['categoryId', 'itemIds'], properties: { categoryId: { type: 'string', example: 'category-uuid' }, itemIds: { type: 'array', items: { type: 'string' }, example: ['item-uuid'] } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -124,6 +132,7 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить admin/menu items' })
+  @ApiBody({ schema: { type: 'object', required: ['name', 'categoryId', 'price'], properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string', example: 'Капучино' }, categoryId: { type: 'string', example: 'category-uuid' }, price: { type: 'integer', minimum: 0, description: 'Цена в минимальных единицах валюты', example: 750 }, description: { type: 'string' }, imageUrl: { type: 'string' } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -134,6 +143,8 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Обновить admin/menu items/:id' })
+  @ApiParam({ name: 'id', description: 'Идентификатор позиции меню', example: 'item-uuid' })
+  @ApiBody({ schema: { type: 'object', properties: { name: { type: 'string', example: 'Капучино' }, categoryId: { type: 'string' }, price: { type: 'integer', minimum: 0 }, description: { type: 'string' }, imageUrl: { type: 'string' } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -148,6 +159,7 @@ export class MenuCatalogController {
   }
 
   @ApiOperation({ summary: 'Удалить admin/menu items/:id' })
+  @ApiParam({ name: 'id', description: 'Идентификатор позиции меню', example: 'item-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })

@@ -1,4 +1,4 @@
-import { ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags, ApiParam, ApiBody, ApiHeader } from '@nestjs/swagger';
 import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { FiscalizationStatus, OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
 import { Job, JobsOptions, Queue, Worker } from 'bullmq';
@@ -105,6 +105,9 @@ export class BepaidWebhookController {
   constructor(private readonly service: BepaidWebhookService) {}
   @ApiOperation({ summary: 'Принять уведомление bePaid', description: 'Вызов из Swagger UI без корректной подписи провайдера завершится ошибкой авторизации.' })
   @ApiParam({ name: 'tenantId', description: 'Идентификатор ресторана', example: 'tenant-uuid' })
+  @ApiHeader({ name: 'Content-Signature', required: true, description: 'Подпись тела RSA-SHA256 в Base64; должна быть сформирована bePaid', example: 'base64-provider-signature' })
+  @ApiHeader({ name: 'Authorization', required: true, description: 'Basic авторизация магазина bePaid; требуется действительное значение провайдера', example: 'Basic c2hvcElkOnNlY3JldA==' })
+  @ApiBody({ schema: { type: 'object', required: ['transaction'], properties: { transaction: { type: 'object', required: ['tracking_id', 'uid', 'status'], properties: { tracking_id: { type: 'string', example: 'payment-uuid' }, uid: { type: 'string', example: 'provider-transaction-id' }, status: { type: 'string', enum: ['successful', 'failed', 'expired', 'incomplete'], example: 'successful' } } } } }, description: 'Пример структуры. Для успешного вызова необходимы действительные подпись и авторизация bePaid.' })
   @ApiResponse({ status: 200, description: 'Уведомление принято' })
   @ApiResponse({ status: 401, description: 'Подпись или авторизация провайдера неверна' })
   @Post(':tenantId')

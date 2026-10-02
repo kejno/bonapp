@@ -1,4 +1,4 @@
-import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
@@ -15,6 +15,7 @@ export class GuestOrdersController {
   constructor(private readonly guestSessionService: GuestSessionService) {}
 
   @ApiOperation({ summary: 'Создать или выполнить guest/orders' })
+  @ApiBody({ schema: { type: 'object', required: ['qrToken', 'comment', 'items'], properties: { qrToken: { type: 'string', example: 'table-session-token' }, comment: { type: 'string', example: 'Без лука' }, guestSessionId: { type: 'string', nullable: true }, items: { type: 'array', items: { type: 'object', required: ['menuItemId', 'quantity', 'selectedModifiers'], properties: { menuItemId: { type: 'string', example: 'menu-item-uuid' }, quantity: { type: 'integer', minimum: 1, maximum: 20, example: 2 }, selectedModifiers: { type: 'array', items: { type: 'string' }, example: [] } } } } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -34,6 +35,7 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Получить guest/orders :id' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -44,6 +46,8 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/pay/card' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
+  @ApiBody({ required: false, schema: { type: 'object', properties: { tipsAmountByn: { type: 'number', minimum: 0, example: 1.5 } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -67,6 +71,7 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/pay/erip' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -77,6 +82,7 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Получить guest/orders :id/pay/erip/status' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -87,6 +93,7 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Получить guest/orders :id/pay/card/status' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
@@ -97,6 +104,8 @@ export class GuestOrdersController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить guest/orders :id/items' })
+  @ApiParam({ name: 'id', description: 'Идентификатор заказа', example: 'order-uuid' })
+  @ApiBody({ schema: { type: 'object', required: ['itemId'], properties: { itemId: { type: 'string', example: 'menu-item-uuid' }, quantity: { type: 'integer', minimum: 1, maximum: 20, default: 1 } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })

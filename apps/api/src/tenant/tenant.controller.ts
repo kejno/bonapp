@@ -1,4 +1,4 @@
-import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -143,6 +143,8 @@ export class TenantController {
   }
 
   @ApiOperation({ summary: 'Создать или выполнить admin/tenant logo' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['logo'], properties: { logo: { type: 'string', format: 'binary', description: 'Логотип JPEG, PNG, WebP или SVG размером до 2 МБ' } } } })
 
   @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
   @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
