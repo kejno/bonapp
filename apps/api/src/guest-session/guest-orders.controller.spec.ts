@@ -27,3 +27,30 @@ describe('GuestOrdersController card payment', () => {
     expect(createCardPayment).not.toHaveBeenCalled();
   });
 });
+
+describe('GuestOrdersController guest order creation', () => {
+  const createGuestOrder = jest.fn();
+  const controller = new GuestOrdersController({ createGuestOrder } as unknown as GuestSessionService);
+  const request = {
+    tenantId: 'tenant-1',
+    tableId: 'table-1',
+    headers: { 'x-qr-token': 'table-session-token' },
+  } as unknown as Request;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('creates an order using the authorized header token without requiring it in the body', () => {
+    const body = {
+      comment: 'Без лука',
+      items: [{ menuItemId: 'menu-item-1', quantity: 2, selectedModifiers: [] }],
+    };
+
+    void controller.createOrder(request, body);
+
+    expect(createGuestOrder).toHaveBeenCalledWith('tenant-1', 'table-1', {
+      comment: 'Без лука',
+      guestSessionId: null,
+      items: [{ menuItemId: 'menu-item-1', quantity: 2, selectedModifiers: [] }],
+    });
+  });
+});

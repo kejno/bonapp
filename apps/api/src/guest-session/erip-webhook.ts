@@ -1,3 +1,4 @@
+import { ApiBody, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Controller, Headers, HttpCode, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { FiscalizationStatus, OrderStatus, PaymentStatus, Prisma, TableStatus } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
@@ -98,9 +99,18 @@ export class EripWebhookService implements OnModuleInit, OnModuleDestroy {
 }
 
 @Controller('webhooks/erip')
+@ApiTags('Вебхуки ЕРИП')
 @SkipTenantGuard()
 export class EripWebhookController {
   constructor(private readonly service: EripWebhookService) {}
+  @ApiOperation({ summary: 'Принять уведомление ЕРИП', description: 'Для вызова нужна действующая Basic-авторизация ЕРИП. Если заголовок Content-Signature передан, он должен содержать корректную подпись тела; иначе запрос завершится ошибкой авторизации.' })
+  @ApiParam({ name: 'tenantId', description: 'Идентификатор ресторана', example: 'tenant-uuid' })
+  @ApiHeader({ name: 'Authorization', required: true, description: 'HTTP Basic: Base64 от shopId:secret; требуется действующее значение ЕРИП', example: 'Basic c2hvcElkOnNlY3JldA==' })
+  @ApiHeader({ name: 'Content-Signature', required: false, description: 'Необязательная подпись RSA-SHA256 тела в Base64. Если передана, проверяется открытым ключом ЕРИП.', example: 'base64-provider-signature' })
+  @ApiBody({ schema: { type: 'object', required: ['transaction'], properties: { transaction: { type: 'object', required: ['tracking_id', 'uid'], properties: { tracking_id: { type: 'string', description: 'Идентификатор платежа Bonapp', example: 'payment-uuid' }, uid: { type: 'string', description: 'Идентификатор транзакции ЕРИП', example: 'provider-transaction-id' }, status: { type: 'string', description: 'Статус транзакции ЕРИП', enum: ['successful', 'failed', 'expired', 'deleted'], example: 'successful' } } } } }, description: 'Формат уведомления ЕРИП. Для успешного вызова нужна действующая Basic-авторизация; при переданной подписи она также должна быть валидной.' })
+  @ApiResponse({ status: 200, description: 'Уведомление принято' })
+  @ApiResponse({ status: 401, description: 'Подпись или авторизация провайдера неверна' })
+  @ApiResponse({ status: 400, description: 'Тело запроса отсутствует, не является JSON или не содержит идентификаторы транзакции' })
   @Post(':tenantId')
   @HttpCode(200)
   async receive(@Param('tenantId') tenantId: string, @Req() request: Request & { rawBody?: Buffer }, @Headers('content-signature') signature?: string, @Headers('authorization') authorization?: string) {

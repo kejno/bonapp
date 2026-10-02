@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -25,6 +26,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Controller('auth')
+@ApiTags('Авторизация')
 @SkipTenantGuard()
 export class AuthController {
   constructor(
@@ -32,6 +34,10 @@ export class AuthController {
     @Optional() private readonly staffAuthService?: StaffAuthService,
   ) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить auth pin-login' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('pin-login')
   async pinLogin(
     @Body() body: unknown,
@@ -50,6 +56,11 @@ export class AuthController {
     }
   }
 
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Установить первоначальный пароль сотрудника' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('initial-password')
   @UseGuards(AuthGuard)
   async setInitialPassword(@Req() req: AuthenticatedRequest, @Body() body: unknown): Promise<{ success: true }> {
@@ -60,6 +71,10 @@ export class AuthController {
     return this.authService.setInitialPassword(userId, tenantId, password);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить auth login' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -102,6 +117,11 @@ export class AuthController {
     }
   }
 
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Настроить двухфакторную аутентификацию' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('2fa/setup')
   @UseGuards(AuthGuard)
   async setup2fa(
@@ -115,6 +135,10 @@ export class AuthController {
     return this.authService.setup2fa(userId, tenantId);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить auth 2fa/verify' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
   async verify2fa(

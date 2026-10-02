@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -22,9 +23,15 @@ function requestBodyRecord(body: unknown): Record<string, unknown> {
 }
 
 @Controller('auth')
+@ApiTags('Авторизация')
+@ApiBearerAuth()
 export class StaffAuthController {
   constructor(private readonly staffAuthService: StaffAuthService) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить auth refresh' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @SkipTenantGuard()
@@ -36,6 +43,10 @@ export class StaffAuthController {
     return this.staffAuthService.refresh(refreshToken);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить auth logout' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @SkipTenantGuard()
@@ -47,6 +58,10 @@ export class StaffAuthController {
     return this.staffAuthService.logout(refreshToken);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить auth change-password' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('change-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)

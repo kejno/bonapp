@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -75,6 +76,8 @@ function isValidStopListBody(
 }
 
 @Controller('admin/menu')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class MenuAdminController {
   constructor(
@@ -82,6 +85,10 @@ export class MenuAdminController {
     private readonly menuGateway: MenuGateway,
   ) {}
 
+  @ApiOperation({ summary: 'Получить admin/menu items/:itemId/modifier-groups' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('items/:itemId/modifier-groups')
   listModifierGroups(
     @Req() req: TenantRequest,
@@ -93,6 +100,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/menu items/:itemId/modifier-groups' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('items/:itemId/modifier-groups')
   createModifierGroup(
     @Req() req: TenantRequest,
@@ -116,6 +127,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Обновить admin/menu modifier-groups/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('modifier-groups/:id')
   updateModifierGroup(
     @Req() req: TenantRequest,
@@ -137,6 +152,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Удалить admin/menu modifier-groups/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete('modifier-groups/:id')
   deactivateModifierGroup(
     @Req() req: TenantRequest,
@@ -148,6 +167,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/menu modifier-groups/:id/options' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('modifier-groups/:id/options')
   createModifierOption(
     @Req() req: TenantRequest,
@@ -170,6 +193,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Обновить admin/menu modifier-options/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('modifier-options/:id')
   updateModifierOption(
     @Req() req: TenantRequest,
@@ -190,6 +217,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Удалить admin/menu modifier-options/:id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete('modifier-options/:id')
   deactivateModifierOption(
     @Req() req: TenantRequest,
@@ -201,6 +232,10 @@ export class MenuAdminController {
     );
   }
 
+  @ApiOperation({ summary: 'Изменить admin/menu items/:itemId/stop-list' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch('items/:itemId/stop-list')
   async updateItemStopList(
     @Req() req: TenantRequest,
