@@ -128,6 +128,19 @@ function action(params) {
         return true;
     }
 
+    // Same in-flight set as checkStoryTestsPassed: the TC is mid review/automation,
+    // so its verdict is not final yet. A Test Case shared with a Story can be
+    // bounced Passed → In Review - Passed by that Story's own QA cycle; treating
+    // that as a failure sent BNP-555 (fix merged, tests passing) to In Rework,
+    // where nothing could ever pick it up again.
+    function isInFlightTC(tc) {
+        var status = tc.fields && tc.fields.status && tc.fields.status.name;
+        return status === jiraConfig.statuses.IN_REVIEW_PASSED ||
+            status === jiraConfig.statuses.IN_REVIEW_FAILED ||
+            status === jiraConfig.statuses.IN_DEVELOPMENT ||
+            status === jiraConfig.statuses.READY_FOR_DEVELOPMENT;
+    }
+
     try {
         if (!ticketKey) throw new Error('params.ticket.key is missing');
         console.log('=== Bug done check for', ticketKey, '===');
@@ -162,6 +175,13 @@ function action(params) {
         console.log('Blocking Test Cases:', blockingCount, '/', totalTCs);
 
         if (blockingCount > 0) {
+            const inFlightTCs = blockingTCs.filter(isInFlightTC);
+            if (inFlightTCs.length > 0) {
+                console.log(inFlightTCs.length, 'TC(s) still in review/automation — releasing lock, will re-check next cycle');
+                releaseLock();
+                return { success: true, action: 'waiting_in_flight', totalTCs, inFlightTCs: inFlightTCs.map(function(tc) { return tc.key; }), ticketKey };
+            }
+
             // If the test-automation PR has already been merged and finalized, any still-blocking
             // Test Case means the fix did not work. Route the Bug to In Rework instead of
             // waiting forever.

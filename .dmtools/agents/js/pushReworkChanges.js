@@ -454,6 +454,20 @@ function readReworkSetupFailure(ticketKey) {
     }
 }
 
+function readIntentionalSkip() {
+    try {
+        var content = file_read({ path: 'outputs/agent_cli_intentionally_skipped.json' });
+        if (!content || !content.trim()) return null;
+        try {
+            return JSON.parse(content).reason || 'unknown';
+        } catch (e) {
+            return 'unknown';
+        }
+    } catch (e) {
+        return null;
+    }
+}
+
 /**
  * Rework setup already failed (most commonly: no PR found for the ticket) before
  * the CLI agent even ran. There is no branch/PR to push changes to, and retrying
@@ -518,6 +532,16 @@ function action(params) {
         const actualParams = params.ticket ? params : (params.jobParams || params);
         const ticketKey = actualParams.ticket.key;
         var config = configLoader.loadProjectConfig(params.jobParams || params);
+
+        // preCliReworkSetup deliberately skipped the CLI (e.g. dev PR already
+        // merged) and already updated Jira; it wrote no pr_info.md, so going on
+        // would only post a bogus "Rework Push Failed" (seen on BNP-555).
+        var intentionalSkip = readIntentionalSkip();
+        if (intentionalSkip !== null) {
+            console.log('ℹ️ Rework CLI was intentionally skipped by pre-action (' + intentionalSkip + ') — nothing to push for', ticketKey);
+            return { success: true, path: 'cli-intentionally-skipped', ticketKey: ticketKey, reason: intentionalSkip };
+        }
+
         let fixSummary = actualParams.response || '_(No fix summary generated)_';
         // params.response (the dmtools runner's own read of the CLI's result) has
         // been observed reporting "interrupted" even when the CLI transcript
