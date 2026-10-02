@@ -50,14 +50,15 @@ export async function recoverPendingPosOrders(
   store: PrismaService,
   enqueue: (tenantId: string, orderId: string) => Promise<void>,
 ): Promise<void> {
-  const tenants = await store.db.tenant.findMany({
+  // Runs from a timer, outside any request, so there is no tenant context for `store.db`.
+  const tenants = await store.superadminTransaction((tx) => tx.tenant.findMany({
     where: {
       posType: { in: ['iiko', 'r_keeper'] },
       posUrl: { not: null },
       OR: [{ posApiKey: { not: null } }, { posCredentials: { not: Prisma.DbNull } }],
     },
     select: { id: true },
-  });
+  }));
   for (const tenant of tenants) {
     let cursor: { id: string } | undefined;
     let pending: Array<{ id: string }>;

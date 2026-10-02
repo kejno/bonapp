@@ -12,7 +12,8 @@ describe('recoverPendingPosOrders', () => {
   it('requeues persisted guest orders on a later pass after the queue was unavailable', async () => {
     const persisted = [{ id: 'order-1' }, { id: 'order-2' }];
     const store = {
-      db: { tenant: { findMany: jest.fn().mockResolvedValue([{ id: 'tenant-1' }]) } },
+      superadminTransaction: jest.fn((operation: (tx: unknown) => Promise<unknown>) =>
+        operation({ tenant: { findMany: jest.fn().mockResolvedValue([{ id: 'tenant-1' }]) } })),
       forTenant: jest.fn(() => ({ order: { findMany: jest.fn().mockResolvedValue(persisted) } })),
     };
     const enqueue = jest.fn().mockRejectedValueOnce(new Error('Redis unavailable')).mockResolvedValue(undefined);
