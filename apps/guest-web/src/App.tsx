@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { getGuestSessionId } from './guest-session'
-import { io } from 'socket.io-client'
-import OrderStatusPage from './OrderStatusPage'
-import PayPage from './PayPage'
-import CheckoutPage from './CheckoutPage'
 import { activateCartForQrToken, useCartStore } from './orders/cart.store'
+import CheckoutPage from './CheckoutPage'
+
+const OrderStatusPage = lazy(() => import('./OrderStatusPage'))
+const PayPage = lazy(() => import('./PayPage'))
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'
 
@@ -30,9 +30,9 @@ export default function App() {
     return <CheckoutPage />
   }
   const statusMatch = window.location.pathname.match(/^\/order\/([^/]+)\/status$/)
-  if (statusMatch) return <OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} />
+  if (statusMatch) return <Suspense fallback={<p>Загрузка…</p>}><OrderStatusPage orderId={decodeURIComponent(statusMatch[1])} /></Suspense>
   const payMatch = window.location.pathname.match(/^\/order\/([^/]+)\/pay$/)
-  if (payMatch) return <PayPage orderId={decodeURIComponent(payMatch[1])} />
+  if (payMatch) return <Suspense fallback={<p>Загрузка…</p>}><PayPage orderId={decodeURIComponent(payMatch[1])} /></Suspense>
   const tableRouteMatch = window.location.pathname.match(/^\/t\/([^/]+)\/?$/)
   let routeQrToken: string | null = null
   let invalidRouteQrToken = false
@@ -170,15 +170,20 @@ export default function App() {
     if (!qrToken) return
     const socketOrigin = API_BASE.replace(/\/api\/v1\/?$/, '')
     const tableSessionToken = session?.tableSessionToken ?? window.sessionStorage.getItem('tableSessionToken')
-    const socket = io(socketOrigin, { auth: { qrToken, tableSessionToken }, transports: ['websocket', 'polling'] })
-    socket.on('connect', () => socket.emit('join_table_room'))
-    socket.on('payment.status_changed', (payload: { status: string }) => {
-      setPaymentMessage(payload.status === 'COMPLETED' ? 'Оплата заказа подтверждена' : 'Оплата не прошла')
+    let socket: import('socket.io-client').Socket | undefined
+    let active = true
+    void import('socket.io-client').then(({ io }) => {
+      if (!active) return
+      socket = io(socketOrigin, { auth: { qrToken, tableSessionToken }, transports: ['websocket', 'polling'] })
+      socket.on('connect', () => socket?.emit('join_table_room'))
+      socket.on('payment.status_changed', (payload: { status: string }) => {
+        setPaymentMessage(payload.status === 'COMPLETED' ? 'Оплата заказа подтверждена' : 'Оплата не прошла')
+      })
+      socket.on('tenant:service_mode_changed', (payload: { serviceMode: TenantConfig['serviceMode'] }) => {
+        setTenantConfig((current) => current ? { ...current, serviceMode: payload.serviceMode } : current)
+      })
     })
-    socket.on('tenant:service_mode_changed', (payload: { serviceMode: TenantConfig['serviceMode'] }) => {
-      setTenantConfig((current) => current ? { ...current, serviceMode: payload.serviceMode } : current)
-    })
-    return () => { socket.disconnect() }
+    return () => { active = false; socket?.disconnect() }
   }, [qrToken, session?.tableSessionToken])
 
   return (
