@@ -40,9 +40,39 @@ flowchart TD
         R10["NEVER create an Epic with zero child Stories in the same run. Every new Epic MUST be created together with at least its first actionable Stories in this same run — an Epic without Stories is not a valid output. If an Epic's full scope is too large to fully decompose in one pass, still create as many Stories as are known/actionable now, and explicitly list the remaining not-yet-decomposed slices in the Epic's own description Notes section — never leave the Epic itself as an empty placeholder"]
         R11["Before writing any description .md file: replace every generic placeholder tag with the tracker-specific markup from the transform table for this run's tracker (e.g. `agents/instructions/tracker/jira_markup_transform.md` for Jira). Never write literal placeholder tags or raw Markdown headings/bullets straight into a tracker description — same rule as `story_questions`"]
         R12["existing_epics.json / existing_stories.json are freshly fetched from the live tracker THIS run and are the SOLE authoritative record of which tickets currently exist. Never treat a key mentioned only in comments.md / a prior run's summary / memory as still existing if it's absent from these freshly fetched files — it may have been deleted. If they seem inconsistent with a prior comment, the fresh files are correct; do not rationalize the mismatch as an 'environment quirk' and fall back to stale text. Confirm every parent/blockedBy/integrates key against these files before use"]
+        R13["Wide refactors are the exception to R5's vertical slicing. A wide refactor is one mechanical change (rename a column, retype a symbol in packages/shared-types) whose blast radius fans across the whole monorepo, so no single vertical slice can land green — see 'Wide refactors' below for how to decompose it instead"]
     end
 
     INPUTS --> TASK
     TASK --> E2E
     E2E --> RULES
 ```
+
+## Wide refactors — expand/migrate/contract instead of vertical slices
+
+Most work decomposes into vertical slices (each Story cuts a narrow but
+complete path through schema/API/UI/tests, demoable on its own). A **wide
+refactor** doesn't fit that shape: one mechanical change — renaming a
+Prisma column, retyping a symbol in `packages/shared-types` that every
+`apps/*` imports, changing a shared `tenantId` convention — has a blast
+radius spanning the whole monorepo. Forcing R5's "1-2 sprints, split if
+needed" onto it produces Stories that can't individually stay green, because
+the old and new forms can't coexist mid-slice.
+
+Sequence it as three Story types instead, wired together with the existing
+`blockedBy` field (`formatting_rules.md`):
+
+1. **Expand** — one Story that adds the new form beside the old (new column
+   alongside the old one, new type alongside the old one) without removing
+   anything. Nothing breaks; this Story has no `blockedBy`.
+2. **Migrate batches** — one Story per package/directory/app that moves call
+   sites from the old form to the new one, sized so each batch's tests stay
+   green on its own. Each migrate Story sets `blockedBy: [<expand tempId>]`.
+   Batches may run in parallel (they don't block each other) unless they
+   touch overlapping files.
+3. **Contract** — one Story that deletes the old form once no caller remains.
+   Its `blockedBy` lists every migrate batch Story's `tempId`/key.
+
+State in the Epic's Notes (or the expand Story's Notes, if there's no Epic)
+that this is an expand-contract sequence and name the batches, so a reader
+doesn't mistake the narrow expand Story for the whole refactor.
