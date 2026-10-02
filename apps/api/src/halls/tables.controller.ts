@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -109,6 +110,8 @@ function isValidStatusUpdate(body: unknown): body is StatusUpdateBody {
 }
 
 @Controller('admin/tables')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard)
 export class TablesController {
   constructor(
@@ -116,6 +119,10 @@ export class TablesController {
     private readonly tableQrPdfService?: TableQrPdfService,
   ) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/tables generate-qr-pdf' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('generate-qr-pdf')
   @UseGuards(AdminRoleGuard)
   @HttpCode(200)
@@ -136,11 +143,19 @@ export class TablesController {
     return res.status(202).json(result);
   }
 
+  @ApiOperation({ summary: 'Получить admin/tables generate-qr-pdf/jobs/:jobId' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('generate-qr-pdf/jobs/:jobId')
   getQrPdfJob(@Req() req: TenantRequest, @Param('jobId') jobId: string) {
     return this.tableQrPdfService!.getJob(jobId, req.user!.tenantId!);
   }
 
+  @ApiOperation({ summary: 'Получить admin/tables generate-qr-pdf/jobs/:jobId/file' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('generate-qr-pdf/jobs/:jobId/file')
   async downloadQrPdf(@Req() req: TenantRequest, @Param('jobId') jobId: string, @Res() res: Response) {
     const file = await this.tableQrPdfService!.getFile(jobId, req.user!.tenantId!);
@@ -148,6 +163,10 @@ export class TablesController {
     return res.send(file);
   }
 
+  @ApiOperation({ summary: 'Получить admin/tables' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get()
   list(@Req() req: TenantRequest) {
     const user = req.user!;
@@ -160,6 +179,10 @@ export class TablesController {
     );
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/tables' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post()
   create(@Req() req: TenantRequest, @Body() body: unknown) {
     if (!isValidCreateTable(body)) {
@@ -173,6 +196,10 @@ export class TablesController {
     });
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/tables bulk' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('bulk')
   bulkCreate(@Req() req: TenantRequest, @Body() body: unknown) {
     if (!isValidBulkCreate(body)) {
@@ -188,12 +215,20 @@ export class TablesController {
     });
   }
 
+  @ApiOperation({ summary: 'Получить admin/tables :id/qr-preview' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id/qr-preview')
   async qrPreview(@Req() req: TenantRequest, @Param('id') id: string) {
     const table = await this.hallsService.getTableQrPreview(req.user!.tenantId!, id);
     return { ...table, qrDataUrl: await QRCode.toDataURL(table.url, { width: 240, margin: 1 }) };
   }
 
+  @ApiOperation({ summary: 'Обновить admin/tables :id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put(':id')
   update(@Req() req: TenantRequest, @Param('id') id: string, @Body() body: unknown) {
     if (!isValidUpdateTable(body)) {
@@ -211,12 +246,20 @@ export class TablesController {
     });
   }
 
+  @ApiOperation({ summary: 'Удалить admin/tables :id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Delete(':id')
   @HttpCode(204)
   async remove(@Req() req: TenantRequest, @Param('id') id: string) {
     await this.hallsService.deleteTable(req.user!.tenantId!, id);
   }
 
+  @ApiOperation({ summary: 'Изменить admin/tables :id/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch(':id/status')
   updateStatus(@Req() req: TenantRequest, @Param('id') id: string, @Body() body: unknown) {
     if (!isValidStatusUpdate(body)) {

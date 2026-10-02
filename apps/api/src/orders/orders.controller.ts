@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -21,6 +22,8 @@ import { WelcomeService } from '../welcome/welcome.service';
 import { MenuGateway } from '../menu/menu.gateway';
 
 @Controller('orders')
+@ApiTags('Заказы')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard)
 export class OrdersController {
   constructor(
@@ -29,6 +32,10 @@ export class OrdersController {
     private readonly menuGateway: MenuGateway,
   ) {}
 
+  @ApiOperation({ summary: 'Создать или выполнить orders' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post()
   create(@Body() body: unknown, @Req() req: TenantRequest) {
     if (typeof body === 'object' && body !== null && (body as Record<string, unknown>)['isTest'] === true) {
@@ -50,6 +57,10 @@ export class OrdersController {
     });
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить orders :id/pay' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post(':id/pay')
   @UseGuards(AdminRoleGuard)
   @HttpCode(200)
@@ -60,11 +71,19 @@ export class OrdersController {
     return order;
   }
 
+  @ApiOperation({ summary: 'Получить orders' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get()
   findAll() {
     return this.ordersService.findAll();
   }
 
+  @ApiOperation({ summary: 'Получить orders kds' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('kds')
   findKitchenOrders(@Req() request: TenantRequest) {
     this.assertKitchenAccess(request);
@@ -74,6 +93,10 @@ export class OrdersController {
     );
   }
 
+  @ApiOperation({ summary: 'Изменить orders :id/kds-status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch(':id/kds-status')
   updateKitchenStatus(
     @Param('id') id: string,
@@ -112,11 +135,19 @@ export class OrdersController {
       throw new ForbiddenException('Staff identity is required');
   }
 
+  @ApiOperation({ summary: 'Получить orders :id' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
   }
 
+  @ApiOperation({ summary: 'Изменить orders :id/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Patch(':id/status')
   @UseGuards(AdminRoleGuard)
   async updateStatus(@Param('id') id: string, @Body() body: unknown) {

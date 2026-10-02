@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -17,15 +18,25 @@ import type { TenantRequest } from '../auth/tenant-context.guard';
 import { IntegrationsService } from './integrations.service';
 
 @Controller('admin')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard, AdminRoleGuard)
 export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
+  @ApiOperation({ summary: 'Получить admin integrations/status' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get('integrations/status')
   getStatus(@Req() req: TenantRequest) {
     return this.integrations.getStatus(req.user!.tenantId!);
   }
 
+  @ApiOperation({ summary: 'Обновить admin tenant/settings' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Put('tenant/settings')
   updateSettings(@Req() req: TenantRequest, @Body() body: unknown) {
     if (!this.integrations.isValidSettingsUpdate(body)) {
@@ -38,6 +49,10 @@ export class IntegrationsController {
     );
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin integrations/:provider/sync' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post('integrations/:provider/sync')
   @HttpCode(202)
   syncMenu(@Req() req: TenantRequest, @Param('provider') provider: string) {

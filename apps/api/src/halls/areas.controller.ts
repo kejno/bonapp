@@ -1,3 +1,4 @@
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   BadRequestException,
   Body,
@@ -19,15 +20,25 @@ interface CreateAreaBody {
 }
 
 @Controller('admin/areas')
+@ApiTags('Администрирование')
+@ApiBearerAuth()
 @UseGuards(AuthGuard, TenantContextGuard)
 export class AreasController {
   constructor(private readonly hallsService: HallsService) {}
 
+  @ApiOperation({ summary: 'Получить admin/areas' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Get()
   list(@Req() req: TenantRequest) {
     return this.hallsService.listAreas(req.user!.tenantId!);
   }
 
+  @ApiOperation({ summary: 'Создать или выполнить admin/areas' })
+
+  @ApiResponse({ status: 200, description: 'Операция выполнена успешно' })
+  @ApiResponse({ status: 400, description: 'Некорректные параметры запроса' })
   @Post()
   create(@Req() req: TenantRequest, @Body() body: unknown) {
     if (!this.isValidCreateArea(body)) {
