@@ -69,7 +69,7 @@ async function main() {
       await tx.table.upsert({
         where: { qrToken: table.token },
         create: { tenantId: seededTenant.id, areaId: area.id, tableNumber: table.number, label: table.label, seatsCount: table.seatsCount, qrToken: table.token },
-        update: { tenantId: seededTenant.id, areaId: area.id, tableNumber: table.number, label: table.label, seatsCount: table.seatsCount, status: 'AVAILABLE' },
+        update: { tenantId: seededTenant.id, areaId: area.id, tableNumber: table.number, label: table.label, seatsCount: table.seatsCount },
       });
     }
 

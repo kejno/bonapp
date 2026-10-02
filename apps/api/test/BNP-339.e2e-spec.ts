@@ -81,7 +81,7 @@ describe('BNP-339: seed creates Le Bistro Gourmand and its owner', () => {
     );
     psql(
       databaseName,
-      "CREATE ROLE seed_reader LOGIN PASSWORD 'seed-reader-password' BYPASSRLS; GRANT USAGE ON SCHEMA public TO seed_reader; GRANT SELECT ON tenants, users TO seed_reader;",
+      "CREATE ROLE seed_reader LOGIN PASSWORD 'seed-reader-password' BYPASSRLS; GRANT USAGE ON SCHEMA public TO seed_reader; GRANT SELECT ON tenants, users, tables, orders TO seed_reader;",
     );
     prisma = new PrismaClient({
       datasources: {
@@ -133,5 +133,33 @@ describe('BNP-339: seed creates Le Bistro Gourmand and its owner', () => {
       tenantId: tenant?.id,
     });
     expect(user?.passwordHash).not.toBe('test-password');
+  });
+
+  it('preserves an occupied table when the seed runs again', async () => {
+    psql(
+      databaseName,
+      "UPDATE tables SET status = 'OCCUPIED' WHERE qr_token = 'dev-table-1'; INSERT INTO orders (id, tenant_id, table_id, daily_order_number, status, updated_at) SELECT 'e1a7f3b0-0007-4000-a000-000000000001', 'e1a7f3b0-0001-4000-a000-000000000001', id, 1, 'NEW', CURRENT_TIMESTAMP FROM tables WHERE qr_token = 'dev-table-1';",
+    );
+    execFileSync(
+      'npx',
+      ['prisma', 'db', 'seed', '--schema', 'prisma/schema.prisma'],
+      {
+        cwd: `${__dirname}/..`,
+        encoding: 'utf8',
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+          SEED_OWNER_PASSWORD: 'test-password',
+        },
+      },
+    );
+
+    const table = await prisma.table.findUniqueOrThrow({
+      where: { qrToken: 'dev-table-1' },
+      select: { status: true, orders: { where: { status: 'NEW' }, select: { id: true } } },
+    });
+    expect(table.status).toBe('OCCUPIED');
+    expect(table.orders).toHaveLength(1);
   });
 });
