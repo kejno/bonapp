@@ -2,19 +2,31 @@
 
 ## Локальная разработка
 
-Скопируйте шаблон окружения для API:
+Скопируйте шаблоны окружения для API и обоих клиентов:
 
 ```bash
 cp apps/api/.env.example apps/api/.env
+cp apps/guest-web/.env.example apps/guest-web/.env
+cp apps/admin-web/.env.example apps/admin-web/.env
 ```
 
-Запустите локальные PostgreSQL и Redis, примените миграции, затем запустите приложения:
+Запустите локальные PostgreSQL и Redis, примените миграции и заполните базу тестовыми данными:
 
 ```bash
 docker compose up -d
-npx prisma migrate dev --schema apps/api/prisma/schema.prisma
+npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+npx prisma db seed --schema apps/api/prisma/schema.prisma
+```
+
+Запустите приложения:
+
+```bash
 npm run dev
 ```
+
+Гостевой клиент доступен на `http://localhost:5173`, панель ресторатора — на `http://localhost:5174`, API — на `http://localhost:3000`. Откройте `http://localhost:5173/` и выберите тестовый стол либо перейдите по адресу `http://localhost:5173/t/dev-table-1` (также доступны `dev-table-2` и `dev-table-3`). Войти в панель можно с `admin@lebistro.by`, пароль для локальной разработки — `local-dev-password` (значение `SEED_OWNER_PASSWORD` в `apps/api/.env`).
+
+Повторный запуск `prisma db seed` безопасен: записи тестового заведения обновляются по фиксированным идентификаторам и токенам.
 
 PostgreSQL доступен на `localhost:5432`, Redis — на `localhost:6379`. Данные сохраняются в named volumes `bonapp_pg_data` и `bonapp_redis_data`.
 

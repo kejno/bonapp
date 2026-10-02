@@ -22,6 +22,8 @@ describe('App', () => {
     expect(screen.getByRole('main')).toHaveClass('bg-background')
     expect(screen.getByText('Сканируйте QR-код')).toBeInTheDocument()
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('navigation', { name: 'Тестовые столы' })).toHaveTextContent('Стол 1')
+    expect(screen.getByRole('link', { name: 'Стол 1' })).toHaveAttribute('href', '/t/dev-table-1')
   })
 
   it('resolves the QR token from the URL through the guest session API', async () => {
