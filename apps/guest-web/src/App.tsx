@@ -185,6 +185,14 @@ export default function App() {
     <main className="flex min-h-svh items-center justify-center bg-background" style={{ '--color-primary': tenantConfig?.brandColor ?? '#e0533c' } as React.CSSProperties}>
       <section className="w-full max-w-2xl px-4 text-center">
         <header className="flex items-center justify-between"><h1 className="text-2xl font-semibold text-primary">Bonapp</h1><span aria-label="Количество товаров в корзине">Корзина · {cartCount}</span></header>
+        {!qrToken && import.meta.env.DEV && <nav aria-label="Тестовые столы" className="mx-auto my-5 max-w-sm rounded-xl border p-4 text-left">
+          <h2 className="mb-2 font-semibold">Столы для локальной разработки</h2>
+          <ul className="space-y-1">
+            <li><a className="text-primary underline" href="/t/dev-table-1">Стол 1</a></li>
+            <li><a className="text-primary underline" href="/t/dev-table-2">Стол 2</a></li>
+            <li><a className="text-primary underline" href="/t/dev-table-3">Стол 3</a></li>
+          </ul>
+        </nav>}
         {!qrToken && <p>Сканируйте QR-код</p>}
         {tenantBlocked && <section role="status"><h2>Ресторан временно не принимает заказы</h2><p>Создание новых заказов недоступно.</p></section>}
         {qrToken && !session && !error && <p>Открываем стол…</p>}
