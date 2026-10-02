@@ -13,6 +13,7 @@
  */
 
 var configLoader = require('./configLoader.js');
+const { LABELS } = require('./config.js');
 const gh = require('./common/githubHelpers.js');
 const gitOps = require('./common/gitOps.js');
 const fetchQuestionsToInput = require('./fetchQuestionsToInput.js');
@@ -162,12 +163,36 @@ function action(params) {
             if (mergedPr) {
                 console.log('No open PR for ' + ticketKey + ', but PR #' + mergedPr.number + ' already merged — nothing for pr_rework to do, skipping.');
                 try { jira_remove_label({ key: ticketKey, label: 'sm_story_rework_triggered' }); } catch (e) {}
+                // recover_merged_pr deliberately ignores tickets whose test PR is
+                // finalized, so leaving such a ticket in In Rework re-fires this
+                // agent forever (BNP-555: ~70 runs). Hand it back to In Testing,
+                // where the done-check decides between Done and Blocked.
+                var testPrFinalized = false;
+                try {
+                    var freshTicket = jira_get_ticket({ key: ticketKey });
+                    var labels = (freshTicket && freshTicket.fields && freshTicket.fields.labels) || [];
+                    testPrFinalized = labels.indexOf(LABELS.TEST_PR_FINALIZED) !== -1;
+                } catch (e) {
+                    console.warn('Could not read labels for', ticketKey, ':', e && e.toString ? e.toString() : String(e));
+                }
+                var movedTo = null;
+                if (testPrFinalized) {
+                    try {
+                        jira_move_to_status({ key: ticketKey, statusName: config.jira.statuses.IN_TESTING });
+                        movedTo = config.jira.statuses.IN_TESTING;
+                        console.log('Test PR already finalized — moved', ticketKey, 'to', movedTo);
+                    } catch (e) {
+                        console.warn('Failed to move', ticketKey, 'to In Testing:', e && e.toString ? e.toString() : String(e));
+                    }
+                }
                 try {
                     jira_post_comment({
                         key: ticketKey,
                         comment: 'h3. ℹ️ Rework Skipped — Dev PR Already Merged\n\n' +
                             'PR [#' + mergedPr.number + '|' + (mergedPr.html_url || '') + '] for this ticket is already merged. ' +
-                            'The current status likely belongs to a later stage (e.g. test automation) — leaving it for the appropriate agent on the next cycle.'
+                            (movedTo
+                                ? 'The test-automation PR is already finalized, so the ticket was moved to *' + movedTo + '* for the done-check to re-evaluate linked Test Cases.'
+                                : 'The current status likely belongs to a later stage (e.g. test automation) — leaving it for the appropriate agent on the next cycle.')
                     });
                 } catch (e) {}
                 markCliIntentionallySkipped('dev_pr_already_merged');

@@ -121,7 +121,30 @@ function runOpenZeroDiffCase() {
     assert(calls.commands.includes('git push origin --delete test/BNP-123'));
 }
 
+// BNP-555: the done-check closed the Bug earlier in the same SM pass that
+// queued this review; finalizing must not resurrect it to In Testing.
+function runAlreadyDoneCase() {
+    const calls = { moves: [], files: [], merge: 0, scm: 0 };
+    configLoader.loadProjectConfig = () => ({ ...config,
+        jira: { ...config.jira, statuses: { ...config.jira.statuses, DONE: 'Done' } } });
+    configLoader.createScm = () => { calls.scm++; return { listPrs: () => [] }; };
+    storyTestMerge.attemptMerge = () => { calls.merge++; return { success: true }; };
+    global.jira_get_ticket = () => ({ fields: { labels: [],
+        status: { name: 'Done' }, issuetype: { name: 'Bug' } } });
+    global.jira_move_to_status = value => calls.moves.push(value);
+    global.jira_remove_label = () => {};
+    global.file_write = value => calls.files.push(value);
+    global.cli_execute_command = () => '';
+
+    const result = prepare.action({ ticket: { key: 'BNP-555', fields: { issuetype: { name: 'Bug' } } } });
+    assert.strictEqual(result, false, 'Done ticket must skip the reviewer');
+    assert.deepStrictEqual(calls.moves, [], 'Done ticket must not be moved back to In Testing');
+    assert.strictEqual(calls.merge, 0, 'Done ticket must not re-run finalization');
+    assert(calls.files.some(x => x.path === 'outputs/agent_cli_intentionally_skipped.json'));
+}
+
 try {
+    runAlreadyDoneCase();
     runCase(false);
     runCase(true);
     runNoCommitsCase();

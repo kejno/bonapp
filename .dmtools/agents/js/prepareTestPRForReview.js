@@ -275,6 +275,18 @@ function action(params) {
         try {
             const freshTicket = jira_get_ticket({ key: ticketKey });
             const ticketLabels = (freshTicket && freshTicket.fields && freshTicket.fields.labels) || [];
+            const freshStatus = freshTicket && freshTicket.fields && freshTicket.fields.status
+                ? freshTicket.fields.status.name : '';
+            // The SM pass that queued this run saw the ticket in In Testing, but a
+            // done-check earlier in the same pass may have already closed it. Every
+            // finalize path below moves Stories/Bugs to In Testing unconditionally,
+            // which resurrected BNP-555 from Done and started its rework loop.
+            if (freshStatus === jiraConfig.statuses.DONE) {
+                console.log(ticketKey, 'is already Done — nothing to review, skipping');
+                releaseReviewLock(ticketKey, params);
+                markCliIntentionallySkipped('ticket_already_done');
+                return false;
+            }
             if (ticketLabels.indexOf(LABELS.TEST_PR_FINALIZED) !== -1) {
                 console.log('Ticket already has', LABELS.TEST_PR_FINALIZED, '— test PR review already finalized, skipping');
                 if (issueType === jiraConfig.issueTypes.STORY || issueType === jiraConfig.issueTypes.BUG) {
